@@ -39,7 +39,30 @@ function CallbackContent() {
           if (user.mustChangePassword && user.hasPassword) {
             router.push('/change-password');
           } else {
-            router.push('/dashboard');
+            // Honor a returnTo path stashed by the login page before the
+            // OIDC redirect (used to resume the OAuth consent flow when a
+            // Claude Desktop connector triggers the login). Restricted to
+            // same-origin paths to block open-redirect abuse.
+            let returnTo: string | null = null;
+            try {
+              const stored = sessionStorage.getItem('postLoginReturnTo');
+              sessionStorage.removeItem('postLoginReturnTo');
+              if (
+                stored &&
+                stored.startsWith('/') &&
+                !stored.startsWith('//') &&
+                !stored.startsWith('/\\')
+              ) {
+                returnTo = stored;
+              }
+            } catch {
+              // sessionStorage unavailable — fall through to /dashboard
+            }
+            if (returnTo) {
+              window.location.href = returnTo;
+            } else {
+              router.push('/dashboard');
+            }
           }
         } catch {
           toast.error(!success ? 'No authentication token received' : 'Authentication failed');

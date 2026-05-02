@@ -138,6 +138,18 @@ export default function LoginPage() {
   };
 
   const handleOidcLogin = () => {
+    // Stash returnTo so the OIDC callback page can resume the OAuth
+    // consent flow (or wherever the user was originally going). The
+    // password and 2FA paths can pass it inline; the OIDC redirect
+    // bounces through an external IdP so we use sessionStorage, which
+    // survives cross-origin navigation back to this same origin.
+    if (returnTo) {
+      try {
+        sessionStorage.setItem('postLoginReturnTo', returnTo);
+      } catch {
+        // private mode etc — ignore, fall back to /dashboard
+      }
+    }
     authApi.initiateOidc();
   };
 
