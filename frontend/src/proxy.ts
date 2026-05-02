@@ -133,6 +133,15 @@ export const config = {
   matcher: [
     // Match API routes for proxying
     '/api/:path*',
+    // Match OAuth endpoints for proxying. These have to be enumerated
+    // explicitly because the catch-all matcher below excludes any path
+    // containing a dot (intended for static files), which would otherwise
+    // skip the well-known metadata routes.
+    '/oauth/:path*',
+    '/oauth-consent/:path*',
+    '/.well-known/oauth-protected-resource',
+    '/.well-known/oauth-authorization-server',
+    '/.well-known/oauth-authorization-server/:path*',
     // Match all other paths except static files
     '/((?!_next/static|_next/image|favicon.ico|.*\\..*|public).*)',
   ],
