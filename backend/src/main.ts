@@ -8,6 +8,40 @@ import * as pg from "pg";
 import { AppModule } from "./app.module";
 import { OAuthProviderService } from "./oauth/oauth-provider.service";
 import { oauthDebugLogger } from "./oauth/oauth-debug-logger.middleware";
+import type { NextFunction, Request, Response } from "express";
+
+/**
+ * Permissive CORS for the MCP + OAuth surface. Allowed because every
+ * request to these paths is authenticated by a Bearer token (PAT or OAuth
+ * access token), not a cookie, so a third-party origin can't ride
+ * ambient credentials. Echoes the request Origin (with credentials: false
+ * implied — we never set Access-Control-Allow-Credentials) and short-
+ * circuits OPTIONS preflights so they never reach the strict app-wide
+ * CORS layer.
+ */
+function permissiveCors(req: Request, res: Response, next: NextFunction) {
+  const origin = req.headers.origin;
+  res.setHeader("Access-Control-Allow-Origin", origin ?? "*");
+  res.setHeader("Vary", "Origin");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, DELETE, OPTIONS",
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Authorization, Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version",
+  );
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "Mcp-Session-Id, WWW-Authenticate",
+  );
+  res.setHeader("Access-Control-Max-Age", "600");
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
+}
 
 // Configure pg to return DATE types as strings instead of Date objects
 // This prevents timezone-related date shifting issues
@@ -75,6 +109,26 @@ async function bootstrap() {
 
   // Cookie parser for OIDC state/nonce and auth tokens
   app.use(cookieParser());
+
+  // OAuth/MCP debug logger and permissive CORS — mounted BEFORE the global
+  // CORS middleware so we observe every request reaching these paths even
+  // when an MCP client (Claude Desktop, mcp-remote) sends an Origin header
+  // that the strict app-wide allow-list would reject. The MCP and OAuth
+  // surfaces authenticate via Bearer tokens (no cookies on the wire), so
+  // wildcard CORS is safe and matches what the MCP spec recommends.
+  app.use("/api/v1/mcp", oauthDebugLogger("mcp"), permissiveCors);
+  app.use(
+    "/.well-known/oauth-protected-resource",
+    oauthDebugLogger("prm"),
+    permissiveCors,
+  );
+  app.use(
+    "/.well-known/oauth-authorization-server",
+    oauthDebugLogger("as-meta"),
+    permissiveCors,
+  );
+  app.use("/oauth", oauthDebugLogger("provider"), permissiveCors);
+  app.use("/oauth-consent", oauthDebugLogger("consent"), permissiveCors);
 
   // Security middleware
   const disableHttpsHeaders = process.env.DISABLE_HTTPS_HEADERS === "true";
@@ -173,15 +227,11 @@ async function bootstrap() {
   // have run yet at this point (it fires inside app.listen() / app.init()).
   const oauthProviderService = app.get(OAuthProviderService);
   const oauthProvider = await oauthProviderService.ensureInitialized();
-  // Debug-logging middleware mounted in front of every OAuth-related path so
-  // we can trace MCP-client handshakes (Claude Desktop, mcp-remote, etc.).
-  app.use("/oauth", oauthDebugLogger("provider"));
-  app.use("/oauth-consent", oauthDebugLogger("consent"));
-  app.use(
-    "/.well-known/oauth-protected-resource",
-    oauthDebugLogger("prm"),
-  );
-  app.use("/api/v1/mcp", oauthDebugLogger("mcp"));
+  // The debug-logger and permissive-CORS middlewares for /oauth/* etc. are
+  // mounted earlier (before the global cookie/helmet/CORS chain) so that
+  // requests from MCP clients with an off-allowlist Origin still appear in
+  // the log. The provider middleware itself stays here because the OAuth
+  // provider mounts its own interaction handlers.
   app.use("/oauth", oauthProvider.callback());
 
   // Swagger documentation (disabled in production)
