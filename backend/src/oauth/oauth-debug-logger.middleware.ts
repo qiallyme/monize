@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Logger } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
 
@@ -17,7 +18,7 @@ const logger = new Logger("OAuthDebug");
 export function oauthDebugLogger(scope: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const start = Date.now();
-    const reqId = Math.random().toString(36).slice(2, 8);
+    const reqId = randomBytes(3).toString("hex");
     const auth = req.headers["authorization"];
     const authSummary = !auth
       ? "none"
