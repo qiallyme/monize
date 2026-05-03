@@ -1,11 +1,13 @@
 import { NestFactory } from "@nestjs/core";
-import { Logger, ValidationPipe } from "@nestjs/common";
+import { Logger, RequestMethod, ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import helmet from "helmet";
 import * as express from "express";
 import * as cookieParser from "cookie-parser";
 import * as pg from "pg";
 import { AppModule } from "./app.module";
+import { OAuthProviderService } from "./oauth/oauth-provider.service";
+import { oauthDebugLogger } from "./oauth/oauth-debug-logger.middleware";
 
 // Configure pg to return DATE types as strings instead of Date objects
 // This prevents timezone-related date shifting issues
@@ -67,12 +69,38 @@ async function bootstrap() {
     express.raw({ limit: "100mb", type: "application/gzip" }),
   );
 
-  // Default body size limit for regular endpoints (QIF imports, etc.)
-  app.use(express.json({ limit: "10mb" }));
-  app.use(express.urlencoded({ limit: "10mb", extended: true }));
+  // Default body size limit for regular endpoints (QIF imports, etc.).
+  // Skip body parsing for /oauth/* so node-oidc-provider parses requests
+  // itself — otherwise it logs "already parsed request body detected" on
+  // every DCR/token POST. The interaction routes under /api/v1/oauth-consent/*
+  // need parsed bodies for @Body(), so they go through normal parsing.
+  const skipForProvider = (parser: express.RequestHandler): express.RequestHandler =>
+    (req, res, next) => {
+      if (req.path === "/oauth" || req.path.startsWith("/oauth/")) {
+        return next();
+      }
+      return parser(req, res, next);
+    };
+  app.use(skipForProvider(express.json({ limit: "10mb" })));
+  app.use(skipForProvider(express.urlencoded({ limit: "10mb", extended: true })));
 
   // Cookie parser for OIDC state/nonce and auth tokens
   app.use(cookieParser());
+
+  // OAuth/MCP debug-logger middleware mounted ahead of the global CORS
+  // middleware so a request from an MCP client (Claude Desktop, mcp-remote)
+  // is logged even when the strict app-wide CORS layer would have rejected
+  // its Origin. CORS itself is path-aware further down (see app.enableCors
+  // delegate) — these paths get permissive CORS because they authenticate
+  // by Bearer token, not cookies.
+  app.use("/api/v1/mcp", oauthDebugLogger("mcp"));
+  app.use("/.well-known/oauth-protected-resource", oauthDebugLogger("prm"));
+  app.use(
+    "/.well-known/oauth-authorization-server",
+    oauthDebugLogger("as-meta"),
+  );
+  app.use("/oauth", oauthDebugLogger("provider"));
+  app.use("/api/v1/oauth-consent", oauthDebugLogger("consent"));
 
   // Security middleware
   const disableHttpsHeaders = process.env.DISABLE_HTTPS_HEADERS === "true";
@@ -109,33 +137,65 @@ async function bootstrap() {
       : []),
   ].filter(Boolean);
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      // Requests with no Origin header (server-to-server, health checks,
-      // curl, same-origin navigations): always allow. Non-browser clients
-      // can trivially set any Origin, so blocking null Origin adds no real
-      // security. Sandboxed-iframe abuse is prevented by Helmet's
-      // frameguard: { action: "deny" } instead.
-      if (!origin) return callback(null, true);
+  // Path-aware CORS: the MCP and OAuth surfaces accept any origin
+  // because they authenticate via Bearer tokens (PAT / OAuth access
+  // token) and never receive cookies — a third-party origin can't ride
+  // ambient credentials. The rest of the app keeps the strict allow-list
+  // because it relies on cookies + CSRF for browser sessions.
+  app.enableCors((req, callback) => {
+    const path = req.path ?? req.url ?? "";
+    const isOpenSurface =
+      path === "/api/v1/mcp" ||
+      path.startsWith("/api/v1/mcp/") ||
+      path === "/oauth" ||
+      path.startsWith("/oauth/") ||
+      path.startsWith("/api/v1/oauth-consent/") ||
+      path === "/.well-known/oauth-protected-resource" ||
+      path === "/.well-known/oauth-authorization-server" ||
+      path.startsWith("/.well-known/oauth-authorization-server/");
 
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "Accept",
-      "X-CSRF-Token",
-      "X-Restore-Password",
-      "X-Restore-OIDC-Token",
-      "Mcp-Session-Id",
-    ],
-    exposedHeaders: ["Mcp-Session-Id"],
+    if (isOpenSurface) {
+      callback(null, {
+        origin: "*",
+        credentials: false,
+        methods: ["GET", "POST", "DELETE", "OPTIONS"],
+        allowedHeaders: [
+          "Authorization",
+          "Content-Type",
+          "Accept",
+          "Mcp-Session-Id",
+          "Mcp-Protocol-Version",
+        ],
+        exposedHeaders: ["Mcp-Session-Id", "WWW-Authenticate"],
+        maxAge: 600,
+      });
+      return;
+    }
+
+    callback(null, {
+      origin: (origin, cb) => {
+        // Requests with no Origin header (server-to-server, health checks,
+        // curl, same-origin navigations): always allow. Non-browser clients
+        // can trivially set any Origin, so blocking null Origin adds no real
+        // security. Sandboxed-iframe abuse is prevented by Helmet's
+        // frameguard: { action: "deny" } instead.
+        if (!origin) return cb(null, true);
+        if (allowedOrigins.includes(origin)) cb(null, true);
+        else cb(new Error("Not allowed by CORS"));
+      },
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "X-CSRF-Token",
+        "X-Restore-Password",
+        "X-Restore-OIDC-Token",
+        "Mcp-Session-Id",
+      ],
+      exposedHeaders: ["Mcp-Session-Id"],
+    });
   });
 
   // Global validation pipe
@@ -147,8 +207,36 @@ async function bootstrap() {
     }),
   );
 
-  // API prefix
-  app.setGlobalPrefix("api/v1");
+  // API prefix. The protected-resource metadata route (RFC 9728) is the
+  // only NestJS-controller path that must live at the application root
+  // because the spec fixes its URL. The interaction controller lives
+  // under the normal /api/v1 prefix so it goes through the regular
+  // /api/* forwarding path on the frontend proxy.
+  app.setGlobalPrefix("api/v1", {
+    exclude: [
+      {
+        path: ".well-known/oauth-protected-resource",
+        method: RequestMethod.GET,
+      },
+    ],
+  });
+
+  // Mount node-oidc-provider as Express middleware at /oauth. This serves the
+  // authorization, token, registration, JWKS, revocation, and discovery
+  // endpoints. Helmet's restrictive CSP doesn't apply here because the
+  // provider sets its own headers and renders no HTML of its own (we render
+  // the consent page in the interaction controller).
+  //
+  // ensureInitialized() is awaited because Nest's onModuleInit hook may not
+  // have run yet at this point (it fires inside app.listen() / app.init()).
+  const oauthProviderService = app.get(OAuthProviderService);
+  const oauthProvider = await oauthProviderService.ensureInitialized();
+  // The debug-logger and permissive-CORS middlewares for /oauth/* etc. are
+  // mounted earlier (before the global cookie/helmet/CORS chain) so that
+  // requests from MCP clients with an off-allowlist Origin still appear in
+  // the log. The provider middleware itself stays here because the OAuth
+  // provider mounts its own interaction handlers.
+  app.use("/oauth", oauthProvider.callback());
 
   // Swagger documentation (disabled in production)
   if (process.env.NODE_ENV !== "production") {
