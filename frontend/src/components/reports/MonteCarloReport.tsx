@@ -43,22 +43,25 @@ const DEFAULT_INPUTS: MonteCarloScenarioInputs = {
   inflationRate: 0.025,
   showRealValues: false,
   simulationCount: 5000,
-  targetValue: null,
-  randomSeed: null,
-  // CreateScenarioDto-only fields are added in the save flow:
-  // name, description (these come from the saved-scenario list / "Save as")
 };
 
-type FormState = MonteCarloScenarioInputs & { name: string; description: string };
+type FormState = Omit<MonteCarloScenarioInputs, 'targetValue' | 'randomSeed'> & {
+  name: string;
+  description: string;
+  targetValue: number | null;
+  randomSeed: string | null;
+};
 
 const EMPTY_FORM: FormState = {
   ...DEFAULT_INPUTS,
   name: '',
   description: '',
+  targetValue: null,
+  randomSeed: null,
 };
 
 export function MonteCarloReport() {
-  const { formatCurrency } = useNumberFormat();
+  const { formatCurrency, formatCurrencyLabel, defaultCurrency } = useNumberFormat();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [scenarios, setScenarios] = useState<MonteCarloScenario[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -67,6 +70,14 @@ export function MonteCarloReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const extractError = (err: unknown, fallback: string): string => {
+    const e = err as { response?: { data?: { message?: string | string[] } } };
+    const msg = e?.response?.data?.message;
+    if (Array.isArray(msg)) return msg.join('; ');
+    if (typeof msg === 'string') return msg;
+    return fallback;
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -140,27 +151,34 @@ export function MonteCarloReport() {
       }));
     } catch (err) {
       logger.error('Failed to fetch historical stats:', err);
-      setError('Could not load historical stats for selected accounts.');
+      setError(extractError(err, 'Could not load historical stats for selected accounts.'));
     }
   };
 
-  const inputsFromForm = (f: FormState): MonteCarloScenarioInputs => ({
-    accountIds: f.accountIds,
-    startingValue: f.startingValue,
-    useCurrentBalance: f.useCurrentBalance,
-    yearsToRetirement: f.yearsToRetirement,
-    annualContribution: f.annualContribution,
-    contributionGrowthRate: f.contributionGrowthRate,
-    yearsInRetirement: f.yearsInRetirement,
-    annualWithdrawal: f.annualWithdrawal,
-    expectedReturn: f.expectedReturn,
-    volatility: f.volatility,
-    inflationRate: f.inflationRate,
-    showRealValues: f.showRealValues,
-    simulationCount: f.simulationCount,
-    targetValue: f.targetValue,
-    randomSeed: f.randomSeed,
-  });
+  // Backend `@IsOptional()` decorators expect omission, not explicit null.
+  // Build the payload without nullable fields when they have no value.
+  const inputsFromForm = (f: FormState): MonteCarloScenarioInputs => {
+    const base = {
+      accountIds: f.accountIds,
+      startingValue: f.startingValue,
+      useCurrentBalance: f.useCurrentBalance,
+      yearsToRetirement: f.yearsToRetirement,
+      annualContribution: f.annualContribution,
+      contributionGrowthRate: f.contributionGrowthRate,
+      yearsInRetirement: f.yearsInRetirement,
+      annualWithdrawal: f.annualWithdrawal,
+      expectedReturn: f.expectedReturn,
+      volatility: f.volatility,
+      inflationRate: f.inflationRate,
+      showRealValues: f.showRealValues,
+      simulationCount: f.simulationCount,
+    };
+    return {
+      ...base,
+      ...(f.targetValue != null ? { targetValue: f.targetValue } : {}),
+      ...(f.randomSeed ? { randomSeed: f.randomSeed } : {}),
+    } as MonteCarloScenarioInputs;
+  };
 
   const run = async () => {
     setError(null);
@@ -172,7 +190,7 @@ export function MonteCarloReport() {
       setResult(r);
     } catch (err) {
       logger.error('Simulation failed:', err);
-      setError('Simulation failed. Check inputs and try again.');
+      setError(extractError(err, 'Simulation failed. Check inputs and try again.'));
     } finally {
       setIsRunning(false);
     }
@@ -203,7 +221,7 @@ export function MonteCarloReport() {
       }
     } catch (err) {
       logger.error('Save failed:', err);
-      setError('Could not save scenario.');
+      setError(extractError(err, 'Could not save scenario.'));
     }
   };
 
@@ -216,7 +234,7 @@ export function MonteCarloReport() {
       newScenario();
     } catch (err) {
       logger.error('Delete failed:', err);
-      setError('Could not delete scenario.');
+      setError(extractError(err, 'Could not delete scenario.'));
     }
   };
 
@@ -323,7 +341,7 @@ export function MonteCarloReport() {
               value={form.startingValue}
               onChange={(v) => updateField('startingValue', v ?? 0)}
               decimalPlaces={2}
-              prefix="$"
+              prefix={defaultCurrency}
               disabled={form.useCurrentBalance}
             />
             <div className="flex items-end pb-2">
@@ -362,7 +380,7 @@ export function MonteCarloReport() {
                 value={form.annualContribution}
                 onChange={(v) => updateField('annualContribution', v ?? 0)}
                 decimalPlaces={2}
-                prefix="$"
+                prefix={defaultCurrency}
               />
               <NumericInput
                 label="Contribution growth"
@@ -394,14 +412,14 @@ export function MonteCarloReport() {
                 value={form.annualWithdrawal}
                 onChange={(v) => updateField('annualWithdrawal', v ?? 0)}
                 decimalPlaces={2}
-                prefix="$"
+                prefix={defaultCurrency}
               />
               <NumericInput
                 label="Target portfolio"
                 value={form.targetValue ?? undefined}
                 onChange={(v) => updateField('targetValue', v ?? null)}
                 decimalPlaces={2}
-                prefix="$"
+                prefix={defaultCurrency}
               />
             </div>
           </fieldset>
@@ -505,8 +523,9 @@ export function MonteCarloReport() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
               <h3 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">
                 Projected portfolio value{' '}
-                <span className="text-sm font-normal text-gray-500">
-                  ({result.realValues ? "today's dollars" : 'nominal'})
+                <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                  (in {defaultCurrency},{' '}
+                  {result.realValues ? "today's dollars" : 'nominal'})
                 </span>
               </h3>
               <div className="h-80 w-full">
@@ -514,12 +533,23 @@ export function MonteCarloReport() {
                   <ComposedChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="year" />
-                    <YAxis tickFormatter={(v) => formatCurrency(Number(v))} width={90} />
+                    <YAxis
+                      tickFormatter={(v) => formatCurrencyLabel(Number(v))}
+                      width={70}
+                    />
                     <Tooltip
-                      formatter={(value, name) => [
-                        formatCurrency(Number(value ?? 0)),
-                        String(name),
-                      ]}
+                      content={(props) => (
+                        <FanChartTooltip
+                          active={props.active}
+                          payload={
+                            props.payload as Array<{
+                              payload?: Record<string, number>;
+                            }>
+                          }
+                          label={String(props.label ?? '')}
+                          fmt={formatCurrency}
+                        />
+                      )}
                     />
                     <Legend />
                     <Area
@@ -569,6 +599,45 @@ export function MonteCarloReport() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function FanChartTooltip({
+  active,
+  payload,
+  label,
+  fmt,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: Record<string, number> }>;
+  label?: string;
+  fmt: (v: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  const rows: Array<[string, number]> = [
+    ['90th percentile', row.p90],
+    ['75th percentile', row.p75],
+    ['Median (50th)', row.p50],
+    ['25th percentile', row.p25],
+    ['10th percentile', row.p10],
+  ];
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 text-sm">
+      <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">{label}</p>
+      {rows.map(([name, value]) => (
+        <p
+          key={name}
+          className="text-gray-700 dark:text-gray-300 flex justify-between gap-4"
+        >
+          <span>{name}</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100">
+            {fmt(value)}
+          </span>
+        </p>
+      ))}
     </div>
   );
 }

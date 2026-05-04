@@ -28,8 +28,19 @@ export interface MonteCarloScenario {
 /** Pure simulation inputs — what /run accepts and what's persisted minus identity/metadata. */
 export type MonteCarloScenarioInputs = Omit<
   MonteCarloScenario,
-  'id' | 'name' | 'description' | 'isFavourite' | 'lastRunAt' | 'createdAt' | 'updatedAt'
->;
+  | 'id'
+  | 'name'
+  | 'description'
+  | 'isFavourite'
+  | 'lastRunAt'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'targetValue'
+  | 'randomSeed'
+> & {
+  targetValue?: number;
+  randomSeed?: string;
+};
 
 export type MonteCarloScenarioCreateInput = MonteCarloScenarioInputs & {
   name: string;
