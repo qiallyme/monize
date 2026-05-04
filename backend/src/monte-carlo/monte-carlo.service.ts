@@ -455,11 +455,11 @@ export class MonteCarloService {
 
     let yearlyReturns = await this.queryYearlyReturns(securityIds);
 
-    // For securities with fewer than 5 yearly returns we backfill from the
+    // For securities with fewer than 10 yearly returns we backfill from the
     // provider — typically newer holdings whose local price history doesn't
     // yet span the full window we want for stable mean/volatility estimates.
     const sparseIds = securityIds.filter(
-      (id) => (yearlyReturns.get(id)?.size ?? 0) < 5,
+      (id) => (yearlyReturns.get(id)?.size ?? 0) < 10,
     );
     if (sparseIds.length > 0) {
       const securities = await this.securitiesRepository.find({
@@ -468,7 +468,7 @@ export class MonteCarloService {
       await Promise.all(
         securities.map((s) =>
           this.securityPriceService
-            .backfillSecurityRange(s, "5y")
+            .backfillSecurityRange(s, "10y")
             .catch((err) => {
               this.logger.warn(
                 `Provider backfill failed for ${s.symbol}: ${err instanceof Error ? err.message : String(err)}`,

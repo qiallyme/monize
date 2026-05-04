@@ -21,6 +21,8 @@ import {
 } from '@/lib/monte-carlo';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { getCurrencySymbol } from '@/lib/format';
+import { showErrorToast } from '@/lib/errors';
+import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/Button';
 import { NumericInput } from '@/components/ui/NumericInput';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
@@ -80,15 +82,6 @@ export function MonteCarloReport() {
   const [holdingStatsLoading, setHoldingStatsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const extractError = (err: unknown, fallback: string): string => {
-    const e = err as { response?: { data?: { message?: string | string[] } } };
-    const msg = e?.response?.data?.message;
-    if (Array.isArray(msg)) return msg.join('; ');
-    if (typeof msg === 'string') return msg;
-    return fallback;
-  };
 
   useEffect(() => {
     const load = async () => {
@@ -101,7 +94,7 @@ export function MonteCarloReport() {
         setScenarios(scns);
       } catch (err) {
         logger.error('Failed to load Monte Carlo data:', err);
-        setError('Failed to load. Please refresh.');
+        showErrorToast(err, 'Failed to load Monte Carlo data. Please refresh.');
       } finally {
         setIsLoading(false);
       }
@@ -127,6 +120,7 @@ export function MonteCarloReport() {
       .catch((err) => {
         if (!cancelled) {
           logger.error('Failed to fetch holding stats:', err);
+          showErrorToast(err, 'Failed to load per-holding historical stats.');
           setHoldingStats(null);
         }
       })
@@ -166,6 +160,7 @@ export function MonteCarloReport() {
       })
       .catch((err) => {
         logger.error('Failed to fetch current balance:', err);
+        showErrorToast(err, 'Failed to fetch the current portfolio value.');
       });
     return () => {
       cancelled = true;
@@ -247,7 +242,6 @@ export function MonteCarloReport() {
   };
 
   const run = async () => {
-    setError(null);
     setIsRunning(true);
     try {
       // Always run with the *current* form values, not the saved scenario.
@@ -257,16 +251,15 @@ export function MonteCarloReport() {
       setResult(r);
     } catch (err) {
       logger.error('Simulation failed:', err);
-      setError(extractError(err, 'Simulation failed. Check inputs and try again.'));
+      showErrorToast(err, 'Simulation failed. Check inputs and try again.');
     } finally {
       setIsRunning(false);
     }
   };
 
   const save = async () => {
-    setError(null);
     if (!form.name.trim()) {
-      setError('Please enter a scenario name to save.');
+      toast.error('Please enter a scenario name to save.');
       return;
     }
     try {
@@ -281,14 +274,16 @@ export function MonteCarloReport() {
         setScenarios((prev) =>
           prev.map((s) => (s.id === updated.id ? updated : s)),
         );
+        toast.success('Scenario saved.');
       } else {
         const created = await monteCarloApi.create(payload);
         setScenarios((prev) => [created, ...prev]);
         setActiveId(created.id);
+        toast.success('Scenario created.');
       }
     } catch (err) {
       logger.error('Save failed:', err);
-      setError(extractError(err, 'Could not save scenario.'));
+      showErrorToast(err, 'Could not save scenario.');
     }
   };
 
@@ -299,9 +294,10 @@ export function MonteCarloReport() {
       await monteCarloApi.remove(activeId);
       setScenarios((prev) => prev.filter((s) => s.id !== activeId));
       newScenario();
+      toast.success('Scenario deleted.');
     } catch (err) {
       logger.error('Delete failed:', err);
-      setError(extractError(err, 'Could not delete scenario.'));
+      showErrorToast(err, 'Could not delete scenario.');
     }
   };
 
@@ -585,10 +581,6 @@ export function MonteCarloReport() {
             </label>
           </fieldset>
 
-          {error && (
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-          )}
-
           <div className="flex flex-wrap gap-2">
             <Button onClick={run} disabled={isRunning}>
               {isRunning ? 'Running…' : 'Run simulation'}
@@ -812,7 +804,6 @@ function HoldingStatsTable({
                   <th className="px-3 py-1.5 text-right font-medium">
                     Volatility
                   </th>
-                  <th className="px-3 py-1.5 text-right font-medium">Years</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -832,9 +823,6 @@ function HoldingStatsTable({
                     </td>
                     <td className="px-3 py-1.5 text-right text-gray-900 dark:text-gray-100">
                       {fmtPct(h.volatility)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-gray-500 dark:text-gray-400">
-                      {h.yearsObserved}
                     </td>
                   </tr>
                 ))}
