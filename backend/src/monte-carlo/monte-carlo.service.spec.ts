@@ -6,6 +6,7 @@ import { MonteCarloSimulationService } from "./monte-carlo-simulation.service";
 import { MonteCarloScenario } from "./entities/monte-carlo-scenario.entity";
 import { Holding } from "../securities/entities/holding.entity";
 import { SecurityPrice } from "../securities/entities/security-price.entity";
+import { Account } from "../accounts/entities/account.entity";
 import { PortfolioService } from "../securities/portfolio.service";
 import { CreateScenarioDto } from "./dto/create-scenario.dto";
 
@@ -14,6 +15,7 @@ describe("MonteCarloService", () => {
   let scenariosRepository: Record<string, jest.Mock>;
   let holdingsRepository: Record<string, jest.Mock>;
   let securityPriceRepository: Record<string, jest.Mock>;
+  let accountsRepository: Record<string, jest.Mock>;
   let portfolioService: { getPortfolioSummary: jest.Mock };
 
   const userId = "user-1";
@@ -84,6 +86,9 @@ describe("MonteCarloService", () => {
     securityPriceRepository = {
       query: jest.fn().mockResolvedValue([]),
     };
+    accountsRepository = {
+      find: jest.fn().mockResolvedValue([]),
+    };
     portfolioService = {
       getPortfolioSummary: jest.fn().mockResolvedValue({
         totalPortfolioValue: 250000,
@@ -107,6 +112,10 @@ describe("MonteCarloService", () => {
         {
           provide: getRepositoryToken(SecurityPrice),
           useValue: securityPriceRepository,
+        },
+        {
+          provide: getRepositoryToken(Account),
+          useValue: accountsRepository,
         },
         {
           provide: PortfolioService,

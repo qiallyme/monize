@@ -62,10 +62,17 @@ export class MonteCarloSimulationService {
 
       for (let t = 1; t <= totalYears; t++) {
         const inAccumulation = t <= params.yearsToRetirement;
+        // Withdrawals inflate each year to keep real purchasing power flat:
+        // a user who enters $50k/yr at 2.5% inflation withdraws $50k year 1,
+        // ~$51.25k year 2, and so on. Contributions inflate at the
+        // user-supplied contribution-growth rate (often a salary raise rate,
+        // not strictly inflation).
+        const yearsSinceDrawdownStart = t - params.yearsToRetirement - 1;
         const desiredCashFlow = inAccumulation
           ? params.annualContribution *
             Math.pow(1 + params.contributionGrowthRate, t - 1)
-          : -params.annualWithdrawal;
+          : -params.annualWithdrawal *
+            Math.pow(1 + params.inflationRate, yearsSinceDrawdownStart);
 
         // Clamp withdrawals to the available balance so a depleted path stays
         // at zero rather than silently going negative for the rest of the run.

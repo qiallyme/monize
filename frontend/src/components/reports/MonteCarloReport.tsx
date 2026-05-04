@@ -17,6 +17,7 @@ import {
   MonteCarloScenario,
   MonteCarloScenarioInputs,
   SimulationResult,
+  AccountHoldingStats,
 } from '@/lib/monte-carlo';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { getCurrencySymbol } from '@/lib/format';
@@ -75,6 +76,8 @@ export function MonteCarloReport() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [result, setResult] = useState<SimulationResult | null>(null);
+  const [holdingStats, setHoldingStats] = useState<AccountHoldingStats[] | null>(null);
+  const [holdingStatsLoading, setHoldingStatsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +108,35 @@ export function MonteCarloReport() {
     };
     load();
   }, []);
+
+  // Fetch per-holding historical stats for the selected accounts whenever the
+  // user is in historical-returns mode. Cleared otherwise so the table doesn't
+  // show stale data after a mode toggle.
+  useEffect(() => {
+    if (!form.useHistoricalReturns || form.accountIds.length === 0) {
+      setHoldingStats(null);
+      return;
+    }
+    let cancelled = false;
+    setHoldingStatsLoading(true);
+    monteCarloApi
+      .holdingStats(form.accountIds)
+      .then((stats) => {
+        if (!cancelled) setHoldingStats(stats);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          logger.error('Failed to fetch holding stats:', err);
+          setHoldingStats(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHoldingStatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.useHistoricalReturns, form.accountIds]);
 
   // Auto-populate the starting value when "Use current balance" is on. Refetches
   // when the selected accounts change so the displayed value matches what the
@@ -433,6 +465,11 @@ export function MonteCarloReport() {
                 prefix={currencySymbol}
               />
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Annual withdrawal is in today&apos;s dollars and is grown by the
+              inflation rate each year so purchasing power stays constant
+              throughout the withdrawal phase.
+            </p>
           </fieldset>
 
           <fieldset className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
@@ -460,30 +497,42 @@ export function MonteCarloReport() {
               </label>
             </div>
             {form.useHistoricalReturns && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                Mean and volatility are recomputed from the year-over-year price
-                history of the holdings in the selected accounts each time you
-                run. Inflation and simulation count below still apply.
-              </p>
+              <>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Mean and volatility are recomputed from the year-over-year
+                  price history of the holdings in the selected accounts each
+                  time you run. Inflation and simulation count below still
+                  apply.
+                </p>
+                <HoldingStatsTable
+                  data={holdingStats}
+                  loading={holdingStatsLoading}
+                  formatCurrency={formatCurrency}
+                />
+              </>
             )}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <NumericInput
-                label="Expected return"
-                value={form.expectedReturn * 100}
-                onChange={(v) => updateField('expectedReturn', (v ?? 0) / 100)}
-                decimalPlaces={2}
-                allowNegative
-                suffix="%"
-                disabled={form.useHistoricalReturns}
-              />
-              <NumericInput
-                label="Volatility"
-                value={form.volatility * 100}
-                onChange={(v) => updateField('volatility', (v ?? 0) / 100)}
-                decimalPlaces={2}
-                suffix="%"
-                disabled={form.useHistoricalReturns}
-              />
+              <div className={form.useHistoricalReturns ? 'opacity-50' : ''}>
+                <NumericInput
+                  label="Expected return"
+                  value={form.expectedReturn * 100}
+                  onChange={(v) => updateField('expectedReturn', (v ?? 0) / 100)}
+                  decimalPlaces={2}
+                  allowNegative
+                  suffix="%"
+                  disabled={form.useHistoricalReturns}
+                />
+              </div>
+              <div className={form.useHistoricalReturns ? 'opacity-50' : ''}>
+                <NumericInput
+                  label="Volatility"
+                  value={form.volatility * 100}
+                  onChange={(v) => updateField('volatility', (v ?? 0) / 100)}
+                  decimalPlaces={2}
+                  suffix="%"
+                  disabled={form.useHistoricalReturns}
+                />
+              </div>
               <NumericInput
                 label="Inflation"
                 value={form.inflationRate * 100}
@@ -677,6 +726,98 @@ function FanChartTooltip({
             {fmt(value)}
           </span>
         </p>
+      ))}
+    </div>
+  );
+}
+
+function HoldingStatsTable({
+  data,
+  loading,
+  formatCurrency,
+}: {
+  data: AccountHoldingStats[] | null;
+  loading: boolean;
+  formatCurrency: (v: number) => string;
+}) {
+  if (loading) {
+    return (
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        Loading holding stats…
+      </p>
+    );
+  }
+  if (!data || data.length === 0) {
+    return (
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        Select one or more accounts to see per-holding historical returns.
+      </p>
+    );
+  }
+
+  const fmtPct = (v: number | null) =>
+    v == null ? '—' : `${(v * 100).toFixed(2)}%`;
+
+  return (
+    <div className="space-y-3 mb-3">
+      {data.map((acct) => (
+        <div
+          key={acct.accountId}
+          className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden"
+        >
+          <div className="bg-gray-50 dark:bg-gray-900/50 px-3 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+            {acct.accountName}{' '}
+            <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+              ({acct.currencyCode})
+            </span>
+          </div>
+          {acct.holdings.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+              No active holdings.
+            </div>
+          ) : (
+            <table className="min-w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-gray-900/30 text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="px-3 py-1.5 text-left font-medium">Symbol</th>
+                  <th className="px-3 py-1.5 text-left font-medium">Name</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Value</th>
+                  <th className="px-3 py-1.5 text-right font-medium">
+                    Mean return
+                  </th>
+                  <th className="px-3 py-1.5 text-right font-medium">
+                    Volatility
+                  </th>
+                  <th className="px-3 py-1.5 text-right font-medium">Years</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {acct.holdings.map((h) => (
+                  <tr key={`${acct.accountId}-${h.symbol}`}>
+                    <td className="px-3 py-1.5 font-mono text-gray-900 dark:text-gray-100">
+                      {h.symbol}
+                    </td>
+                    <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300 truncate max-w-[200px]">
+                      {h.name}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-gray-700 dark:text-gray-300">
+                      {formatCurrency(h.marketValue)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-gray-900 dark:text-gray-100">
+                      {fmtPct(h.meanReturn)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-gray-900 dark:text-gray-100">
+                      {fmtPct(h.volatility)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-gray-500 dark:text-gray-400">
+                      {h.yearsObserved}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       ))}
     </div>
   );

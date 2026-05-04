@@ -81,6 +81,15 @@ export class MonteCarloController {
     return this.monteCarloService.getHistoricalStats(req.user.id, ids);
   }
 
+  @Get("holding-stats")
+  holdingStats(
+    @Request() req: AuthRequest,
+    @Query("accountIds") accountIds?: string,
+  ) {
+    const ids = parseUuids(accountIds) ?? [];
+    return this.monteCarloService.getHoldingStats(req.user.id, ids);
+  }
+
   /** Brokerage and standalone investment accounts only — use this to populate
    * the account picker (excludes the cash sibling of brokerage pairs). */
   @Get("accounts")

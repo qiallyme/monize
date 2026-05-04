@@ -15,6 +15,7 @@ import { SimulationResult } from "./dto/simulation-result.dto";
 import { PortfolioService } from "../securities/portfolio.service";
 import { Holding } from "../securities/entities/holding.entity";
 import { SecurityPrice } from "../securities/entities/security-price.entity";
+import { Account } from "../accounts/entities/account.entity";
 
 export interface HistoricalStats {
   /** Number of full calendar years of data used to compute the stats. */
@@ -25,6 +26,24 @@ export interface HistoricalStats {
   volatility: number | null;
   /** Aggregate current market value of the selected accounts in the user's default currency. */
   currentBalance: number;
+}
+
+export interface HoldingStat {
+  symbol: string;
+  name: string;
+  currencyCode: string;
+  quantity: number;
+  marketValue: number;
+  yearsObserved: number;
+  meanReturn: number | null;
+  volatility: number | null;
+}
+
+export interface AccountHoldingStats {
+  accountId: string;
+  accountName: string;
+  currencyCode: string;
+  holdings: HoldingStat[];
 }
 
 @Injectable()
@@ -38,6 +57,8 @@ export class MonteCarloService {
     private holdingsRepository: Repository<Holding>,
     @InjectRepository(SecurityPrice)
     private securityPriceRepository: Repository<SecurityPrice>,
+    @InjectRepository(Account)
+    private accountsRepository: Repository<Account>,
     private simulationService: MonteCarloSimulationService,
     private portfolioService: PortfolioService,
   ) {}
@@ -283,44 +304,7 @@ export class MonteCarloService {
     }
 
     const securityIds = [...new Set(active.map((h) => h.securityId))];
-    const yearEndRows: Array<{
-      security_id: string;
-      year: string;
-      close_price: string;
-    }> = await this.securityPriceRepository.query(
-      `SELECT DISTINCT ON (security_id, EXTRACT(YEAR FROM price_date))
-         security_id,
-         EXTRACT(YEAR FROM price_date)::text AS year,
-         close_price
-       FROM security_prices
-       WHERE security_id = ANY($1)
-       ORDER BY security_id, EXTRACT(YEAR FROM price_date), price_date DESC`,
-      [securityIds],
-    );
-
-    // securityId → ordered [{year, price}]
-    const pricesBySecurity = new Map<
-      string,
-      Array<{ year: number; price: number }>
-    >();
-    for (const row of yearEndRows) {
-      const arr = pricesBySecurity.get(row.security_id) ?? [];
-      arr.push({ year: Number(row.year), price: Number(row.close_price) });
-      pricesBySecurity.set(row.security_id, arr);
-    }
-
-    // securityId → year → return (decimal, e.g. 0.07)
-    const yearlyReturns = new Map<string, Map<number, number>>();
-    for (const [secId, prices] of pricesBySecurity) {
-      prices.sort((a, b) => a.year - b.year);
-      const returns = new Map<number, number>();
-      for (let i = 1; i < prices.length; i++) {
-        const prev = prices[i - 1].price;
-        const curr = prices[i].price;
-        if (prev > 0) returns.set(prices[i].year, (curr - prev) / prev);
-      }
-      yearlyReturns.set(secId, returns);
-    }
+    const yearlyReturns = await this.fetchYearlyReturnsBySecurity(securityIds);
 
     // Weight each security by its current market value (sum across accounts).
     const currentPrices =
@@ -381,6 +365,127 @@ export class MonteCarloService {
     };
   }
 
+  /**
+   * Per-holding stats grouped by account. Used to show users what historical
+   * returns/volatility they're picking up when "Use historical returns" is on.
+   */
+  async getHoldingStats(
+    userId: string,
+    accountIds: string[],
+  ): Promise<AccountHoldingStats[]> {
+    if (accountIds.length === 0) {
+      throw new BadRequestException("At least one accountId is required");
+    }
+
+    // Verify the requested accounts belong to the user before running queries
+    // that don't carry their own userId clause.
+    const accounts = await this.accountsRepository.find({
+      where: { id: In(accountIds), userId },
+    });
+    if (accounts.length === 0) return [];
+
+    const holdings = await this.holdingsRepository.find({
+      where: { accountId: In(accounts.map((a) => a.id)) },
+      relations: ["security"],
+    });
+    const active = holdings.filter(
+      (h) => Math.abs(Number(h.quantity)) > 0.0001,
+    );
+    if (active.length === 0) {
+      return accounts.map((a) => ({
+        accountId: a.id,
+        accountName: a.name,
+        currencyCode: a.currencyCode,
+        holdings: [],
+      }));
+    }
+
+    const securityIds = [...new Set(active.map((h) => h.securityId))];
+    const yearlyReturns = await this.fetchYearlyReturnsBySecurity(securityIds);
+    const currentPrices =
+      await this.portfolioService.getLatestPrices(securityIds);
+
+    const grouped = new Map<string, HoldingStat[]>();
+    for (const a of accounts) grouped.set(a.id, []);
+
+    for (const h of active) {
+      if (!grouped.has(h.accountId)) continue;
+      const returns = yearlyReturns.get(h.securityId);
+      const series = returns ? [...returns.values()] : [];
+      const stats = computeMeanStdev(series);
+      const price = currentPrices.get(h.securityId);
+      grouped.get(h.accountId)!.push({
+        symbol: h.security?.symbol ?? "?",
+        name: h.security?.name ?? "Unknown",
+        currencyCode: h.security?.currencyCode ?? "USD",
+        quantity: Number(h.quantity),
+        marketValue:
+          price == null
+            ? 0
+            : Math.round(Number(h.quantity) * price * 100) / 100,
+        yearsObserved: series.length,
+        meanReturn: stats.mean,
+        volatility: stats.stdev,
+      });
+    }
+
+    return accounts.map((a) => ({
+      accountId: a.id,
+      accountName: a.name,
+      currencyCode: a.currencyCode,
+      holdings: (grouped.get(a.id) ?? []).sort(
+        (x, y) => y.marketValue - x.marketValue,
+      ),
+    }));
+  }
+
+  /**
+   * Fetch year-end closing prices for the given securities and convert to
+   * per-year returns. Returned map: securityId → Map<year, return>.
+   */
+  private async fetchYearlyReturnsBySecurity(
+    securityIds: string[],
+  ): Promise<Map<string, Map<number, number>>> {
+    if (securityIds.length === 0) return new Map();
+    const yearEndRows: Array<{
+      security_id: string;
+      year: string;
+      close_price: string;
+    }> = await this.securityPriceRepository.query(
+      `SELECT DISTINCT ON (security_id, EXTRACT(YEAR FROM price_date))
+         security_id,
+         EXTRACT(YEAR FROM price_date)::text AS year,
+         close_price
+       FROM security_prices
+       WHERE security_id = ANY($1)
+       ORDER BY security_id, EXTRACT(YEAR FROM price_date), price_date DESC`,
+      [securityIds],
+    );
+
+    const pricesBySecurity = new Map<
+      string,
+      Array<{ year: number; price: number }>
+    >();
+    for (const row of yearEndRows) {
+      const arr = pricesBySecurity.get(row.security_id) ?? [];
+      arr.push({ year: Number(row.year), price: Number(row.close_price) });
+      pricesBySecurity.set(row.security_id, arr);
+    }
+
+    const yearlyReturns = new Map<string, Map<number, number>>();
+    for (const [secId, prices] of pricesBySecurity) {
+      prices.sort((a, b) => a.year - b.year);
+      const returns = new Map<number, number>();
+      for (let i = 1; i < prices.length; i++) {
+        const prev = prices[i - 1].price;
+        const curr = prices[i].price;
+        if (prev > 0) returns.set(prices[i].year, (curr - prev) / prev);
+      }
+      yearlyReturns.set(secId, returns);
+    }
+    return yearlyReturns;
+  }
+
   private async computeCurrentValue(
     userId: string,
     accountIds: string[],
@@ -400,4 +505,18 @@ export class MonteCarloService {
       return 0;
     }
   }
+}
+
+function computeMeanStdev(series: number[]): {
+  mean: number | null;
+  stdev: number | null;
+} {
+  if (series.length < 2) return { mean: null, stdev: null };
+  const mean = series.reduce((a, b) => a + b, 0) / series.length;
+  const variance =
+    series.reduce((a, r) => a + (r - mean) ** 2, 0) / (series.length - 1);
+  return {
+    mean: Math.round(mean * 1_000_000) / 1_000_000,
+    stdev: Math.round(Math.sqrt(variance) * 1_000_000) / 1_000_000,
+  };
 }

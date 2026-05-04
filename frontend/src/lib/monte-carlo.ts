@@ -82,6 +82,24 @@ export interface HistoricalStats {
   currentBalance: number;
 }
 
+export interface HoldingStat {
+  symbol: string;
+  name: string;
+  currencyCode: string;
+  quantity: number;
+  marketValue: number;
+  yearsObserved: number;
+  meanReturn: number | null;
+  volatility: number | null;
+}
+
+export interface AccountHoldingStats {
+  accountId: string;
+  accountName: string;
+  currencyCode: string;
+  holdings: HoldingStat[];
+}
+
 export const monteCarloApi = {
   list: async (): Promise<MonteCarloScenario[]> => {
     const r = await apiClient.get<MonteCarloScenario[]>('/monte-carlo/scenarios');
@@ -132,6 +150,16 @@ export const monteCarloApi = {
     const r = await apiClient.get<
       Array<{ id: string; name: string; currencyCode: string }>
     >('/monte-carlo/accounts');
+    return r.data;
+  },
+
+  holdingStats: async (
+    accountIds: string[],
+  ): Promise<AccountHoldingStats[]> => {
+    const r = await apiClient.get<AccountHoldingStats[]>(
+      '/monte-carlo/holding-stats',
+      { params: { accountIds: accountIds.join(',') } },
+    );
     return r.data;
   },
 
