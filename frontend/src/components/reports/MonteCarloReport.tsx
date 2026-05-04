@@ -89,6 +89,7 @@ export function MonteCarloReport() {
   const [holdingStatsLoading, setHoldingStatsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -343,6 +344,9 @@ export function MonteCarloReport() {
         setActiveId(created.id);
         toast.success('Scenario created.');
       }
+      // Flash the Save button green for ~2s as inline confirmation.
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 2000);
     } catch (err) {
       logger.error('Save failed:', err);
       showErrorToast(err, 'Could not save scenario.');
@@ -770,8 +774,21 @@ export function MonteCarloReport() {
             <Button onClick={run} disabled={isRunning}>
               {isRunning ? 'Running…' : 'Run simulation'}
             </Button>
-            <Button variant="outline" onClick={save}>
-              {activeId ? 'Save changes' : 'Save scenario'}
+            <Button
+              variant={savedFlash ? 'primary' : 'outline'}
+              onClick={save}
+              disabled={savedFlash}
+              className={
+                savedFlash
+                  ? '!bg-green-600 hover:!bg-green-600 !border-green-600 !text-white !opacity-100'
+                  : undefined
+              }
+            >
+              {savedFlash
+                ? 'Saved!'
+                : activeId
+                  ? 'Save changes'
+                  : 'Save scenario'}
             </Button>
             {activeId && (
               <Button variant="danger" onClick={removeActive}>
