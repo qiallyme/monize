@@ -82,7 +82,26 @@ export function MonteCarloReport() {
   const currencySymbol = useMemo(() => getCurrencySymbol(defaultCurrency), [defaultCurrency]);
   const [accounts, setAccounts] = useState<BrokerageAccount[]>([]);
   const [scenarios, setScenarios] = useState<MonteCarloScenario[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // Persist the last-active scenario id so a page refresh keeps the user
+  // on the same scenario instead of dumping them back to an empty form.
+  const ACTIVE_ID_KEY = 'monize-monte-carlo-active-id';
+  const [activeId, setActiveId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return window.localStorage.getItem(ACTIVE_ID_KEY);
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (activeId) window.localStorage.setItem(ACTIVE_ID_KEY, activeId);
+      else window.localStorage.removeItem(ACTIVE_ID_KEY);
+    } catch {
+      /* ignore quota / privacy errors */
+    }
+  }, [activeId]);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [holdingStats, setHoldingStats] = useState<AccountHoldingStats[] | null>(null);
@@ -100,6 +119,53 @@ export function MonteCarloReport() {
         ]);
         setAccounts(accs);
         setScenarios(scns);
+        // Auto-restore the last-active scenario after a page refresh so the
+        // user doesn't have to re-pick it from the sidebar each time. We
+        // read localStorage directly here (not state) because state may not
+        // have settled before this effect runs.
+        const savedId =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(ACTIVE_ID_KEY)
+            : null;
+        if (savedId) {
+          const match = scns.find((s) => s.id === savedId);
+          if (match) {
+            // Inline hydrate (don't call hydrateFormFromScenario here so the
+            // effect doesn't capture it as a stale closure).
+            setActiveId(match.id);
+            setForm({
+              name: match.name,
+              description: match.description ?? '',
+              accountIds: match.accountIds,
+              startingValue: Number(match.startingValue),
+              useCurrentBalance: match.useCurrentBalance,
+              yearsToRetirement: match.yearsToRetirement,
+              annualContribution: Number(match.annualContribution),
+              contributionGrowthRate: Number(match.contributionGrowthRate),
+              yearsInRetirement: match.yearsInRetirement,
+              annualWithdrawal: Number(match.annualWithdrawal),
+              expectedReturn: Number(match.expectedReturn),
+              volatility: Number(match.volatility),
+              inflationRate: Number(match.inflationRate),
+              showRealValues: match.showRealValues,
+              useHistoricalReturns: match.useHistoricalReturns,
+              simulationCount: match.simulationCount,
+              targetValue:
+                match.targetValue == null ? null : Number(match.targetValue),
+              randomSeed: match.randomSeed,
+              cashFlows: (match.cashFlows ?? []).map((cf) => ({
+                name: cf.name,
+                amount: Number(cf.amount),
+                flowType: cf.flowType,
+                startYear: cf.startYear,
+                endYear: cf.endYear ?? null,
+                inflationAdjust: cf.inflationAdjust,
+              })),
+            });
+          } else {
+            setActiveId(null);
+          }
+        }
       } catch (err) {
         logger.error('Failed to load Monte Carlo data:', err);
         showErrorToast(err, 'Failed to load Monte Carlo data. Please refresh.');
@@ -250,10 +316,13 @@ export function MonteCarloReport() {
       f.targetValue != null && Number.isFinite(f.targetValue)
         ? f.targetValue
         : null;
+    // Keep every row the user has added; default the name when blank so the
+    // backend's @IsNotEmpty validator doesn't reject the row. Rows are only
+    // dropped when amount is non-numeric (e.g. mid-edit junk).
     const cashFlows: CashFlow[] = f.cashFlows
-      .filter((cf) => cf.name.trim() && Number.isFinite(cf.amount))
-      .map((cf) => ({
-        name: cf.name.trim(),
+      .filter((cf) => Number.isFinite(cf.amount))
+      .map((cf, idx) => ({
+        name: cf.name.trim() || `Cash flow ${idx + 1}`,
         amount: cf.amount,
         flowType: cf.flowType,
         startYear: Math.max(1, num(cf.startYear) || 1),
@@ -778,11 +847,16 @@ export function MonteCarloReport() {
               variant={savedFlash ? 'primary' : 'outline'}
               onClick={save}
               disabled={savedFlash}
-              className={
+              className={[
+                // "Save changes" is the longest label; keep that width fixed
+                // so the button doesn't reflow when it shows "Saved!".
+                'min-w-[8.25rem] justify-center',
                 savedFlash
                   ? '!bg-green-600 hover:!bg-green-600 !border-green-600 !text-white !opacity-100'
-                  : undefined
-              }
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
             >
               {savedFlash
                 ? 'Saved!'
