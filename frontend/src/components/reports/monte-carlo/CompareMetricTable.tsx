@@ -41,9 +41,9 @@ export function CompareMetricTable({
     <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow">
       <table className="min-w-full text-sm">
         <thead>
-          <tr className="bg-gray-50 dark:bg-gray-900/40">
+          <tr>
             <th
-              className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-500 dark:text-gray-400 min-w-[220px]"
+              className="sticky left-0 z-20 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-500 dark:text-gray-400 min-w-[220px]"
               scope="col"
             >
               Metric
@@ -51,7 +51,7 @@ export function CompareMetricTable({
             {columns.map((col) => (
               <th
                 key={col.id}
-                className="px-3 py-3 text-left font-medium text-gray-700 dark:text-gray-200 min-w-[200px]"
+                className="bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-700 dark:text-gray-200 min-w-[200px]"
                 scope="col"
               >
                 <ColumnHeader
@@ -157,9 +157,11 @@ function GroupBlock({
       <tr className="bg-gray-100 dark:bg-gray-900/60">
         <td
           colSpan={columns.length + 1}
-          className="sticky left-0 z-10 bg-gray-100 dark:bg-gray-900/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300"
+          className="bg-gray-100 dark:bg-gray-900/60 px-0 py-0 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300"
         >
-          {group.label}
+          <span className="sticky left-0 inline-block px-3 py-2">
+            {group.label}
+          </span>
         </td>
       </tr>
       {group.rows.map((row) => (

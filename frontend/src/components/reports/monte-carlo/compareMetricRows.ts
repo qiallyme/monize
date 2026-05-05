@@ -149,12 +149,6 @@ export const ROW_GROUPS: RowGroup[] = [
         accessor: (ctx) => ctx.scenario.name,
       },
       {
-        key: 'description',
-        label: 'Description',
-        format: 'text',
-        accessor: (ctx) => ctx.scenario.description ?? '—',
-      },
-      {
         key: 'lastRunAt',
         label: 'Last run',
         format: 'text',
