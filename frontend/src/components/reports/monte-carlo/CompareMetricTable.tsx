@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import {
   MonteCarloScenario,
@@ -38,41 +37,13 @@ export function CompareMetricTable({
   onRemove,
   onRerun,
 }: CompareMetricTableProps) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  // CSS `position: sticky` on table cells is unreliable on some mobile
-  // browsers (Chrome/Firefox on Android) — column headers visibly bleed
-  // through the sticky Metric column on horizontal scroll regardless of
-  // z-index, border-collapse, or stacking-context tweaks. Emulate it by
-  // tracking scrollLeft and translating every element marked with
-  // data-pin-left directly.
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const apply = () => {
-      const x = wrapper.scrollLeft;
-      const transform = x === 0 ? '' : `translateX(${x}px)`;
-      const pinned = wrapper.querySelectorAll<HTMLElement>('[data-pin-left]');
-      pinned.forEach((el) => {
-        el.style.transform = transform;
-      });
-    };
-    apply();
-    wrapper.addEventListener('scroll', apply, { passive: true });
-    return () => wrapper.removeEventListener('scroll', apply);
-  }, [columns.length]);
-
   return (
-    <div
-      ref={wrapperRef}
-      className="overflow-x-auto isolate bg-white dark:bg-gray-800 rounded-lg shadow"
-    >
-      <table className="min-w-full text-sm border-separate border-spacing-0">
+    <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow">
+      <table className="min-w-full text-sm">
         <thead>
-          <tr>
+          <tr className="bg-gray-50 dark:bg-gray-900/40">
             <th
-              data-pin-left=""
-              className="relative z-30 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-500 dark:text-gray-400 min-w-[220px] will-change-transform"
+              className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-500 dark:text-gray-400 min-w-[220px]"
               scope="col"
             >
               Metric
@@ -80,7 +51,7 @@ export function CompareMetricTable({
             {columns.map((col) => (
               <th
                 key={col.id}
-                className="bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-700 dark:text-gray-200 min-w-[200px] overflow-hidden"
+                className="px-3 py-3 text-left font-medium text-gray-700 dark:text-gray-200 min-w-[200px]"
                 scope="col"
               >
                 <ColumnHeader
@@ -119,9 +90,9 @@ function ColumnHeader({
 }) {
   const title = column.scenario?.name ?? 'Scenario';
   return (
-    <div className="flex flex-col gap-1 min-w-0">
-      <div className="flex items-center justify-between gap-2 min-w-0">
-        <span className="font-semibold text-gray-900 dark:text-gray-100 truncate min-w-0 flex-1">
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">
           {title}
         </span>
         <button
@@ -186,14 +157,9 @@ function GroupBlock({
       <tr className="bg-gray-100 dark:bg-gray-900/60">
         <td
           colSpan={columns.length + 1}
-          className="bg-gray-100 dark:bg-gray-900/60 px-0 py-0 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300"
+          className="sticky left-0 z-10 bg-gray-100 dark:bg-gray-900/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300"
         >
-          <span
-            data-pin-left=""
-            className="inline-block px-3 py-2 will-change-transform"
-          >
-            {group.label}
-          </span>
+          {group.label}
         </td>
       </tr>
       {group.rows.map((row) => (
@@ -206,9 +172,8 @@ function GroupBlock({
           }
         >
           <th
-            data-pin-left=""
             scope="row"
-            className="relative z-10 bg-white dark:bg-gray-800 px-3 py-1.5 text-left font-normal text-gray-700 dark:text-gray-300 will-change-transform"
+            className="sticky left-0 z-10 bg-white dark:bg-gray-800 px-3 py-1.5 text-left font-normal text-gray-700 dark:text-gray-300"
           >
             {row.label}
           </th>
