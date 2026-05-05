@@ -231,7 +231,7 @@ export const ROW_GROUPS: RowGroup[] = [
       },
       {
         key: 'showRealValues',
-        label: 'Real values',
+        label: "Show in today's value",
         format: 'boolean',
         accessor: (ctx) => ctx.scenario.showRealValues,
       },
