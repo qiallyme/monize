@@ -260,18 +260,6 @@ export const ROW_GROUPS: RowGroup[] = [
     label: 'Final distribution',
     rows: [
       {
-        key: 'min',
-        label: 'Min',
-        format: 'currency',
-        accessor: (ctx) => ctx.result?.finalDistribution.min ?? null,
-      },
-      {
-        key: 'max',
-        label: 'Max',
-        format: 'currency',
-        accessor: (ctx) => ctx.result?.finalDistribution.max ?? null,
-      },
-      {
         key: 'mean',
         label: 'Mean',
         format: 'currency',
