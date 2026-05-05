@@ -611,12 +611,15 @@ export function MonteCarloReport() {
           color: '#111827',
         },
         {
-          label: 'Depletion rate',
+          label: 'Probability of Depletion',
           value: `${(result.finalDistribution.depletionRate * 100).toFixed(1)}%`,
           color: '#dc2626',
         },
         {
-          label: 'Above target',
+          label:
+            form.targetValue != null && Number.isFinite(form.targetValue)
+              ? `Probability Above Target (${formatCurrency(form.targetValue)})`
+              : 'Probability Above Target',
           value:
             result.successRate == null
               ? '—'
@@ -624,7 +627,10 @@ export function MonteCarloReport() {
           color: '#16a34a',
         },
       ],
-      chartContainer: viewMode === 'chart' ? chartRef.current : null,
+      // Always include the chart in the PDF, even when the on-screen view is
+      // the table — the chart container stays mounted offscreen so the
+      // ResponsiveContainer has real dimensions for html2canvas to capture.
+      chartContainer: chartRef.current,
       tableData: {
         headers: ['Year', '10%', '25%', 'Median', '75%', '90%'],
         rows: tableRows.map((r) => [
@@ -638,7 +644,14 @@ export function MonteCarloReport() {
       },
       filename: `monte-carlo-${(form.name || 'scenario').toLowerCase().replace(/\s+/g, '-')}`,
     });
-  }, [result, form.name, viewMode, formatCurrency, defaultCurrency, tableRows]);
+  }, [
+    result,
+    form.name,
+    form.targetValue,
+    formatCurrency,
+    defaultCurrency,
+    tableRows,
+  ]);
 
   if (isLoading) {
     return (
@@ -1056,7 +1069,9 @@ export function MonteCarloReport() {
 
         {result && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 5-col grid so the wide 10th–90th value can breathe.
+                Mobile stacks into 1 column, tablets into 2. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <SummaryStat
                 label="Median final"
                 value={formatCurrency(result.finalDistribution.median)}
@@ -1068,13 +1083,18 @@ export function MonteCarloReport() {
                 )} – ${formatCurrency(
                   result.percentiles.p90[result.percentiles.p90.length - 1] ?? 0,
                 )}`}
+                className="lg:col-span-2"
               />
               <SummaryStat
-                label="Probability of depletion"
+                label="Probability of Depletion"
                 value={`${(result.finalDistribution.depletionRate * 100).toFixed(1)}%`}
               />
               <SummaryStat
-                label="Probability above target"
+                label={
+                  form.targetValue != null && Number.isFinite(form.targetValue)
+                    ? `Probability Above Target (${formatCurrency(form.targetValue)})`
+                    : 'Probability Above Target'
+                }
                 value={
                   result.successRate == null
                     ? '—'
@@ -1119,95 +1139,107 @@ export function MonteCarloReport() {
                 </div>
               </div>
 
-              {viewMode === 'chart' ? (
-                <div className="h-80 w-full" ref={chartRef}>
-                  <ResponsiveContainer>
-                    <ComposedChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="year" />
-                      <YAxis
-                        tickFormatter={(v) => formatCurrencyLabel(Number(v))}
-                        width={70}
-                      />
-                      <Tooltip
-                        content={(props) => (
-                          <FanChartTooltip
-                            active={props.active}
-                            payload={
-                              props.payload as Array<{
-                                payload?: Record<string, number>;
-                              }>
-                            }
-                            label={String(props.label ?? '')}
-                            fmt={formatCurrency}
-                            events={cashFlowMarkers.filter(
-                              (m) => m.year === String(props.label ?? ''),
-                            )}
+              {/* Chart stays mounted whether or not it's the visible view, so
+                  the PDF export always has a real DOM node to capture. When
+                  the user is on the table tab the chart is positioned
+                  offscreen rather than display:none (which would zero its
+                  dimensions and produce a blank PDF image). */}
+              <div
+                ref={chartRef}
+                className={
+                  viewMode === 'chart'
+                    ? 'h-80 w-full'
+                    : 'absolute left-[-99999px] top-0 w-[800px] h-80 pointer-events-none'
+                }
+                aria-hidden={viewMode !== 'chart'}
+              >
+                <ResponsiveContainer>
+                  <ComposedChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="year" />
+                    <YAxis
+                      tickFormatter={(v) => formatCurrencyLabel(Number(v))}
+                      width={70}
+                    />
+                    <Tooltip
+                      content={(props) => (
+                        <FanChartTooltip
+                          active={props.active}
+                          payload={
+                            props.payload as Array<{
+                              payload?: Record<string, number>;
+                            }>
+                          }
+                          label={String(props.label ?? '')}
+                          fmt={formatCurrency}
+                          events={cashFlowMarkers.filter(
+                            (m) => m.year === String(props.label ?? ''),
+                          )}
+                        />
+                      )}
+                    />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="p10"
+                      stackId="band"
+                      stroke="none"
+                      fill="transparent"
+                      name="10th percentile"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="band10to25"
+                      stackId="band"
+                      stroke="none"
+                      fill="#bfdbfe"
+                      name="10–25%"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="band25to75"
+                      stackId="band"
+                      stroke="none"
+                      fill="#60a5fa"
+                      name="25–75%"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="band75to90"
+                      stackId="band"
+                      stroke="none"
+                      fill="#bfdbfe"
+                      name="75–90%"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="p50"
+                      stroke="#1d4ed8"
+                      strokeWidth={2}
+                      dot={false}
+                      name="Median"
+                    />
+                    {cashFlowMarkers.map((m, i) => (
+                      <ReferenceDot
+                        key={`mk-${i}`}
+                        x={m.year}
+                        y={m.yValue}
+                        r={6}
+                        shape={(props: { cx?: number; cy?: number }) => (
+                          <CashFlowMarker
+                            cx={props.cx ?? 0}
+                            cy={props.cy ?? 0}
+                            role={m.role}
+                            income={m.income}
                           />
                         )}
+                        ifOverflow="extendDomain"
                       />
-                      <Legend />
-                      <Area
-                        type="monotone"
-                        dataKey="p10"
-                        stackId="band"
-                        stroke="none"
-                        fill="transparent"
-                        name="10th percentile"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="band10to25"
-                        stackId="band"
-                        stroke="none"
-                        fill="#bfdbfe"
-                        name="10–25%"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="band25to75"
-                        stackId="band"
-                        stroke="none"
-                        fill="#60a5fa"
-                        name="25–75%"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="band75to90"
-                        stackId="band"
-                        stroke="none"
-                        fill="#bfdbfe"
-                        name="75–90%"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="p50"
-                        stroke="#1d4ed8"
-                        strokeWidth={2}
-                        dot={false}
-                        name="Median"
-                      />
-                      {cashFlowMarkers.map((m, i) => (
-                        <ReferenceDot
-                          key={`mk-${i}`}
-                          x={m.year}
-                          y={m.yValue}
-                          r={6}
-                          shape={(props: { cx?: number; cy?: number }) => (
-                            <CashFlowMarker
-                              cx={props.cx ?? 0}
-                              cy={props.cy ?? 0}
-                              role={m.role}
-                              income={m.income}
-                            />
-                          )}
-                          ifOverflow="extendDomain"
-                        />
-                      ))}
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
+                    ))}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              {viewMode === 'table' && (
                 <ResultsTable
                   rows={tableRows}
                   formatCurrency={formatCurrency}
@@ -1543,13 +1575,23 @@ function HoldingStatsTable({
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+function SummaryStat({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div
+      className={`bg-white dark:bg-gray-800 rounded-lg shadow p-4 ${className ?? ''}`}
+    >
       <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {label}
       </div>
-      <div className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">
+      <div className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100 break-words">
         {value}
       </div>
     </div>
