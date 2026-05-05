@@ -1363,15 +1363,20 @@ export function MonteCarloReport() {
                           strokeWidth={2.5}
                           label={{
                             value: 'Withdrawal phase →',
-                            // Flip the label to the left side of the divider
-                            // when the divider sits in the right half of the
-                            // chart, otherwise it overflows the right edge.
+                            // Recharts anchors the label text at the named
+                            // position and the text flows away from that
+                            // anchor, so 'insideTopRight' anchors on the
+                            // right of the line and the text extends LEFT,
+                            // and vice versa. When the divider sits in the
+                            // right half of the chart we want the text on
+                            // the left of the line (so it doesn't overflow
+                            // the right edge), which means insideTopRight.
                             position:
                               form.yearsToRetirement /
                                 result.yearLabels.length >
                               0.5
-                                ? 'insideTopLeft'
-                                : 'insideTopRight',
+                                ? 'insideTopRight'
+                                : 'insideTopLeft',
                             fill: '#d97706',
                             fontSize: 12,
                             fontWeight: 600,
