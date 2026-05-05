@@ -1069,9 +1069,10 @@ export function MonteCarloReport() {
 
         {result && (
           <div className="space-y-4">
-            {/* 5-col grid so the wide 10th–90th value can breathe.
+            {/* 6-col grid so the wide 10th–90th value can breathe across
+                half the row. Probability cards stay narrow at 1 col each.
                 Mobile stacks into 1 column, tablets into 2. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
               <SummaryStat
                 label="Median final"
                 value={formatCurrency(result.finalDistribution.median)}
@@ -1083,7 +1084,7 @@ export function MonteCarloReport() {
                 )} – ${formatCurrency(
                   result.percentiles.p90[result.percentiles.p90.length - 1] ?? 0,
                 )}`}
-                className="lg:col-span-2"
+                className="lg:col-span-3"
               />
               <SummaryStat
                 label="Probability of Depletion"
