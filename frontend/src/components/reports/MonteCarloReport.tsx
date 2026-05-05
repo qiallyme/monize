@@ -12,6 +12,7 @@ import {
   ComposedChart,
   Legend,
   ReferenceDot,
+  ReferenceLine,
 } from 'recharts';
 import {
   monteCarloApi,
@@ -1270,6 +1271,28 @@ export function MonteCarloReport() {
                       dot={false}
                       name="Median"
                     />
+                    {/* Phase divider: dotted vertical line at the last
+                        contribution year so the user can see exactly where
+                        accumulation ends and the withdrawal phase begins.
+                        Skipped when the scenario has no contribution phase
+                        or no withdrawal phase. */}
+                    {form.yearsToRetirement > 0 &&
+                      form.yearsInRetirement > 0 &&
+                      result.yearLabels[form.yearsToRetirement - 1] !==
+                        undefined && (
+                        <ReferenceLine
+                          x={result.yearLabels[form.yearsToRetirement - 1]}
+                          stroke="#6b7280"
+                          strokeDasharray="4 4"
+                          strokeWidth={1.5}
+                          label={{
+                            value: 'Withdrawal phase →',
+                            position: 'insideTopRight',
+                            fill: '#6b7280',
+                            fontSize: 11,
+                          }}
+                        />
+                      )}
                     {cashFlowMarkers.map((m, i) => (
                       <ReferenceDot
                         key={`mk-${i}`}

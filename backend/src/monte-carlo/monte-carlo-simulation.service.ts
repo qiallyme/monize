@@ -254,7 +254,11 @@ export class MonteCarloSimulationService {
     let s = Number.parseInt(seed, 10);
     if (!Number.isFinite(s)) {
       s = 0;
-      for (let i = 0; i < seed.length; i++) {
+      // Bound the loop explicitly so a user-supplied seed can't be used to
+      // pump us through an unbounded iteration. The DTO already caps this
+      // at 32 characters; this is belt-and-suspenders for static analysis.
+      const safeLen = Math.min(seed.length, 64);
+      for (let i = 0; i < safeLen; i++) {
         s = (s * 31 + seed.charCodeAt(i)) >>> 0;
       }
     }
