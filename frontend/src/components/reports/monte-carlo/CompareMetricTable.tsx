@@ -43,7 +43,7 @@ export function CompareMetricTable({
         <thead>
           <tr>
             <th
-              className="sticky left-0 z-20 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-500 dark:text-gray-400 min-w-[220px]"
+              className="sticky left-0 z-30 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-500 dark:text-gray-400 min-w-[220px]"
               scope="col"
             >
               Metric
@@ -51,7 +51,7 @@ export function CompareMetricTable({
             {columns.map((col) => (
               <th
                 key={col.id}
-                className="bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-700 dark:text-gray-200 min-w-[200px]"
+                className="relative z-0 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-left font-medium text-gray-700 dark:text-gray-200 min-w-[200px]"
                 scope="col"
               >
                 <ColumnHeader

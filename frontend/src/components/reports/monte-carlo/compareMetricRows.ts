@@ -152,10 +152,12 @@ export const ROW_GROUPS: RowGroup[] = [
         key: 'lastRunAt',
         label: 'Last run',
         format: 'text',
-        accessor: (ctx) =>
-          ctx.scenario.lastRunAt
-            ? new Date(ctx.scenario.lastRunAt).toLocaleString()
-            : 'Never',
+        accessor: (ctx) => {
+          // Prefer the freshly-returned run timestamp so Re-run reflects
+          // immediately; fall back to the persisted scenario value.
+          const stamp = ctx.result?.ranAt ?? ctx.scenario.lastRunAt;
+          return stamp ? new Date(stamp).toLocaleString() : 'Never';
+        },
       },
     ],
   },
