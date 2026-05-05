@@ -31,7 +31,7 @@ export function InfoTooltip({
     <span
       title={text}
       aria-label={text}
-      className="relative hidden md:inline-flex items-center ml-1 group/tip text-gray-400 hover:text-blue-500 transition-colors cursor-help"
+      className="relative hidden md:inline-flex items-center align-middle ml-1 group/tip text-gray-400 hover:text-blue-500 transition-colors cursor-help"
     >
       <QuestionMarkCircleIcon className={iconClassName} />
       <span
