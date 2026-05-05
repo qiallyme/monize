@@ -555,10 +555,19 @@ export function MonteCarloReport() {
       '90th percentile',
       'Events',
     ];
-    const eventLabel = (m: CashFlowMarker) =>
-      `${m.role === 'start' ? 'Start' : 'End'}: ${m.name} (${
-        m.income ? '+' : ''
-      }${m.amount}${m.flowType === 'RECURRING' ? '/yr' : ''})`;
+    const eventLabel = (m: CashFlowMarker) => {
+      // One-time events only ever produce a single marker (role 'start');
+      // showing "Start:" reads weird for those, so just print the name.
+      const prefix =
+        m.flowType === 'ONE_TIME'
+          ? ''
+          : m.role === 'start'
+            ? 'Start: '
+            : 'End: ';
+      return `${prefix}${m.name} (${m.income ? '+' : ''}${m.amount}${
+        m.flowType === 'RECURRING' ? '/yr' : ''
+      })`;
+    };
     const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const lines = [
       header.map(escape).join(','),
@@ -645,14 +654,17 @@ export function MonteCarloReport() {
           formatCurrency(r.p75),
           formatCurrency(r.p90),
           r.events
-            .map(
-              (e) =>
-                `${e.role === 'start' ? 'Starts' : 'Ends'}: ${e.name} (${
-                  e.income ? '+' : ''
-                }${formatCurrency(e.amount)}${
-                  e.flowType === 'RECURRING' ? '/yr' : ''
-                })`,
-            )
+            .map((e) => {
+              const prefix =
+                e.flowType === 'ONE_TIME'
+                  ? ''
+                  : e.role === 'start'
+                    ? 'Starts: '
+                    : 'Ends: ';
+              return `${prefix}${e.name} (${e.income ? '+' : ''}${formatCurrency(
+                e.amount,
+              )}${e.flowType === 'RECURRING' ? '/yr' : ''})`;
+            })
             .join('; '),
         ]),
       },
@@ -1354,7 +1366,9 @@ function FanChartTooltip({
               <CashFlowLegendSwatch role={e.role} income={e.income} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-gray-900 dark:text-gray-100">
-                  {e.role === 'start' ? 'Starts' : 'Ends'}: {e.name}
+                  {e.flowType === 'ONE_TIME'
+                    ? e.name
+                    : `${e.role === 'start' ? 'Starts' : 'Ends'}: ${e.name}`}
                 </div>
                 <div
                   className={
@@ -1480,7 +1494,9 @@ function ResultsTable({
                         }`}
                       >
                         <CashFlowLegendSwatch role={e.role} income={e.income} />
-                        {e.role === 'start' ? 'Starts' : 'Ends'}: {e.name}
+                        {e.flowType === 'ONE_TIME'
+                          ? e.name
+                          : `${e.role === 'start' ? 'Starts' : 'Ends'}: ${e.name}`}
                       </span>
                     ))}
                   </div>
