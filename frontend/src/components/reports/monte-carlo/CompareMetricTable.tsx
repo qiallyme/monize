@@ -157,9 +157,11 @@ function GroupBlock({
       <tr className="bg-gray-100 dark:bg-gray-900/60">
         <td
           colSpan={columns.length + 1}
-          className="sticky left-0 z-10 bg-gray-100 dark:bg-gray-900/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300"
+          className="bg-gray-100 dark:bg-gray-900/60 px-0 py-0 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300"
         >
-          {group.label}
+          <span className="sticky left-0 inline-block px-3 py-2">
+            {group.label}
+          </span>
         </td>
       </tr>
       {group.rows.map((row) => (
