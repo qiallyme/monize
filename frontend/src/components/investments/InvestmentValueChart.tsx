@@ -394,6 +394,35 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
           Portfolio Value Over Time{titleSuffix ? ` (${titleSuffix})` : ''}
+          {/* Background-load indicator: chart stays on screen during a refetch
+              so Recharts can animate into the new data, but a portfolio with
+              many securities can still take a few seconds (the backend pulls
+              prices for every holding). Surface a small spinner + label so
+              the user knows we're working. */}
+          {isLoading && chartPoints.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1.5 ml-2 text-xs font-normal text-gray-500 dark:text-gray-400"
+              role="status"
+              aria-live="polite"
+              data-testid="chart-loading-indicator"
+            >
+              <svg
+                className="animate-spin h-3.5 w-3.5"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              Updating…
+            </span>
+          )}
           {intradayFallbackNotice && (
             <span
               role="img"
@@ -467,7 +496,11 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
           No investment data for this period.
         </p>
       ) : (
-        <div className="h-80">
+        <div
+          className={`h-80 transition-opacity duration-200 ${
+            isLoading ? 'opacity-60' : 'opacity-100'
+          }`}
+        >
           <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart data={chartPoints} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>

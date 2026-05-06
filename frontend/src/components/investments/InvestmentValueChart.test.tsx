@@ -263,6 +263,34 @@ describe('InvestmentValueChart', () => {
     });
   });
 
+  it('shows a background-load indicator when refetching with data already on screen', async () => {
+    let resolveDaily: (value: any) => void = () => {};
+    vi.mocked(netWorthApi.getInvestmentsDaily).mockImplementationOnce(() =>
+      Promise.resolve([
+        { date: '2023-06-01', value: 10000 },
+        { date: '2024-01-01', value: 15000 },
+      ]),
+    );
+    const { rerender } = render(<InvestmentValueChart />);
+    await screen.findByText('Portfolio Value Over Time');
+
+    // Trigger a second load that hangs so we can observe the indicator.
+    vi.mocked(netWorthApi.getInvestmentsDaily).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveDaily = resolve; }),
+    );
+    dateRangeState.dateRange = '3m';
+    dateRangeState.resolvedRange = { start: '2023-10-01', end: '2024-01-01' };
+    rerender(<InvestmentValueChart />);
+
+    const indicator = await screen.findByTestId('chart-loading-indicator');
+    expect(indicator).toBeInTheDocument();
+
+    resolveDaily([{ date: '2023-12-01', value: 12000 }]);
+    await waitFor(() => {
+      expect(screen.queryByTestId('chart-loading-indicator')).toBeNull();
+    });
+  });
+
   it('shows a warning icon next to the title when 1w falls back to daily', async () => {
     dateRangeState.dateRange = '1w';
     dateRangeState.resolvedRange = { start: '2023-12-25', end: '2024-01-01' };
