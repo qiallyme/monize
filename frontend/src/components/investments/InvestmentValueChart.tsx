@@ -98,9 +98,9 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
     return formatCurrencyAxis(value);
   }, [foreignCurrency, formatCurrencyAxis]);
 
-  // Latest in-flight load token; lets us cancel stale results that resolve
-  // out-of-order if the user clicks ranges quickly.
-  const loadTokenRef = useRef(0);
+  // Sequence number for the latest in-flight load. Lets us cancel stale
+  // results that resolve out-of-order if the user clicks ranges quickly.
+  const loadSeqRef = useRef(0);
 
   const formatIntradayLabel = useCallback(
     (iso: string, range: string) => {
@@ -113,7 +113,7 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
   );
 
   const loadDailyOrMonthly = useCallback(
-    async (token: number) => {
+    async (seq: number) => {
       const { start, end } = resolvedRange;
       const params = {
         startDate: start,
@@ -124,7 +124,7 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
       if (useDaily || isIntraday) {
         // 1W/1M intraday fallback also uses the daily endpoint.
         const data = await netWorthApi.getInvestmentsDaily(params);
-        if (loadTokenRef.current !== token) return;
+        if (loadSeqRef.current !== seq) return;
         setChartPoints(
           data.map((d) => ({
             name: format(parseLocalDate(d.date), 'MMM d, yyyy'),
@@ -133,7 +133,7 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
         );
       } else {
         const data = await netWorthApi.getInvestmentsMonthly(params);
-        if (loadTokenRef.current !== token) return;
+        if (loadSeqRef.current !== seq) return;
         setChartPoints(
           data.map((d) => ({
             name: format(parseLocalDate(d.month), 'MMM yyyy'),
@@ -147,7 +147,7 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
 
   const loadData = useCallback(
     async (opts: { skipCache?: boolean } = {}) => {
-      const token = ++loadTokenRef.current;
+      const seq = ++loadSeqRef.current;
       setIsLoading(true);
       setIntradayUnavailable(null);
       setIntradayFallbackNotice(null);
@@ -181,13 +181,13 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
             });
           } catch (error) {
             logger.error('Failed to load intraday data:', error);
-            if (loadTokenRef.current !== token) return;
+            if (loadSeqRef.current !== seq) return;
             setChartPoints([]);
             setIsLoading(false);
             return;
           }
 
-          if (loadTokenRef.current !== token) return;
+          if (loadSeqRef.current !== seq) return;
 
           writeIntradayCache(cacheKey, {
             fetchedAt: Date.now(),
@@ -213,7 +213,7 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
             // resolution.
             setIntradayUnavailable(null);
             setIntradayFallbackNotice({ skipped: response.skippedSymbols });
-            await loadDailyOrMonthly(token);
+            await loadDailyOrMonthly(seq);
             return;
           }
 
@@ -224,12 +224,12 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
             })),
           );
         } else {
-          await loadDailyOrMonthly(token);
+          await loadDailyOrMonthly(seq);
         }
       } catch (error) {
         logger.error('Failed to load investment data:', error);
       } finally {
-        if (loadTokenRef.current === token) {
+        if (loadSeqRef.current === seq) {
           setIsLoading(false);
         }
       }

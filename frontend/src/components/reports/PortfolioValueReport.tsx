@@ -112,9 +112,9 @@ export function PortfolioValueReport() {
     return formatCurrencyAxis(value);
   }, [foreignCurrency, formatCurrencyAxis]);
 
-  // Cancel-stale token so quick range/account switches can't write
-  // out-of-order results into state.
-  const loadTokenRef = useRef(0);
+  // Sequence number for the latest in-flight load. Lets us drop stale
+  // results so quick range/account switches can't write out-of-order data.
+  const loadSeqRef = useRef(0);
 
   const formatIntradayLabel = useCallback(
     (iso: string, range: string) => {
@@ -126,7 +126,7 @@ export function PortfolioValueReport() {
 
   useEffect(() => {
     if (!isValid) return;
-    const token = ++loadTokenRef.current;
+    const seq = ++loadSeqRef.current;
 
     const accountIds = selectedAccountId ? [selectedAccountId] : undefined;
     const accountIdsCsv = accountIds?.join(',');
@@ -141,7 +141,7 @@ export function PortfolioValueReport() {
       };
       if (useDaily || isIntraday) {
         const data = await netWorthApi.getInvestmentsDaily(params);
-        if (loadTokenRef.current !== token) return;
+        if (loadSeqRef.current !== seq) return;
         setChartPoints(
           data.map((d) => ({
             name: format(parseLocalDate(d.date), 'MMM d, yyyy'),
@@ -150,7 +150,7 @@ export function PortfolioValueReport() {
         );
       } else {
         const data = await netWorthApi.getInvestmentsMonthly(params);
-        if (loadTokenRef.current !== token) return;
+        if (loadSeqRef.current !== seq) return;
         setChartPoints(
           data.map((d) => ({
             name: format(parseLocalDate(d.month), 'MMM yyyy'),
@@ -205,12 +205,12 @@ export function PortfolioValueReport() {
             });
           } catch (error) {
             logger.error('Failed to load intraday data:', error);
-            if (loadTokenRef.current !== token) return;
+            if (loadSeqRef.current !== seq) return;
             setChartPoints([]);
             return;
           }
 
-          if (loadTokenRef.current !== token) return;
+          if (loadSeqRef.current !== seq) return;
 
           writeIntradayCache(cacheKey, {
             fetchedAt: Date.now(),
@@ -246,7 +246,7 @@ export function PortfolioValueReport() {
         }
 
         const summaryAndAccountsResult = await summaryAndAccounts;
-        if (loadTokenRef.current !== token) return;
+        if (loadSeqRef.current !== seq) return;
         if (summaryAndAccountsResult) {
           const [portfolioResult, accountsResult] = summaryAndAccountsResult;
           setPortfolio(portfolioResult);
@@ -255,7 +255,7 @@ export function PortfolioValueReport() {
       } catch (error) {
         logger.error('Failed to load portfolio data:', error);
       } finally {
-        if (loadTokenRef.current === token) {
+        if (loadSeqRef.current === seq) {
           setIsLoading(false);
         }
       }
