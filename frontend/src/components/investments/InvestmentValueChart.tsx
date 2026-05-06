@@ -532,7 +532,10 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
                     index,
                     color: isHighest ? '#10b981' : '#ef4444',
                     label: Math.abs(value) >= 1000 ? fmtAxis(value) : fmtVal(value),
-                    above: isHighest,
+                    // Both flags point upward -- the lowest point sits near
+                    // the bottom of the plot area where the x-axis labels
+                    // live, so a downward bubble would always overlap them.
+                    above: true,
                   });
                 }}
               />
