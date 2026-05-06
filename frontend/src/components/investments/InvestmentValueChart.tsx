@@ -93,6 +93,23 @@ function clearAllIntradayCache(): void {
   }
 }
 
+/**
+ * Round `raw` up to a "nice" axis step (1, 2, 5 × 10^n). Used to pick a
+ * y-axis tick interval so labels look clean at any scale.
+ */
+function niceAxisStep(raw: number): number {
+  if (raw <= 0) return 1;
+  const exp = Math.floor(Math.log10(raw));
+  const magnitude = Math.pow(10, exp);
+  const f = raw / magnitude;
+  let nf: number;
+  if (f < 1.5) nf = 1;
+  else if (f < 3) nf = 2;
+  else if (f < 7) nf = 5;
+  else nf = 10;
+  return nf * magnitude;
+}
+
 interface InvestmentValueChartProps {
   accountIds?: string[];
   displayCurrency?: string | null;
@@ -339,22 +356,46 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
   }, [chartPoints, isIntraday, useDaily]);
 
   const yAxisDomain = useMemo(() => {
-    if (chartPoints.length === 0) return [0, 'auto'] as [number, 'auto'];
+    if (chartPoints.length === 0) return [0, 'auto'] as [number, number | 'auto'];
 
-    const values = chartPoints.map(d => d.Value);
+    const values = chartPoints.map((d) => d.Value);
     const minValue = Math.min(...values);
     const maxValue = Math.max(...values);
     const range = maxValue - minValue;
 
-    if (minValue > 0 && minValue > range * 0.2) {
-      const padding = range * 0.1;
-      const rawMin = minValue - padding;
-      const magnitude = Math.pow(10, Math.floor(Math.log10(Math.abs(rawMin))));
-      const niceMin = Math.floor(rawMin / magnitude) * magnitude;
-      return [niceMin, 'auto'] as [number, 'auto'];
+    // Flat line: pad ±1% (or ±1 unit, whichever is larger) so the line
+    // doesn't sit on the axis edge.
+    if (range === 0) {
+      const pad = Math.max(Math.abs(minValue) * 0.01, 1);
+      return [minValue - pad, maxValue + pad] as [number, number];
     }
 
-    return [Math.min(0, minValue), 'auto'] as [number, 'auto'];
+    // If the values cross zero, anchor the lower bound at 0 — otherwise
+    // gain/loss directionality reads wrong.
+    const crossesZero = minValue < 0 && maxValue > 0;
+    if (crossesZero) {
+      const niceMaxStep = niceAxisStep((maxValue - 0) / 5);
+      const niceMax = Math.ceil(maxValue / niceMaxStep) * niceMaxStep;
+      const niceMinStep = niceAxisStep((0 - minValue) / 5);
+      const niceMin = Math.floor(minValue / niceMinStep) * niceMinStep;
+      return [niceMin, niceMax] as [number, number];
+    }
+
+    // Tight zoom around the data so percent-level moves are visible. 5%
+    // padding above and below, snapped to a "nice" round step.
+    const padding = range * 0.05;
+    const rawMin = minValue - padding;
+    const rawMax = maxValue + padding;
+    const step = niceAxisStep(range / 5);
+    const niceMin = Math.floor(rawMin / step) * step;
+    const niceMax = Math.ceil(rawMax / step) * step;
+
+    // Don't dive below zero just because of padding when the data is all
+    // positive (or all negative).
+    if (minValue >= 0) {
+      return [Math.max(0, niceMin), niceMax] as [number, number];
+    }
+    return [niceMin, Math.min(0, niceMax)] as [number, number];
   }, [chartPoints]);
 
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ value: number; payload: { name: string } }> }) => {
