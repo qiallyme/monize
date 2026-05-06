@@ -21,7 +21,7 @@ export const INTRADAY_CACHE_PREFIX = 'monize-intraday|';
 export interface IntradayCachePayload {
   fetchedAt: number;
   points: Array<{ timestamp: string; value: number }>;
-  interval: '1m' | '5m' | '15m';
+  interval: '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m';
   currency: string;
   fallbackToDaily: boolean;
   skippedSymbols: string[];

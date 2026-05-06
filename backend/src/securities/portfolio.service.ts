@@ -158,18 +158,36 @@ const RANGE_TO_YAHOO: Record<
 };
 
 // Per-range fallback chain attempted (per holding, in order) when the
-// primary interval fails. Yahoo's 1m endpoint for 1D is noticeably less
-// reliable than 5m -- when a holding fails at 1m, the same security at
-// 5m typically works fine. Coarser bars are still a much better chart
-// than no chart at all, and we use them silently rather than surfacing
-// a banner.
+// primary interval fails. Yahoo's narrowest intervals are the most
+// rate-limited and most likely to return empty responses for less-liquid
+// securities; each step up the ladder is more reliable. We try
+// progressively coarser bars at the same range until one works, then
+// only after the whole ladder fails do we fall back to the security's
+// latest daily close. The user sees no banner -- the chart silently
+// degrades to slightly coarser resolution instead.
 const RANGE_FALLBACKS: Record<
   IntradayRangeKey,
   Array<{ interval: IntradayInterval; range: IntradayRange }>
 > = {
-  "1d": [{ interval: "5m", range: "1d" }],
-  "1w": [],
-  "1m": [],
+  "1d": [
+    { interval: "2m", range: "1d" },
+    { interval: "5m", range: "1d" },
+    { interval: "15m", range: "1d" },
+    { interval: "30m", range: "1d" },
+    { interval: "60m", range: "1d" },
+    { interval: "90m", range: "1d" },
+  ],
+  "1w": [
+    { interval: "15m", range: "5d" },
+    { interval: "30m", range: "5d" },
+    { interval: "60m", range: "5d" },
+    { interval: "90m", range: "5d" },
+  ],
+  "1m": [
+    { interval: "30m", range: "1mo" },
+    { interval: "60m", range: "1mo" },
+    { interval: "90m", range: "1mo" },
+  ],
 };
 
 const INTRADAY_CACHE_TTL_MS = 60_000;

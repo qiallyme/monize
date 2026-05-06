@@ -2837,9 +2837,11 @@ describe("PortfolioService", () => {
       expect(result.points[0].value).toBeCloseTo(3400, 4);
     });
 
-    it("silently falls back from 1m to 5m on 1D when the 1m endpoint is spotty", async () => {
-      // Yahoo's 1m endpoint is noticeably less reliable than 5m for some
-      // securities. When 1m returns no bars, retry at 5m before giving up.
+    it("walks the 1D fallback chain (1m -> 2m -> 5m...) until one interval works", async () => {
+      // Yahoo's narrow intervals are the most rate-limited and most likely
+      // to return empty responses. When a holding fails at the primary
+      // interval, retry at progressively coarser intervals before giving
+      // up on intraday entirely.
       accountsRepository.find.mockResolvedValue([mockBrokerageAccount]);
       holdingsRepository.find.mockResolvedValue([mockHoldingAAPL]);
 
@@ -2850,7 +2852,7 @@ describe("PortfolioService", () => {
           _exchange: string | null,
           opts: { interval: string },
         ) => {
-          if (opts.interval === "1m") return null;
+          // 1m and 2m fail; 5m succeeds.
           if (opts.interval === "5m") return [{ timestamp: ts, close: 100 }];
           return null;
         },
@@ -2864,12 +2866,44 @@ describe("PortfolioService", () => {
       expect(result.fallbackToDaily).toBe(false);
       expect(result.failedSymbols).toEqual([]);
       expect(result.points).toHaveLength(1);
-      // The 5m bar still gets aggregated normally: 10 * 100 * 1.4 = 1400.
       expect(result.points[0].value).toBeCloseTo(1400, 4);
-      // Verify both intervals were tried in order.
+      // Intervals are tried in order until one yields data.
       const calls = yahooFinanceService.fetchIntradaySeries.mock.calls;
       expect(calls[0][2].interval).toBe("1m");
-      expect(calls[1][2].interval).toBe("5m");
+      expect(calls[1][2].interval).toBe("2m");
+      expect(calls[2][2].interval).toBe("5m");
+      // Stops once a non-empty response comes back.
+      expect(calls.length).toBe(3);
+    });
+
+    it("walks the 1W chain starting at 5m (not 1m, not 2m)", async () => {
+      accountsRepository.find.mockResolvedValue([mockBrokerageAccount]);
+      holdingsRepository.find.mockResolvedValue([mockHoldingAAPL]);
+
+      yahooFinanceService.fetchIntradaySeries.mockResolvedValue([
+        { timestamp: new Date("2026-05-06T13:30:00.000Z"), close: 100 },
+      ]);
+      exchangeRateService.getLatestRate.mockResolvedValue(1.4);
+
+      await service.getIntradayValueSeries(userId, { range: "1w" });
+
+      const calls = yahooFinanceService.fetchIntradaySeries.mock.calls;
+      expect(calls[0][2].interval).toBe("5m");
+    });
+
+    it("walks the 1M chain starting at 15m (not 1m, not 5m)", async () => {
+      accountsRepository.find.mockResolvedValue([mockBrokerageAccount]);
+      holdingsRepository.find.mockResolvedValue([mockHoldingAAPL]);
+
+      yahooFinanceService.fetchIntradaySeries.mockResolvedValue([
+        { timestamp: new Date("2026-05-06T13:30:00.000Z"), close: 100 },
+      ]);
+      exchangeRateService.getLatestRate.mockResolvedValue(1.4);
+
+      await service.getIntradayValueSeries(userId, { range: "1m" });
+
+      const calls = yahooFinanceService.fetchIntradaySeries.mock.calls;
+      expect(calls[0][2].interval).toBe("15m");
     });
 
     it("uses each failed holding's latest known close as a constant offset", async () => {
@@ -2936,15 +2970,12 @@ describe("PortfolioService", () => {
       accountsRepository.find.mockResolvedValue([mockBrokerageAccount]);
       holdingsRepository.find.mockResolvedValue([mockHoldingAAPL]);
 
-      // Fail both interval candidates (1m + 5m) on the first call so the
-      // request triggers the all-failed fallbackToDaily path. Then succeed
-      // on the next call to prove the cache wasn't holding the failure.
-      yahooFinanceService.fetchIntradaySeries
-        .mockRejectedValueOnce(new Error("yahoo 500"))
-        .mockRejectedValueOnce(new Error("yahoo 500"))
-        .mockResolvedValueOnce([
-          { timestamp: new Date("2026-05-06T13:30:00.000Z"), close: 100 },
-        ]);
+      // Fail every interval in the 1D fallback chain on the first call so
+      // we trigger the all-failed fallbackToDaily path. Then succeed on the
+      // next call to prove the cache wasn't holding the failure.
+      yahooFinanceService.fetchIntradaySeries.mockRejectedValue(
+        new Error("yahoo 500"),
+      );
       exchangeRateService.getLatestRate.mockResolvedValue(1.4);
 
       const first = await service.getIntradayValueSeries(userId, {
@@ -2952,14 +2983,22 @@ describe("PortfolioService", () => {
       });
       expect(first.fallbackToDaily).toBe(true);
       expect(first.failedSymbols).toEqual(["AAPL"]);
+      const callsAfterFirst =
+        yahooFinanceService.fetchIntradaySeries.mock.calls.length;
+      expect(callsAfterFirst).toBeGreaterThan(0);
+
+      yahooFinanceService.fetchIntradaySeries.mockReset();
+      yahooFinanceService.fetchIntradaySeries.mockResolvedValue([
+        { timestamp: new Date("2026-05-06T13:30:00.000Z"), close: 100 },
+      ]);
 
       const second = await service.getIntradayValueSeries(userId, {
         range: "1d",
       });
       expect(second.fallbackToDaily).toBe(false);
       expect(second.points).toHaveLength(1);
-      // 2 (failed primary + fallback on first call) + 1 (success on second).
-      expect(yahooFinanceService.fetchIntradaySeries).toHaveBeenCalledTimes(3);
+      // The retry actually hit Yahoo again (cache wasn't serving the failure).
+      expect(yahooFinanceService.fetchIntradaySeries).toHaveBeenCalled();
     });
 
     it("does not surface failedSymbols on partial failures (fallback price covers it)", async () => {

@@ -62,7 +62,7 @@ export const investmentsApi = {
     displayCurrency?: string;
   }): Promise<{
     points: Array<{ timestamp: string; value: number }>;
-    interval: '1m' | '5m' | '15m';
+    interval: '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m';
     currency: string;
     range: '1d' | '1w' | '1m';
     fetchedAt: string;

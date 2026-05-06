@@ -36,7 +36,7 @@ export interface IntradayValuePoint {
 
 export interface IntradayValueResponse {
   points: IntradayValuePoint[];
-  interval: "1m" | "5m" | "15m";
+  interval: "1m" | "2m" | "5m" | "15m" | "30m" | "60m" | "90m";
   currency: string;
   /** Range that was actually returned (echoes the request). */
   range: IntradayRangeKey;
