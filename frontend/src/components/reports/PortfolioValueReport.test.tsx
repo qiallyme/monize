@@ -66,7 +66,6 @@ vi.mock('recharts', () => ({
     }
     return null;
   },
-  Customized: () => null,
 }));
 
 const mockGetInvestmentsMonthly = vi.fn();
