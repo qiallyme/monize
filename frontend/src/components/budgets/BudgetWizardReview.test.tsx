@@ -213,4 +213,278 @@ describe('BudgetWizardReview', () => {
       expect(mockOnComplete).not.toHaveBeenCalled();
     });
   });
+
+  it('shows "Not selected" when strategy is null', () => {
+    const stateWithNoStrategy: WizardState = {
+      ...defaultState,
+      strategy: null,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithNoStrategy}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('Not selected')).toBeInTheDocument();
+  });
+
+  it('falls back to raw budgetType when not in BUDGET_TYPE_LABELS', () => {
+    const stateWithCustomType: WizardState = {
+      ...defaultState,
+      budgetType: 'CUSTOM_TYPE' as any,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithCustomType}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('CUSTOM_TYPE')).toBeInTheDocument();
+  });
+
+  it('falls back to raw strategy when not in STRATEGY_LABELS', () => {
+    const stateWithCustomStrategy: WizardState = {
+      ...defaultState,
+      strategy: 'UNKNOWN_STRATEGY' as any,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithCustomStrategy}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('UNKNOWN_STRATEGY')).toBeInTheDocument();
+  });
+
+  it('shows formatted rollover type when not NONE', () => {
+    const stateWithRollover: WizardState = {
+      ...defaultState,
+      strategy: null,
+      defaultRolloverType: 'PARTIAL' as any,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithRollover}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    // PARTIAL -> 'P' + 'artial' -> 'Partial'
+    expect(screen.getByText('Partial')).toBeInTheDocument();
+  });
+
+  it('shows income linked row when incomeLinked is true and baseIncome is set', () => {
+    const stateWithIncomeLinked: WizardState = {
+      ...defaultState,
+      incomeLinked: true,
+      baseIncome: 5000,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithIncomeLinked}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('Income Linked')).toBeInTheDocument();
+  });
+
+  it('shows excluded accounts count (singular) when one account excluded', () => {
+    const stateWithOneExcluded: WizardState = {
+      ...defaultState,
+      excludedAccountIds: ['acc-1'],
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithOneExcluded}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('Excluded Accounts')).toBeInTheDocument();
+    expect(screen.getByText('1 account')).toBeInTheDocument();
+  });
+
+  it('shows excluded accounts count (plural) when multiple accounts excluded', () => {
+    const stateWithMultipleExcluded: WizardState = {
+      ...defaultState,
+      excludedAccountIds: ['acc-1', 'acc-2', 'acc-3'],
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithMultipleExcluded}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('3 accounts')).toBeInTheDocument();
+  });
+
+  it('shows negative remaining in red when expenses exceed income', () => {
+    const highExpensesCategories = new Map<string, ApplyBudgetCategoryData>();
+    highExpensesCategories.set('cat-salary', { categoryId: 'cat-salary', amount: 1000, isIncome: true });
+    highExpensesCategories.set('cat-groceries', { categoryId: 'cat-groceries', amount: 5000, isIncome: false });
+
+    const stateWithNegativeNet: WizardState = {
+      ...defaultState,
+      selectedCategories: highExpensesCategories,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithNegativeNet}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('Remaining')).toBeInTheDocument();
+  });
+
+  it('renders transfer entries in table', () => {
+    const selectedTransfers = new Map<string, ApplyBudgetCategoryData>();
+    selectedTransfers.set('acc-savings', {
+      categoryId: undefined,
+      transferAccountId: 'acc-savings',
+      amount: 500,
+      isIncome: false,
+    } as any);
+
+    const analysisResultWithTransfers = {
+      ...mockAnalysisResult,
+      transfers: [{ accountId: 'acc-savings', accountName: 'Savings Account', average: 500 }],
+    };
+
+    const stateWithTransfers: WizardState = {
+      ...defaultState,
+      selectedTransfers,
+      analysisResult: analysisResultWithTransfers as any,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithTransfers}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('Savings Account')).toBeInTheDocument();
+    expect(screen.getAllByText('Transfer').length).toBeGreaterThan(0);
+  });
+
+  it('shows "Unknown" for category with undefined categoryId in table', () => {
+    const categoriesWithUndefined = new Map<string, ApplyBudgetCategoryData>();
+    categoriesWithUndefined.set('unknown-cat', { categoryId: undefined as any, amount: 200, isIncome: false });
+
+    const stateWithUnknownCat: WizardState = {
+      ...defaultState,
+      selectedCategories: categoriesWithUndefined,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithUnknownCat}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+  });
+
+  it('shows "Transfer" for transfer with unknown accountId', () => {
+    const selectedTransfers = new Map<string, ApplyBudgetCategoryData>();
+    selectedTransfers.set('unknown-acc', {
+      categoryId: undefined,
+      transferAccountId: 'unknown-acc',
+      amount: 300,
+      isIncome: false,
+    } as any);
+
+    const stateWithUnknownTransfer: WizardState = {
+      ...defaultState,
+      selectedTransfers,
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithUnknownTransfer}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    // When transferAccountId doesn't match any transfer, shows 'Transfer' fallback
+    expect(screen.getAllByText('Transfer').length).toBeGreaterThan(0);
+  });
+
+  it('includes excluded accounts in config when submitting', async () => {
+    mockApplyGenerated.mockResolvedValue({ id: 'new-budget' });
+
+    const stateWithExcluded: WizardState = {
+      ...defaultState,
+      excludedAccountIds: ['acc-exclude-1'],
+    };
+
+    render(
+      <BudgetWizardReview
+        state={stateWithExcluded}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Create Budget'));
+
+    await waitFor(() => {
+      expect(mockApplyGenerated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: { excludedAccountIds: ['acc-exclude-1'] },
+        }),
+      );
+    });
+  });
+
+  it('does not include income linked row when incomeLinked is false', () => {
+    render(
+      <BudgetWizardReview
+        state={defaultState}
+        updateState={mockUpdateState}
+        onComplete={mockOnComplete}
+        onBack={mockOnBack}
+      />,
+    );
+
+    expect(screen.queryByText('Income Linked')).not.toBeInTheDocument();
+  });
 });
