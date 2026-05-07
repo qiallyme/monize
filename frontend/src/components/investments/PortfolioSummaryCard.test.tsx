@@ -1,19 +1,27 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@/test/render';
 import { PortfolioSummaryCard } from './PortfolioSummaryCard';
 
+const mockConvertToDefault = vi.fn((n: number) => n);
+let mockDefaultCurrency = 'CAD';
+
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
-    formatCurrency: (n: number) => `$${n.toFixed(2)}`,
+    formatCurrency: (n: number, _currency?: string) => `$${n.toFixed(2)}`,
   }),
 }));
 
 vi.mock('@/hooks/useExchangeRates', () => ({
   useExchangeRates: () => ({
-    convertToDefault: (n: number) => n,
-    defaultCurrency: 'CAD',
+    convertToDefault: mockConvertToDefault,
+    defaultCurrency: mockDefaultCurrency,
   }),
 }));
+
+beforeEach(() => {
+  mockConvertToDefault.mockImplementation((n: number) => n);
+  mockDefaultCurrency = 'CAD';
+});
 
 const makeSummary = (overrides?: Record<string, any>) => ({
   totalPortfolioValue: 50000,
@@ -162,5 +170,166 @@ describe('PortfolioSummaryCard', () => {
     render(<PortfolioSummaryCard summary={summary} isLoading={false} />);
     const negativeGain = screen.getByText('$-5000.00');
     expect(negativeGain.className).toContain('text-red-600');
+  });
+
+  it('renders titleSuffix in loading state', () => {
+    render(<PortfolioSummaryCard summary={null} isLoading={true} titleSuffix="My Account" />);
+    expect(screen.getByText('Portfolio Summary (My Account)')).toBeInTheDocument();
+  });
+
+  it('renders titleSuffix in empty state', () => {
+    render(<PortfolioSummaryCard summary={null} isLoading={false} titleSuffix="My Account" />);
+    expect(screen.getByText('Portfolio Summary (My Account)')).toBeInTheDocument();
+  });
+
+  it('renders titleSuffix in populated state', () => {
+    render(<PortfolioSummaryCard summary={makeSummary()} isLoading={false} titleSuffix="My Account" />);
+    expect(screen.getByText('Portfolio Summary (My Account)')).toBeInTheDocument();
+  });
+
+  it('renders foreign currency values when singleAccountCurrency differs from default', () => {
+    mockDefaultCurrency = 'CAD';
+    const summary = makeSummary({
+      holdingsByAccount: [
+        {
+          accountId: 'a1',
+          currencyCode: 'USD',
+          totalMarketValue: 45000,
+          totalCostBasis: 40000,
+          cashBalance: 5000,
+          totalGainLoss: 5000,
+          totalGainLossPercent: 12.5,
+          netInvested: 35000,
+          holdings: [],
+        },
+      ],
+    });
+    render(
+      <PortfolioSummaryCard
+        summary={summary}
+        isLoading={false}
+        singleAccountCurrency="USD"
+      />,
+    );
+    // Foreign path: values are raw and appended with currency code (multiple elements expected)
+    expect(screen.getAllByText(/USD/).length).toBeGreaterThan(0);
+    // The approx default-currency line should appear
+    expect(screen.getByText(/≈/)).toBeInTheDocument();
+  });
+
+  it('does not show foreign currency line when singleAccountCurrency matches default', () => {
+    mockDefaultCurrency = 'CAD';
+    render(
+      <PortfolioSummaryCard
+        summary={makeSummary()}
+        isLoading={false}
+        singleAccountCurrency="CAD"
+      />,
+    );
+    // singleAccountCurrency === defaultCurrency, so no approx line
+    expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
+  });
+
+  it('renders zero gainLossPercent when costBasis is zero in default currency path', () => {
+    const summary = makeSummary({
+      totalGainLossPercent: 0,
+      holdingsByAccount: [
+        {
+          accountId: 'a1',
+          currencyCode: 'CAD',
+          totalMarketValue: 0,
+          totalCostBasis: 0,
+          cashBalance: 0,
+          totalGainLoss: 0,
+          totalGainLossPercent: 0,
+          netInvested: 0,
+          holdings: [],
+        },
+      ],
+    });
+    render(<PortfolioSummaryCard summary={summary} isLoading={false} />);
+    // Simple Return shows +0.00% when costBasis is 0
+    expect(screen.getByText('+0.00%')).toBeInTheDocument();
+  });
+
+  it('renders zero gainLossPercent when costBasis is zero in foreign currency path', () => {
+    mockDefaultCurrency = 'CAD';
+    const summary = makeSummary({
+      totalGainLossPercent: 0,
+      holdingsByAccount: [
+        {
+          accountId: 'a1',
+          currencyCode: 'USD',
+          totalMarketValue: 0,
+          totalCostBasis: 0,
+          cashBalance: 0,
+          totalGainLoss: 0,
+          totalGainLossPercent: 0,
+          netInvested: 0,
+          holdings: [],
+        },
+      ],
+    });
+    render(
+      <PortfolioSummaryCard
+        summary={summary}
+        isLoading={false}
+        singleAccountCurrency="USD"
+      />,
+    );
+    expect(screen.getByText('+0.00%')).toBeInTheDocument();
+  });
+
+  it('applies gray color class when returnColorClass receives null', () => {
+    // TWR null triggers returnColorClass(null) -> text-gray-400
+    render(
+      <PortfolioSummaryCard
+        summary={makeSummary({ timeWeightedReturn: null })}
+        isLoading={false}
+      />,
+    );
+    const twrN_a = screen.getAllByText('N/A')[0];
+    // The sibling N/A span should be present; the parent div uses gray class
+    const twrContainer = twrN_a.closest('div[class*="text-"]');
+    expect(twrContainer?.className).toMatch(/text-gray-400/);
+  });
+
+  it('multiple accounts aggregate values correctly in foreign currency path', () => {
+    mockDefaultCurrency = 'CAD';
+    const summary = makeSummary({
+      holdingsByAccount: [
+        {
+          accountId: 'a1',
+          currencyCode: 'USD',
+          totalMarketValue: 10000,
+          totalCostBasis: 8000,
+          cashBalance: 2000,
+          totalGainLoss: 2000,
+          totalGainLossPercent: 25,
+          netInvested: 9000,
+          holdings: [],
+        },
+        {
+          accountId: 'a2',
+          currencyCode: 'USD',
+          totalMarketValue: 5000,
+          totalCostBasis: 4000,
+          cashBalance: 1000,
+          totalGainLoss: 1000,
+          totalGainLossPercent: 25,
+          netInvested: 4500,
+          holdings: [],
+        },
+      ],
+    });
+    render(
+      <PortfolioSummaryCard
+        summary={summary}
+        isLoading={false}
+        singleAccountCurrency="USD"
+      />,
+    );
+    // Total portfolio = 10000+5000 (holdings) + 2000+1000 (cash) = 18000
+    expect(screen.getByText('$18000.00 USD')).toBeInTheDocument();
   });
 });

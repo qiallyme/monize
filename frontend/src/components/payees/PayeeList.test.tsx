@@ -31,6 +31,10 @@ vi.mock('@/lib/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
 }));
 
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
+}));
+
 function makePayee(overrides: Partial<Payee> & { id: string; name: string }): Payee {
   return {
     userId: 'user-1',
@@ -509,5 +513,518 @@ describe('PayeeList', () => {
     expect(categoryBadge).toBeInTheDocument();
     // Should have color-mix styles applied
     expect(categoryBadge.getAttribute('style')).toContain('#ef4444');
+  });
+
+  // Status column
+  it('shows status column when showStatusColumn is true', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} showStatusColumn />);
+    expect(screen.getByText('Status')).toBeInTheDocument();
+  });
+
+  it('does not show status column by default', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    expect(screen.queryByText('Status')).not.toBeInTheDocument();
+  });
+
+  it('shows Active badge for active payee when showStatusColumn is true', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} showStatusColumn />);
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
+  it('shows Inactive badge for inactive payee when showStatusColumn is true', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: false }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} showStatusColumn />);
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
+  });
+
+  // Reactivate
+  it('shows Reactivate button for inactive payee when onReactivate is provided', () => {
+    const onReactivate = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: false }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onReactivate={onReactivate} />);
+    expect(screen.getByText('Reactivate')).toBeInTheDocument();
+  });
+
+  it('does not show Reactivate button for active payees', () => {
+    const onReactivate = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onReactivate={onReactivate} />);
+    expect(screen.queryByText('Reactivate')).not.toBeInTheDocument();
+  });
+
+  it('does not show Reactivate button when onReactivate is not provided', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: false }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    expect(screen.queryByText('Reactivate')).not.toBeInTheDocument();
+  });
+
+  it('calls onReactivate with payee id when Reactivate is clicked', () => {
+    const onReactivate = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: false }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onReactivate={onReactivate} />);
+    fireEvent.click(screen.getByText('Reactivate'));
+    expect(onReactivate).toHaveBeenCalledWith('p1');
+  });
+
+  // Merge
+  it('shows Merge button for active payee when onMerge is provided', () => {
+    const onMerge = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onMerge={onMerge} />);
+    expect(screen.getByText('Merge')).toBeInTheDocument();
+  });
+
+  it('does not show Merge button for inactive payees', () => {
+    const onMerge = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: false }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onMerge={onMerge} />);
+    expect(screen.queryByText('Merge')).not.toBeInTheDocument();
+  });
+
+  it('does not show Merge button when onMerge is not provided', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    expect(screen.queryByText('Merge')).not.toBeInTheDocument();
+  });
+
+  it('calls onMerge with payee when Merge is clicked', () => {
+    const onMerge = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onMerge={onMerge} />);
+    fireEvent.click(screen.getByText('Merge'));
+    expect(onMerge).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
+  });
+
+  // Dense mode button labels
+  it('shows abbreviated button labels in dense mode', () => {
+    const onMerge = vi.fn();
+    const _onReactivate = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: true }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onMerge={onMerge} density="dense" />);
+    expect(screen.getByText('M')).toBeInTheDocument();
+    expect(screen.getByText('E')).toBeInTheDocument();
+    expect(screen.getByText('X')).toBeInTheDocument();
+  });
+
+  it('shows abbreviated Reactivate label in dense mode for inactive payee', () => {
+    const onReactivate = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', isActive: false }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} onReactivate={onReactivate} density="dense" />);
+    expect(screen.getByText('Re')).toBeInTheDocument();
+  });
+
+  // Category badge density
+  it('shows compact category badge in dense mode', () => {
+    const payees = [
+      makePayee({
+        id: 'p1',
+        name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1', userId: 'u', parentId: null, parent: null, children: [],
+          name: 'Groceries', description: null, icon: null, color: null, effectiveColor: null,
+          isIncome: false, isSystem: false, createdAt: '',
+        },
+      }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} density="dense" />);
+    const badge = screen.getByText('Groceries');
+    // dense mode applies px-1.5 py-0.5
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain('px-1.5');
+  });
+
+  it('shows regular category badge in normal mode', () => {
+    const payees = [
+      makePayee({
+        id: 'p1',
+        name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1', userId: 'u', parentId: null, parent: null, children: [],
+          name: 'Groceries', description: null, icon: null, color: null, effectiveColor: null,
+          isIncome: false, isSystem: false, createdAt: '',
+        },
+      }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} density="normal" />);
+    const badge = screen.getByText('Groceries');
+    expect(badge.className).toContain('px-2');
+  });
+
+  // Sorting aliases, lastUsed, createdAt
+  it('sorts by aliases when Aliases header is clicked', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', aliasCount: 2 }),
+      makePayee({ id: 'p2', name: 'Amazon', aliasCount: 5 }),
+    ];
+
+    const { container } = render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    // Click Aliases — switches field, sets direction to desc (count-like field)
+    fireEvent.click(screen.getByText('Aliases'));
+    // With desc sort on aliases: Amazon (5) first, Walmart (2) second
+    const rows = container.querySelectorAll('tbody tr');
+    expect(rows[0].querySelector('td')?.textContent?.trim()).toBe('Amazon');
+    expect(rows[1].querySelector('td')?.textContent?.trim()).toBe('Walmart');
+  });
+
+  it('sorts by lastUsed when Last Used header is clicked', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', lastUsedDate: '2026-01-15' }),
+      makePayee({ id: 'p2', name: 'Amazon', lastUsedDate: '2026-01-20' }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    fireEvent.click(screen.getByText('Last Used'));
+    expect(screen.getByText('Walmart')).toBeInTheDocument();
+    expect(screen.getByText('Amazon')).toBeInTheDocument();
+  });
+
+  it('sorts by createdAt when Created header is clicked', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', createdAt: '2025-01-01T00:00:00Z' }),
+      makePayee({ id: 'p2', name: 'Amazon', createdAt: '2026-01-01T00:00:00Z' }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    fireEvent.click(screen.getByText('Created'));
+    expect(screen.getByText('Walmart')).toBeInTheDocument();
+    expect(screen.getByText('Amazon')).toBeInTheDocument();
+  });
+
+  it('toggles sort direction when same field is clicked twice', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'banana' }),
+      makePayee({ id: 'p2', name: 'Apple' }),
+    ];
+
+    const { container } = render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    // Initial order: Apple, banana (asc)
+    let rows = container.querySelectorAll('tbody tr');
+    expect(rows[0].querySelector('td')?.textContent?.trim()).toBe('Apple');
+
+    // Click Name again — toggles to desc
+    fireEvent.click(screen.getByText('Name'));
+    rows = container.querySelectorAll('tbody tr');
+    expect(rows[0].querySelector('td')?.textContent?.trim()).toBe('banana');
+  });
+
+  it('resets direction to desc when switching to a count field', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', transactionCount: 10 }),
+      makePayee({ id: 'p2', name: 'Amazon', transactionCount: 5 }),
+    ];
+
+    const { container } = render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    // Click Count — switches field, sets direction to desc
+    fireEvent.click(screen.getByText('Count'));
+    // With desc sort on count: Walmart (10) first, Amazon (5) second
+    const rows = container.querySelectorAll('tbody tr');
+    expect(rows[0].querySelector('td')?.textContent?.trim()).toBe('Walmart');
+    expect(rows[1].querySelector('td')?.textContent?.trim()).toBe('Amazon');
+  });
+
+  it('resets direction to asc when switching to category field', () => {
+    const payees = [
+      makePayee({
+        id: 'p1', name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1', userId: 'u', parentId: null, parent: null, children: [],
+          name: 'Zoning', description: null, icon: null, color: null, effectiveColor: null,
+          isIncome: false, isSystem: false, createdAt: '',
+        },
+      }),
+      makePayee({ id: 'p2', name: 'Amazon', defaultCategory: null }),
+    ];
+
+    const { container } = render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    // Click Category — switches field, sets direction to asc
+    fireEvent.click(screen.getByText('Default Category'));
+    // With asc sort on category: '' (Amazon/None) < 'Zoning' (Walmart)
+    const rows = container.querySelectorAll('tbody tr');
+    expect(rows[0].querySelector('td')?.textContent?.trim()).toBe('Amazon');
+    expect(rows[1].querySelector('td')?.textContent?.trim()).toBe('Walmart');
+  });
+
+  // lastUsedDate and createdAt display
+  it('shows formatted lastUsedDate when present', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', lastUsedDate: '2026-03-15T00:00:00Z' }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    // formatDate is mocked to return date as-is, substring(0,10) = '2026-03-15'
+    expect(screen.getByText('2026-03-15')).toBeInTheDocument();
+  });
+
+  it('shows dash when lastUsedDate is null', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', lastUsedDate: null }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    const dashes = screen.getAllByText('-');
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+
+  it('shows formatted createdAt date', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', createdAt: '2026-01-05T00:00:00Z' }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    expect(screen.getByText('2026-01-05')).toBeInTheDocument();
+  });
+
+  it('shows aliasCount of 0 when aliasCount is undefined', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Walmart', aliasCount: undefined }),
+    ];
+
+    render(<PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />);
+    const zeros = screen.getAllByText('0');
+    expect(zeros.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // categoryColorMap lookup
+  it('uses categoryColorMap color override when map has category id', () => {
+    const payees = [
+      makePayee({
+        id: 'p1',
+        name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1', userId: 'u', parentId: null, parent: null, children: [],
+          name: 'Groceries', description: null, icon: null, color: '#000000', effectiveColor: '#000000',
+          isIncome: false, isSystem: false, createdAt: '',
+        },
+      }),
+    ];
+    const categoryColorMap = new Map([['cat-1', '#ff0000']]);
+
+    render(
+      <PayeeList
+        payees={payees}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+        categoryColorMap={categoryColorMap}
+      />,
+    );
+    const badge = screen.getByText('Groceries');
+    // Should use the map color (#ff0000), not the category color (#000000)
+    expect(badge.getAttribute('style')).toContain('#ff0000');
+  });
+
+  it('falls back to category color when map does not have category id', () => {
+    const payees = [
+      makePayee({
+        id: 'p1',
+        name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1', userId: 'u', parentId: null, parent: null, children: [],
+          name: 'Groceries', description: null, icon: null, color: '#123456', effectiveColor: '#123456',
+          isIncome: false, isSystem: false, createdAt: '',
+        },
+      }),
+    ];
+    const categoryColorMap = new Map([['cat-other', '#ff0000']]);
+
+    render(
+      <PayeeList
+        payees={payees}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+        categoryColorMap={categoryColorMap}
+      />,
+    );
+    const badge = screen.getByText('Groceries');
+    expect(badge.getAttribute('style')).toContain('#123456');
+  });
+
+  it('handles null value in categoryColorMap for category id', () => {
+    const payees = [
+      makePayee({
+        id: 'p1',
+        name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1', userId: 'u', parentId: null, parent: null, children: [],
+          name: 'Groceries', description: null, icon: null, color: '#abcdef', effectiveColor: '#abcdef',
+          isIncome: false, isSystem: false, createdAt: '',
+        },
+      }),
+    ];
+    // Map has the category id but maps to null — should fall back to category.color
+    const categoryColorMap = new Map<string, string | null>([['cat-1', null]]);
+
+    render(
+      <PayeeList
+        payees={payees}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+        categoryColorMap={categoryColorMap}
+      />,
+    );
+    const badge = screen.getByText('Groceries');
+    // When map returns null, defaultCategoryColor = null, so uses var(--category-bg-base)
+    expect(badge).toBeInTheDocument();
+  });
+
+  // Odd/even row striping in non-normal density
+  it('applies striped classes to odd-indexed rows in compact density', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'First' }),
+      makePayee({ id: 'p2', name: 'Second' }),
+    ];
+
+    const { container } = render(
+      <PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} density="compact" />,
+    );
+    const rows = container.querySelectorAll('tbody tr');
+    // index 1 (second row) should have striped class
+    expect(rows[1].className).toContain('bg-gray-50');
+    // index 0 (first row) should not have stripe
+    expect(rows[0].className).toContain('bg-white');
+  });
+
+  it('does not apply striped classes to rows in normal density', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'First' }),
+      makePayee({ id: 'p2', name: 'Second' }),
+    ];
+
+    const { container } = render(
+      <PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} density="normal" />,
+    );
+    const rows = container.querySelectorAll('tbody tr');
+    // All rows use bg-white in normal density (no stripe)
+    rows.forEach(row => {
+      expect(row.className).toContain('bg-white');
+    });
+  });
+
+  // Inactive payee opacity
+  it('applies opacity to inactive payees', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Inactive Payee', isActive: false }),
+    ];
+
+    const { container } = render(
+      <PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />,
+    );
+    const row = container.querySelector('tbody tr');
+    expect(row?.className).toContain('opacity-60');
+  });
+
+  it('does not apply opacity to active payees', () => {
+    const payees = [
+      makePayee({ id: 'p1', name: 'Active Payee', isActive: true }),
+    ];
+
+    const { container } = render(
+      <PayeeList payees={payees} onEdit={onEdit} onRefresh={onRefresh} />,
+    );
+    const row = container.querySelector('tbody tr');
+    expect(row?.className).not.toContain('opacity-60');
+  });
+
+  // Controlled sort with onSort prop
+  it('passes all sort fields to onSort callback', () => {
+    const onSort = vi.fn();
+    const payees = [makePayee({ id: 'p1', name: 'Walmart' })];
+
+    render(
+      <PayeeList
+        payees={payees}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+        sortField="name"
+        sortDirection="asc"
+        onSort={onSort}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Default Category'));
+    expect(onSort).toHaveBeenCalledWith('category');
+
+    fireEvent.click(screen.getByText('Count'));
+    expect(onSort).toHaveBeenCalledWith('count');
+
+    fireEvent.click(screen.getByText('Aliases'));
+    expect(onSort).toHaveBeenCalledWith('aliases');
+
+    fireEvent.click(screen.getByText('Last Used'));
+    expect(onSort).toHaveBeenCalledWith('lastUsed');
+
+    fireEvent.click(screen.getByText('Created'));
+    expect(onSort).toHaveBeenCalledWith('createdAt');
+  });
+
+  // Payees returned as-is when onSort is provided (no local sort)
+  it('renders payees in original order when onSort is provided', () => {
+    const onSort = vi.fn();
+    const payees = [
+      makePayee({ id: 'p1', name: 'Zulu' }),
+      makePayee({ id: 'p2', name: 'Alpha' }),
+    ];
+
+    const { container } = render(
+      <PayeeList
+        payees={payees}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+        sortField="name"
+        sortDirection="desc"
+        onSort={onSort}
+      />,
+    );
+
+    const rows = container.querySelectorAll('tbody tr');
+    // Should maintain the order given — no local re-sorting
+    expect(rows[0].querySelector('td')?.textContent?.trim()).toBe('Zulu');
+    expect(rows[1].querySelector('td')?.textContent?.trim()).toBe('Alpha');
   });
 });

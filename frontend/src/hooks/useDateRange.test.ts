@@ -143,4 +143,50 @@ describe('useDateRange', () => {
     });
     expect(result.current.dateRange).toBe('6m');
   });
+
+  it('resolves 5y range without month alignment', () => {
+    const { result } = renderHook(() => useDateRange({ defaultRange: '5y' }));
+    // 5 years ago from Jan 15, 2025 = Jan 15, 2020
+    expect(result.current.resolvedRange.start).toBe('2020-01-15');
+    expect(result.current.resolvedRange.end).toBe('2025-01-15');
+  });
+
+  it('resolves 5y range with month alignment snaps to month boundaries', () => {
+    const { result } = renderHook(() =>
+      useDateRange({ defaultRange: '5y', alignment: 'month' })
+    );
+    // 59 months ago from Jan 15, 2025 = start of Feb 2020; end is always today
+    expect(result.current.resolvedRange.start).toBe('2020-02-01');
+    expect(result.current.resolvedRange.end).toBe('2025-01-15');
+  });
+
+  it('resolves 2y range without month alignment', () => {
+    const { result } = renderHook(() => useDateRange({ defaultRange: '2y' }));
+    // subDays(Jan 15 2025, 730) = Jan 16, 2023 (730 days accounting for 2024 leap year)
+    expect(result.current.resolvedRange.start).toBe('2023-01-16');
+    expect(result.current.resolvedRange.end).toBe('2025-01-15');
+  });
+
+  it('resolves unknown range using default (3m fallback)', () => {
+    const { result } = renderHook(() => useDateRange({ defaultRange: 'unknown-range' }));
+    // Default falls back to subMonths(now, 3) = Oct 15 2024 (not subDays)
+    expect(result.current.resolvedRange.start).toBe('2024-10-15');
+    expect(result.current.resolvedRange.end).toBe('2025-01-15');
+  });
+
+  it('resolves 6m range without month alignment', () => {
+    const { result } = renderHook(() => useDateRange({ defaultRange: '6m' }));
+    // 6 months before Jan 15, 2025 = Jul 15, 2024
+    expect(result.current.resolvedRange.start).toBe('2024-07-15');
+    expect(result.current.resolvedRange.end).toBe('2025-01-15');
+  });
+
+  it('resolves 6m range with month alignment snaps to month boundaries', () => {
+    const { result } = renderHook(() =>
+      useDateRange({ defaultRange: '6m', alignment: 'month' })
+    );
+    // Start of 5 months ago from Jan = Aug 1 2024; end is always today
+    expect(result.current.resolvedRange.start).toBe('2024-08-01');
+    expect(result.current.resolvedRange.end).toBe('2025-01-15');
+  });
 });

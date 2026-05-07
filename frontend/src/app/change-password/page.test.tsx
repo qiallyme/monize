@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@/test/render';
+import { render, screen, waitFor, fireEvent, act } from '@/test/render';
+import toast from 'react-hot-toast';
 import ChangePasswordPage from './page';
 
 const mockPush = vi.fn();
@@ -204,5 +205,52 @@ describe('ChangePasswordPage', () => {
   it('does not redirect when user must change password', () => {
     render(<ChangePasswordPage />);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('submits form and redirects to dashboard on success', async () => {
+    render(<ChangePasswordPage />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'OldPassword1!' } });
+      fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword1!' } });
+      fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'NewPassword1!' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    });
+
+    await waitFor(() => {
+      expect(mockChangePassword).toHaveBeenCalledWith({
+        currentPassword: 'OldPassword1!',
+        newPassword: 'NewPassword1!',
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockGetProfile).toHaveBeenCalled();
+      expect(mockSetUser).toHaveBeenCalled();
+      expect(toast.success).toHaveBeenCalledWith('Password changed successfully');
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('shows error toast when password change fails', async () => {
+    mockChangePassword.mockRejectedValueOnce(new Error('Wrong password'));
+    render(<ChangePasswordPage />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'OldPassword1!' } });
+      fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword1!' } });
+      fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'NewPassword1!' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
   });
 });

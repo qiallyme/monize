@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@/test/render';
+import { render, screen, waitFor, fireEvent, act } from '@/test/render';
 import { DividendYieldGrowthReport } from './DividendYieldGrowthReport';
+
+vi.mock('@/lib/pdf-export', () => ({
+  exportToPdf: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
@@ -21,9 +25,20 @@ vi.mock('@/lib/utils', () => ({
   parseLocalDate: (d: string) => new Date(d + 'T00:00:00'),
 }));
 
+vi.mock('@/components/ui/ExportDropdown', () => ({
+  ExportDropdown: ({ onExportCsv, onExportPdf }: any) => (
+    <div data-testid="export-dropdown">
+      {onExportCsv && (
+        <button data-testid="export-csv" onClick={onExportCsv}>CSV</button>
+      )}
+      <button data-testid="export-pdf" onClick={onExportPdf}>Export PDF</button>
+    </div>
+  ),
+}));
+
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
-  BarChart: ({ children }: any) => <div data-testid="bar-chart">{children}</div>,
+  BarChart: ({ children, data }: any) => <div data-testid="bar-chart" data-points={data?.length}>{children}</div>,
   LineChart: ({ children }: any) => <div data-testid="line-chart">{children}</div>,
   Bar: () => null,
   Line: () => null,
@@ -336,5 +351,454 @@ describe('DividendYieldGrowthReport', () => {
     expect(screen.getByText('VFV')).toBeInTheDocument();
     expect(screen.queryByText('Unknown Security')).not.toBeInTheDocument();
     expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
+
+  it('shows growth view with annual data table', async () => {
+    // Transactions across two years to exercise the growth view
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2025-03-15', action: 'DIVIDEND', totalAmount: 200, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-2', transactionDate: '2026-01-15', action: 'DIVIDEND', totalAmount: 300, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Year-over-Year')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Year-over-Year'));
+    await waitFor(() => {
+      expect(screen.getByText('Annual Dividend Income')).toBeInTheDocument();
+    });
+    // The growth table should show data rows for each year
+    expect(screen.getByText('2025')).toBeInTheDocument();
+    expect(screen.getByText('2026')).toBeInTheDocument();
+  });
+
+  it('shows frequency view with frequency breakdown table', async () => {
+    // Transactions that generate securityYield entries (within trailing 12m)
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getAllByText('Frequency').length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText('Frequency')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Dividend Frequency Analysis')).toBeInTheDocument();
+    });
+    // The frequency table should have a row for 'Unknown' (only one date so detectFrequency = Unknown)
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+  });
+
+  it('shows year-over-year growth table with positive and negative growth rows', async () => {
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2023-06-15', action: 'DIVIDEND', totalAmount: 200, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-2', transactionDate: '2024-06-15', action: 'DIVIDEND', totalAmount: 300, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-3', transactionDate: '2025-06-15', action: 'DIVIDEND', totalAmount: 150, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Year-over-Year')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Year-over-Year'));
+    await waitFor(() => {
+      expect(screen.getByText('Annual Dividend Income')).toBeInTheDocument();
+    });
+    // 2023 row should show '-' for growth (no prior year)
+    expect(screen.getByText('-')).toBeInTheDocument();
+    // 2024 shows positive growth (+50%)
+    expect(screen.getByText('+50.0%')).toBeInTheDocument();
+    // 2025 shows negative growth (-50%)
+    expect(screen.getByText('-50.0%')).toBeInTheDocument();
+  });
+
+  it('shows frequency analysis chart and table with data', async () => {
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2025-03-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-2', transactionDate: '2025-06-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-3', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-4', transactionDate: '2025-12-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getAllByText('Frequency').length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText('Frequency')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Dividend Frequency Analysis')).toBeInTheDocument();
+    });
+    // Quarterly frequency should appear (4 payments ~90 days apart)
+    expect(screen.getByText('Quarterly')).toBeInTheDocument();
+  });
+
+  it('paginates through multiple pages of transactions', async () => {
+    let callCount = 0;
+    mockGetTransactions.mockImplementation(async ({ action, page }: { action: string; page: number }) => {
+      if (action !== 'DIVIDEND') return { data: [], pagination: { hasMore: false } };
+      callCount++;
+      if (page === 1) {
+        return {
+          data: [{ id: 'tx-p1', transactionDate: '2025-06-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' }],
+          pagination: { hasMore: true },
+        };
+      }
+      return {
+        data: [{ id: 'tx-p2', transactionDate: '2025-07-15', action: 'DIVIDEND', totalAmount: 50, accountId: 'acc-1', securityId: 's-1' }],
+        pagination: { hasMore: false },
+      };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    // Should have fetched page 1 and page 2 for DIVIDEND
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('re-fetches data when account selection changes', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: [] });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('All Accounts')).toBeInTheDocument();
+    });
+    const initialCallCount = mockGetTransactions.mock.calls.length;
+    const select = document.querySelector('select') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'acc-1' } });
+    });
+    await waitFor(() => {
+      expect(mockGetTransactions.mock.calls.length).toBeGreaterThan(initialCallCount);
+    });
+  });
+
+  it('handles loadData error gracefully', async () => {
+    mockGetTransactions.mockRejectedValue(new Error('network error'));
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: [] });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      // Error swallowed — component should render without loading spinner
+      expect(document.querySelector('.animate-pulse')).toBeFalsy();
+    });
+  });
+
+  it('exports PDF in yield view', async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    (exportToPdf as any).mockClear();
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [{ id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' }],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('export-pdf'));
+    });
+    expect(exportToPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Dividend Yield & Growth', subtitle: 'Per-Security Yield' }),
+    );
+  });
+
+  it('exports PDF in growth view', async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    (exportToPdf as any).mockClear();
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [{ id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' }],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Year-over-Year')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Year-over-Year'));
+    await waitFor(() => {
+      expect(screen.getByText('Annual Dividend Income')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('export-pdf'));
+    });
+    expect(exportToPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ subtitle: 'Year-over-Year' }),
+    );
+  });
+
+  it('exports PDF in frequency view', async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    (exportToPdf as any).mockClear();
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2025-03-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-2', transactionDate: '2025-06-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-3', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getAllByText('Frequency').length).toBeGreaterThanOrEqual(1);
+    });
+    fireEvent.click(screen.getAllByText('Frequency')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Dividend Frequency Analysis')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('export-pdf'));
+    });
+    expect(exportToPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ subtitle: 'Frequency' }),
+    );
+  });
+
+  it('shows portfolio yield as 0 when portfolio value is zero', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [{ id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' }],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    // No holdings means totalPortfolioValue = 0, portfolioYield = 0
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: [] });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Portfolio Yield')).toBeInTheDocument();
+    });
+    // Portfolio Yield summary card div contains '0.00' and '%' as siblings
+    const yieldCard = screen.getByText('Portfolio Yield').closest('div')?.parentElement;
+    expect(yieldCard?.textContent).toContain('0.00%');
+  });
+
+  it('uses account currency when an account is selected (getTxAmount with selectedAccountId)', async () => {
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [{ id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 200, accountId: 'acc-1', securityId: 's-1' }],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('All Accounts')).toBeInTheDocument();
+    });
+    const select = document.querySelector('select') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'acc-1' } });
+    });
+    await waitFor(() => {
+      // After selecting account, the yield table should still render with that account's data
+      expect(screen.queryByText(/Portfolio Yield/)).toBeInTheDocument();
+    });
+  });
+
+  it('detects monthly dividend frequency', async () => {
+    // 12 payments, one per month = ~30 day gap => Monthly
+    const now = new Date('2025-12-15');
+    const txData = Array.from({ length: 12 }, (_, i) => ({
+      id: `tx-${i}`,
+      transactionDate: new Date(now.getFullYear(), now.getMonth() - i, 15).toISOString().slice(0, 10),
+      action: 'DIVIDEND',
+      totalAmount: 50,
+      accountId: 'acc-1',
+      securityId: 's-1',
+    }));
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') return { data: txData, pagination: { hasMore: false } };
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Monthly')).toBeInTheDocument();
+  });
+
+  it('detects annual dividend frequency', async () => {
+    // 2 payments ~365 days apart within trailing 12 months (current date is 2026-05-06)
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2025-05-10', action: 'DIVIDEND', totalAmount: 300, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-2', transactionDate: '2026-05-01', action: 'DIVIDEND', totalAmount: 300, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Annual')).toBeInTheDocument();
+  });
+
+  it('detects semi-annual dividend frequency', async () => {
+    // 2 payments ~180 days apart within trailing 12m (current date 2026-05-06, cutoff 2025-05-06)
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2025-08-15', action: 'DIVIDEND', totalAmount: 200, accountId: 'acc-1', securityId: 's-1' },
+            { id: 'tx-2', transactionDate: '2026-02-15', action: 'DIVIDEND', totalAmount: 200, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Semi-Annual')).toBeInTheDocument();
+  });
+
+  it('detects unknown frequency for a single dividend date', async () => {
+    // Only 1 date in the trailing 12m — detectFrequency returns 'Unknown'
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [
+            { id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' },
+          ],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+  });
+
+  it('shows per-security yield as 0 when market value is 0', async () => {
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [{ id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' }],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({
+      holdings: [{ ...mockHoldings[0], marketValue: 0 }],
+    });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
+    // Yield = 0 / 0 = 0.00% — appears in both summary card and yield table
+    expect(screen.getAllByText('0.00%').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('switches back to yield view after visiting growth view', async () => {
+    mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
+      if (action === 'DIVIDEND') {
+        return {
+          data: [{ id: 'tx-1', transactionDate: '2025-09-15', action: 'DIVIDEND', totalAmount: 100, accountId: 'acc-1', securityId: 's-1' }],
+          pagination: { hasMore: false },
+        };
+      }
+      return { data: [], pagination: { hasMore: false } };
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
+    render(<DividendYieldGrowthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Year-over-Year')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Year-over-Year'));
+    await waitFor(() => {
+      expect(screen.getByText('Annual Dividend Income')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Per-Security Yield'));
+    await waitFor(() => {
+      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+    });
   });
 });

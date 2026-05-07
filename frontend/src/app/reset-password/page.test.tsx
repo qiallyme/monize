@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@/test/render';
+import { render, screen, waitFor, fireEvent, act } from '@/test/render';
+import toast from 'react-hot-toast';
 import ResetPasswordPage from './page';
 
 const mockPush = vi.fn();
@@ -148,5 +149,42 @@ describe('ResetPasswordPage', () => {
     render(<ResetPasswordPage />);
     expect(screen.queryByText('New Password')).not.toBeInTheDocument();
     expect(screen.queryByText('Confirm Password')).not.toBeInTheDocument();
+  });
+
+  it('submits reset form and redirects to login on success', async () => {
+    render(<ResetPasswordPage />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword1!' } });
+      fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'NewPassword1!' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+    });
+
+    await waitFor(() => {
+      expect(mockResetPassword).toHaveBeenCalledWith('valid-reset-token', 'NewPassword1!');
+      expect(toast.success).toHaveBeenCalledWith('Password reset successfully!');
+      expect(mockPush).toHaveBeenCalledWith('/login');
+    });
+  });
+
+  it('shows error toast when reset fails', async () => {
+    mockResetPassword.mockRejectedValueOnce(new Error('Token expired'));
+    render(<ResetPasswordPage />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword1!' } });
+      fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'NewPassword1!' } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+    });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
   });
 });

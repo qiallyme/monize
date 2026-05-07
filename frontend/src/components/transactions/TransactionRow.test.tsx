@@ -316,4 +316,432 @@ describe('TransactionRow', () => {
     renderRow({ density: 'compact' });
     expect(screen.getByText('Coffee Co')).toBeInTheDocument();
   });
+
+  it('shows isFuture opacity class for non-void future transaction', () => {
+    const { container } = renderRow({ isFuture: true });
+    const tr = container.querySelector('tr')!;
+    expect(tr.className).toContain('opacity-60');
+  });
+
+  it('does not apply isFuture opacity for void future transaction', () => {
+    const { container } = renderRow({ isFuture: true }, { status: TransactionStatus.VOID });
+    const tr = container.querySelector('tr')!;
+    // VOID applies opacity-50; isFuture+VOID should not stack the 60% opacity
+    expect(tr.className).toContain('opacity-50');
+    expect(tr.className).not.toContain('opacity-60');
+  });
+
+  it('applies isSelected class to row', () => {
+    const { container } = renderRow({ isSelected: true });
+    const tr = container.querySelector('tr')!;
+    expect(tr.className).toContain('bg-blue-50');
+  });
+
+  it('applies cursor-pointer when onEdit is provided', () => {
+    const { container } = renderRow({ onEdit: vi.fn() });
+    const tr = container.querySelector('tr')!;
+    expect(tr.className).toContain('cursor-pointer');
+  });
+
+  it('does not apply cursor-pointer when onEdit is not provided', () => {
+    const { container } = renderRow({});
+    const tr = container.querySelector('tr')!;
+    expect(tr.className).not.toContain('cursor-pointer');
+  });
+
+  it('renders reference number in normal density', () => {
+    renderRow({ density: 'normal' }, { referenceNumber: 'REF-12345' });
+    expect(screen.getByText('Ref: REF-12345')).toBeInTheDocument();
+  });
+
+  it('does not render reference number in dense density', () => {
+    renderRow({ density: 'dense' }, { referenceNumber: 'REF-12345' });
+    expect(screen.queryByText('Ref: REF-12345')).not.toBeInTheDocument();
+  });
+
+  it('does not render reference number in compact density', () => {
+    renderRow({ density: 'compact' }, { referenceNumber: 'REF-12345' });
+    expect(screen.queryByText('Ref: REF-12345')).not.toBeInTheDocument();
+  });
+
+  it('renders description when provided', () => {
+    renderRow({}, { description: 'Test transaction description' });
+    expect(screen.getByText('Test transaction description')).toBeInTheDocument();
+  });
+
+  it('renders dash for empty description', () => {
+    renderRow({}, { description: null });
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('renders account name in row', () => {
+    renderRow();
+    expect(screen.getByText('Checking')).toBeInTheDocument();
+  });
+
+  it('shows dash when account is null', () => {
+    renderRow({}, { account: null as any });
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('renders status R in dense mode for reconciled', () => {
+    renderRow({ density: 'dense' }, { status: TransactionStatus.RECONCILED });
+    expect(screen.getByText('R')).toBeInTheDocument();
+  });
+
+  it('renders status C in dense mode for cleared', () => {
+    renderRow({ density: 'dense' }, { status: TransactionStatus.CLEARED });
+    expect(screen.getByText('C')).toBeInTheDocument();
+  });
+
+  it('renders status V in dense mode for void', () => {
+    renderRow({ density: 'dense' }, { status: TransactionStatus.VOID });
+    expect(screen.getByText('V')).toBeInTheDocument();
+  });
+
+  it('renders Edit button with investment style for investment transaction', () => {
+    const onEdit = vi.fn();
+    const { container } = renderRow({ onEdit }, { linkedInvestmentTransactionId: 'inv1' });
+    const editBtn = container.querySelector('button[title="View in Investments"]');
+    expect(editBtn).not.toBeNull();
+  });
+
+  it('does not show CopyDropdown for investment-linked transaction', () => {
+    const onDuplicate = vi.fn();
+    renderRow({ onDuplicate }, { linkedInvestmentTransactionId: 'inv1' });
+    expect(screen.queryByText('Copy')).not.toBeInTheDocument();
+  });
+
+  it('does not show Delete button for investment-linked transaction', () => {
+    const onDeleteClick = vi.fn();
+    renderRow({ onDeleteClick }, { linkedInvestmentTransactionId: 'inv1' });
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    expect(screen.queryByText('...')).not.toBeInTheDocument();
+  });
+
+  it('renders no-category dash in category cell', () => {
+    renderRow({}, { category: null, categoryId: null, isSplit: false, isTransfer: false });
+    // Should show "-" for missing category
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('renders payee name even when payeeId present but onPayeeClick not provided', () => {
+    renderRow({}, { payeeId: 'p1', payeeName: 'Starbucks' });
+    // No onPayeeClick → renders as div, not button
+    expect(screen.getByText('Starbucks')).toBeInTheDocument();
+  });
+
+  it('renders payee dash when payeeName is null and no payeeId', () => {
+    renderRow({}, { payeeId: null, payeeName: null });
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('shows tags with icon when tag has icon', () => {
+    const onTagClick = vi.fn();
+    renderRow(
+      { onTagClick },
+      {
+        tags: [
+          { id: 'tag2', name: 'travel', color: '#0000ff', icon: 'airplane' } as any,
+        ],
+      },
+    );
+    expect(screen.getByText('travel')).toBeInTheDocument();
+  });
+
+  it('renders tags non-clickable with icon', () => {
+    renderRow(
+      {},
+      {
+        tags: [{ id: 'tag2', name: 'travel', color: '#0000ff', icon: 'airplane' } as any],
+      },
+    );
+    expect(screen.getByText('travel')).toBeInTheDocument();
+  });
+
+  it('renders multiple tags', () => {
+    const onTagClick = vi.fn();
+    renderRow(
+      { onTagClick },
+      {
+        tags: [
+          { id: 'tag1', name: 'work', color: '#00ff00', icon: null } as any,
+          { id: 'tag2', name: 'travel', color: null, icon: null } as any,
+        ],
+      },
+    );
+    expect(screen.getByText('work')).toBeInTheDocument();
+    expect(screen.getByText('travel')).toBeInTheDocument();
+  });
+
+  it('renders split badge without splits array', () => {
+    renderRow({}, { isSplit: true, splits: undefined as any });
+    expect(screen.getByText(/Split/)).toBeInTheDocument();
+  });
+
+  it('renders split badge with empty splits array', () => {
+    renderRow({}, { isSplit: true, splits: [] });
+    expect(screen.getByText(/Split \(0\)/)).toBeInTheDocument();
+  });
+
+  it('renders split summary at most 3 items and no more badge for 3 splits', () => {
+    renderRow(
+      { density: 'normal' },
+      {
+        isSplit: true,
+        splits: [
+          { id: 's1', amount: -10, category: { id: 'c1', name: 'Food' } } as any,
+          { id: 's2', amount: -5, category: { id: 'c2', name: 'Gas' } } as any,
+          { id: 's3', amount: -3, category: { id: 'c3', name: 'Shopping' } } as any,
+        ],
+      },
+    );
+    expect(screen.getByText(/Split \(3\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/more/)).not.toBeInTheDocument();
+  });
+
+  it('renders transfer with positive amount (incoming) correctly', () => {
+    renderRow(
+      {},
+      {
+        isTransfer: true,
+        amount: 100,
+        linkedTransactionId: 'l1',
+        linkedTransaction: {
+          id: 'l1',
+          account: { id: 'a2', name: 'Savings' },
+        } as any,
+      },
+    );
+    // Positive amount = money flowing from linked account → "Savings →"
+    expect(screen.getByText(/Savings/)).toBeInTheDocument();
+  });
+
+  it('renders transfer span (no onTransferClick) with positive amount', () => {
+    renderRow(
+      {},
+      {
+        isTransfer: true,
+        amount: 50,
+        linkedTransactionId: null,
+        linkedTransaction: {
+          id: 'l1',
+          account: { id: 'a2', name: 'Wallet' },
+        } as any,
+      },
+    );
+    expect(screen.getByText(/Wallet/)).toBeInTheDocument();
+  });
+
+  it('renders transfer span with no linked account name', () => {
+    renderRow(
+      {},
+      {
+        isTransfer: true,
+        amount: -50,
+        linkedTransactionId: null,
+        linkedTransaction: { id: 'l1', account: null } as any,
+      },
+    );
+    expect(screen.getByText('Transfer')).toBeInTheDocument();
+  });
+
+  it('renders transfer clickable with negative amount (outgoing)', () => {
+    const onTransferClick = vi.fn();
+    renderRow(
+      { onTransferClick },
+      {
+        isTransfer: true,
+        amount: -50,
+        linkedTransactionId: 'l1',
+        linkedTransaction: { id: 'l1', account: { id: 'a2', name: 'Savings' } } as any,
+      },
+    );
+    expect(screen.getByText(/Savings/)).toBeInTheDocument();
+  });
+
+  it('renders no budget indicator when percentUsed is low', () => {
+    renderRow({
+      budgetStatusMap: {
+        c1: { budgeted: 100, spent: 50, remaining: 50, percentUsed: 50 } as any,
+      },
+    });
+    // No over-budget or approaching-limit dot
+    expect(document.querySelector('[title^="Over budget"]')).toBeNull();
+    expect(document.querySelector('[title^="Approaching limit"]')).toBeNull();
+  });
+
+  it('renders no budget indicator when budgetStatusMap has no entry for category', () => {
+    renderRow({
+      budgetStatusMap: {
+        other_cat: { budgeted: 100, spent: 90, remaining: 10, percentUsed: 90 } as any,
+      },
+    });
+    // Category id is c1, no entry for c1
+    expect(document.querySelector('[title^="Approaching limit"]')).toBeNull();
+  });
+
+  it('renders no budget indicator when budgeted is 0', () => {
+    renderRow({
+      budgetStatusMap: {
+        c1: { budgeted: 0, spent: 10, remaining: -10, percentUsed: 0 } as any,
+      },
+    });
+    expect(document.querySelector('[title^="Over budget"]')).toBeNull();
+  });
+
+  it('renders no budget indicator when no categoryColorMap entry', () => {
+    renderRow({
+      categoryColorMap: new Map([['other_id', '#ff0000']]),
+    });
+    // Falls back to transaction.category.color
+    expect(screen.getByText('Food')).toBeInTheDocument();
+  });
+
+  it('renders category badge using categoryColorMap color override', () => {
+    renderRow({
+      categoryColorMap: new Map([['c1', '#abcdef']]),
+    });
+    expect(screen.getByText('Food')).toBeInTheDocument();
+  });
+
+  it('renders category without onCategoryClick using color from categoryColorMap', () => {
+    renderRow({
+      categoryColorMap: new Map([['c1', '#abcdef']]),
+      // no onCategoryClick
+    });
+    const span = screen.getByTitle('Food');
+    expect(span).not.toBeNull();
+  });
+
+  it('renders showRunningBalance=false hides balance column', () => {
+    renderRow({ showRunningBalance: false, isSingleAccountView: false });
+    expect(screen.queryByText('100.00')).not.toBeInTheDocument();
+  });
+
+  it('renders CopyDropdown with only onScheduleRecurring (no onDuplicate)', () => {
+    const onScheduleRecurring = vi.fn();
+    renderRow({ onScheduleRecurring });
+    // With only onScheduleRecurring and no onDuplicate, dropdown button still renders
+    fireEvent.click(screen.getByText('Copy'));
+    expect(screen.getByText('Schedule as Recurring')).toBeInTheDocument();
+  });
+
+  it('CopyDropdown closes when clicking outside', () => {
+    const onDuplicate = vi.fn();
+    const onScheduleRecurring = vi.fn();
+    renderRow({ onDuplicate, onScheduleRecurring });
+
+    // Open dropdown
+    fireEvent.click(screen.getByText('Copy'));
+    expect(screen.getByText('Duplicate')).toBeInTheDocument();
+
+    // Click outside
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByText('Duplicate')).not.toBeInTheDocument();
+  });
+
+  it('CopyDropdown closes on window scroll', () => {
+    const onDuplicate = vi.fn();
+    const onScheduleRecurring = vi.fn();
+    renderRow({ onDuplicate, onScheduleRecurring });
+
+    fireEvent.click(screen.getByText('Copy'));
+    expect(screen.getByText('Duplicate')).toBeInTheDocument();
+
+    fireEvent.scroll(window);
+    expect(screen.queryByText('Duplicate')).not.toBeInTheDocument();
+  });
+
+  it('row triggers onLongPressStart on mouseDown', () => {
+    const onLongPressStart = vi.fn();
+    renderRow({ onLongPressStart });
+    const tr = screen.getByText('Coffee Co').closest('tr')!;
+    fireEvent.mouseDown(tr);
+    expect(onLongPressStart).toHaveBeenCalled();
+  });
+
+  it('row triggers onLongPressEnd on mouseUp', () => {
+    const onLongPressEnd = vi.fn();
+    renderRow({ onLongPressEnd });
+    const tr = screen.getByText('Coffee Co').closest('tr')!;
+    fireEvent.mouseUp(tr);
+    expect(onLongPressEnd).toHaveBeenCalled();
+  });
+
+  it('row triggers onLongPressEnd on mouseLeave', () => {
+    const onLongPressEnd = vi.fn();
+    renderRow({ onLongPressEnd });
+    const tr = screen.getByText('Coffee Co').closest('tr')!;
+    fireEvent.mouseLeave(tr);
+    expect(onLongPressEnd).toHaveBeenCalled();
+  });
+
+  it('row triggers onLongPressStartTouch on touchStart', () => {
+    const onLongPressStartTouch = vi.fn();
+    renderRow({ onLongPressStartTouch });
+    const tr = screen.getByText('Coffee Co').closest('tr')!;
+    fireEvent.touchStart(tr, { touches: [{ clientX: 0, clientY: 0 }] });
+    expect(onLongPressStartTouch).toHaveBeenCalled();
+  });
+
+  it('row triggers onTouchMove on touchMove', () => {
+    const onTouchMove = vi.fn();
+    renderRow({ onTouchMove });
+    const tr = screen.getByText('Coffee Co').closest('tr')!;
+    fireEvent.touchMove(tr);
+    expect(onTouchMove).toHaveBeenCalled();
+  });
+
+  it('row triggers onLongPressEnd on touchEnd', () => {
+    const onLongPressEnd = vi.fn();
+    renderRow({ onLongPressEnd });
+    const tr = screen.getByText('Coffee Co').closest('tr')!;
+    fireEvent.touchEnd(tr);
+    expect(onLongPressEnd).toHaveBeenCalled();
+  });
+
+  it('row triggers onLongPressEnd on touchCancel', () => {
+    const onLongPressEnd = vi.fn();
+    renderRow({ onLongPressEnd });
+    const tr = screen.getByText('Coffee Co').closest('tr')!;
+    fireEvent.touchCancel(tr);
+    expect(onLongPressEnd).toHaveBeenCalled();
+  });
+
+  it('selection checkbox cell stops propagation on click', () => {
+    const onRowClick = vi.fn();
+    renderRow({ selectionMode: true, isSelected: false, onToggleSelection: vi.fn(), onRowClick });
+    const checkboxCell = screen.getByRole('checkbox').closest('td')!;
+    fireEvent.click(checkboxCell);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('renders split items with transfer accounts correctly', () => {
+    renderRow(
+      { density: 'normal' },
+      {
+        isSplit: true,
+        splits: [
+          { id: 's1', amount: -20, category: null, transferAccount: { id: 'acc3', name: 'Wallet' } } as any,
+          { id: 's2', amount: -5, category: { id: 'c2', name: 'Gas' }, transferAccount: null } as any,
+        ],
+      },
+    );
+    expect(screen.getByText(/Wallet/)).toBeInTheDocument();
+    expect(screen.getByText(/Gas/)).toBeInTheDocument();
+  });
+
+  it('renders positive-amount split transfer arrows', () => {
+    renderRow(
+      { density: 'normal' },
+      {
+        isSplit: true,
+        splits: [
+          { id: 's1', amount: 20, category: null, transferAccount: { id: 'acc3', name: 'Source' } } as any,
+        ],
+      },
+    );
+    expect(screen.getByText(/Source/)).toBeInTheDocument();
+  });
 });

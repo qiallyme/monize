@@ -11,7 +11,27 @@ vi.mock('recharts', () => ({
   XAxis: () => <div data-testid="x-axis" />,
   YAxis: () => <div data-testid="y-axis" />,
   CartesianGrid: () => <div data-testid="grid" />,
-  Tooltip: () => <div data-testid="tooltip" />,
+  Tooltip: ({ content }: any) => {
+    // Render the tooltip content with active payload to cover CustomTooltip branches
+    const payload = [
+      { value: 5000, dataKey: 'budgeted', color: '#3b82f6' },
+      { value: 4800, dataKey: 'actual', color: '#10b981' },
+    ];
+    if (content) {
+      const ContentComponent = content.type;
+      return (
+        <div data-testid="tooltip">
+          <ContentComponent
+            active={true}
+            payload={payload}
+            label="Sep"
+            formatCurrency={content.props?.formatCurrency}
+          />
+        </div>
+      );
+    }
+    return <div data-testid="tooltip" />;
+  },
   Legend: () => <div data-testid="legend" />,
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
@@ -57,4 +77,36 @@ describe('BudgetTrendChart', () => {
 
     expect(screen.getByTestId('responsive-container')).toBeInTheDocument();
   });
+
+  it('renders tooltip with budgeted and actual values when active', () => {
+    render(<BudgetTrendChart data={mockData} formatCurrency={mockFormat} />);
+
+    // Tooltip mock renders content component with active=true and payload
+    expect(screen.getByTestId('tooltip')).toBeInTheDocument();
+    // The tooltip should show the label "Sep" and the formatted values
+    expect(screen.getByText('Sep')).toBeInTheDocument();
+    expect(screen.getByText(/Budgeted.*\$5000\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Actual.*\$4800\.00/)).toBeInTheDocument();
+  });
+
+  it('renders with single data point', () => {
+    render(
+      <BudgetTrendChart
+        data={[{ month: 'Jan', budgeted: 1000, actual: 900 }]}
+        formatCurrency={mockFormat}
+      />,
+    );
+
+    expect(screen.getByTestId('line-chart')).toBeInTheDocument();
+  });
+
+  it('shows heading in both data and empty states', () => {
+    const { unmount } = render(<BudgetTrendChart data={mockData} formatCurrency={mockFormat} />);
+    expect(screen.getByText('Budget vs Actual Trend')).toBeInTheDocument();
+    unmount();
+
+    render(<BudgetTrendChart data={[]} formatCurrency={mockFormat} />);
+    expect(screen.getByText('Budget vs Actual Trend')).toBeInTheDocument();
+  });
 });
+

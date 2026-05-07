@@ -121,15 +121,18 @@ vi.mock('@/components/currencies/CurrencyForm', () => ({
 }));
 
 vi.mock('@/components/currencies/CurrencyList', () => ({
-  CurrencyList: ({ currencies, onToggleActive, sortField, sortDirection, onSort }: any) => (
+  CurrencyList: ({ currencies, onToggleActive, onEdit, sortField, sortDirection, onSort }: any) => (
     <div data-testid="currency-list">
       {sortField && <span data-testid="sort-field">{sortField}</span>}
       {sortDirection && <span data-testid="sort-direction">{sortDirection}</span>}
       {onSort && <button data-testid="sort-trigger" onClick={() => onSort('name')}>Sort</button>}
+      {onSort && <button data-testid="sort-trigger-symbol" onClick={() => onSort('symbol')}>Sort Symbol</button>}
+      {onSort && <button data-testid="sort-trigger-rate" onClick={() => onSort('rate')}>Sort Rate</button>}
       {currencies.map((c: any) => (
         <div key={c.code} data-testid={`currency-row-${c.code}`}>
           {c.name}
           <button data-testid={`toggle-${c.code}`} onClick={() => onToggleActive(c)}>Toggle</button>
+          <button data-testid={`edit-${c.code}`} onClick={() => onEdit(c)}>Edit</button>
         </div>
       ))}
     </div>
@@ -545,4 +548,84 @@ describe('CurrenciesPage', () => {
       expect(screen.getByText(/1 currency/i)).toBeInTheDocument();
     });
   });
+
+  it('shows error toast when loading currencies fails', async () => {
+    mockGetCurrencies.mockRejectedValueOnce(new Error('Network error'));
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Failed to load currencies');
+    });
+  });
+
+  it('toggles sort direction when sorting same field twice', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-trigger')).toBeInTheDocument();
+    });
+    // First click changes sort field to 'name' (from default 'code')
+    fireEvent.click(screen.getByTestId('sort-trigger'));
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-field')).toHaveTextContent('name');
+      expect(screen.getByTestId('sort-direction')).toHaveTextContent('asc');
+    });
+    // Second click on same field toggles direction to 'desc'
+    fireEvent.click(screen.getByTestId('sort-trigger'));
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-direction')).toHaveTextContent('desc');
+    });
+  });
+
+  it('shows Refreshing... text while rates are being refreshed', async () => {
+    let resolveRefresh!: (v: any) => void;
+    mockRefreshRates.mockReturnValue(new Promise((res) => { resolveRefresh = res; }));
+    render(<CurrenciesPage />);
+    await waitFor(() => expect(screen.getByText('Refresh Rates')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Refresh Rates'));
+    await waitFor(() => {
+      expect(screen.getByText('Refreshing...')).toBeInTheDocument();
+    });
+    resolveRefresh({ updated: 1, failed: 0 });
+    await waitFor(() => {
+      expect(screen.getByText('Refresh Rates')).toBeInTheDocument();
+    });
+  });
+
+  it('handles null summary from refreshRates', async () => {
+    mockRefreshRates.mockResolvedValueOnce(null);
+    render(<CurrenciesPage />);
+    await waitFor(() => expect(screen.getByText('Refresh Rates')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Refresh Rates'));
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Exchange rates refreshed: 0 pairs updated');
+    });
+  });
+
+  it('sorts by symbol when sort-trigger-symbol is clicked', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => expect(screen.getByTestId('sort-trigger-symbol')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('sort-trigger-symbol'));
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-field')).toHaveTextContent('symbol');
+    });
+  });
+
+  it('sorts by rate when sort-trigger-rate is clicked', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => expect(screen.getByTestId('sort-trigger-rate')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('sort-trigger-rate'));
+    await waitFor(() => {
+      expect(screen.getByTestId('sort-field')).toHaveTextContent('rate');
+    });
+  });
+
+  it('opens edit modal when edit button is clicked', async () => {
+    render(<CurrenciesPage />);
+    await waitFor(() => expect(screen.getByTestId('currency-row-CAD')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('edit-CAD'));
+    await waitFor(() => {
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
+      expect(screen.getByText('Edit Currency')).toBeInTheDocument();
+    });
+  });
+
 });

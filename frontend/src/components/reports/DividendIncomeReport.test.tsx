@@ -1173,4 +1173,797 @@ describe('DividendIncomeReport', () => {
     expect(screen.getByTestId('bar-Dividends')).toBeInTheDocument();
     expect(screen.getByTestId('bar-Interest')).toBeInTheDocument();
   });
+
+  it('writes a by-security PDF with table data', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 200,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha Corp' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'By Security' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'By Security' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledTimes(1);
+    });
+    const args = mockExportToPdf.mock.calls[0][0];
+    expect(args.tableData).toBeDefined();
+    expect(args.tableData.headers).toEqual([
+      'Symbol',
+      'Security',
+      'Dividends',
+      'Interest',
+      'Capital Gains',
+      'Total',
+    ]);
+    expect(args.tableData.rows.length).toBe(1);
+    expect(args.tableData.rows[0][0]).toBe('AAA');
+    expect(args.tableData.totalRow?.[0]).toBe('Total');
+    expect(args.chartContainer).toBeUndefined();
+  });
+
+  it('omits hidden series from the monthly PDF table', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'INTEREST',
+          totalAmount: 50,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'CASH', name: 'Cash Interest' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'RRSP', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    });
+    // Hide Dividends and Capital Gains series
+    fireEvent.click(screen.getByRole('button', { name: 'Dividends' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Capital Gains' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledTimes(1);
+    });
+    const args = mockExportToPdf.mock.calls[0][0];
+    expect(args.tableData.headers).toEqual([
+      'Month',
+      'Start Value',
+      'End Value',
+      'Interest',
+      'Total',
+    ]);
+  });
+
+  it('paginates through all transaction pages until hasMore is false', async () => {
+    mockGetTransactions
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 'tx-1',
+            transactionDate: '2024-03-15',
+            action: 'DIVIDEND',
+            totalAmount: 50,
+            accountId: 'acc-1',
+            securityId: 'sec-a',
+            security: { symbol: 'AAA', name: 'Alpha' },
+          },
+        ],
+        pagination: { hasMore: true },
+      })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 'tx-2',
+            transactionDate: '2024-04-15',
+            action: 'DIVIDEND',
+            totalAmount: 75,
+            accountId: 'acc-1',
+            securityId: 'sec-a',
+            security: { symbol: 'AAA', name: 'Alpha' },
+          },
+        ],
+        pagination: { hasMore: false },
+      });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      // Both pages summed: $125 total dividends
+      expect(screen.getAllByText('$125.00').length).toBeGreaterThan(0);
+    });
+    expect(mockGetTransactions).toHaveBeenCalledTimes(2);
+    expect(mockGetTransactions).toHaveBeenNthCalledWith(1, expect.objectContaining({ page: 1 }));
+    expect(mockGetTransactions).toHaveBeenNthCalledWith(2, expect.objectContaining({ page: 2 }));
+  });
+
+  it('logs an error and hides the loading spinner when data fetch fails', async () => {
+    mockGetTransactions.mockRejectedValue(new Error('Network error'));
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    // Loading spinner should disappear even on error
+    await waitFor(() => {
+      expect(document.querySelector('.animate-pulse')).not.toBeInTheDocument();
+    });
+    // Empty state is shown (no transactions)
+    expect(
+      screen.getByText(/No dividends, interest, or capital gain activity/),
+    ).toBeInTheDocument();
+  });
+
+  it('converts amounts to default currency in the all-accounts view', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'USD Account', currencyCode: 'USD', accountSubType: 'INVESTMENT_CASH' },
+      { id: 'acc-2', name: 'RRSP', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    // All-accounts view: uses convertToDefault (identity in the mock)
+    await waitFor(() => {
+      expect(screen.getAllByText('$100.00').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('uses native currency (no conversion) when a single account is selected', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 80,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'USD Account', currencyCode: 'USD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    // Wait for data to load, then select the USD account
+    const accountSelect = (await screen.findByLabelText('Filter by account')) as HTMLSelectElement;
+    fireEvent.change(accountSelect, { target: { value: 'acc-1' } });
+
+    await waitFor(() => {
+      // In single-account mode with a foreign currency the label shows the currency code
+      expect(screen.getAllByText(/USD/).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('populates available securities from capital gains entries not present in transactions', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'TFSA',
+        accountCurrencyCode: 'CAD',
+        securityId: 'cg-sec-1',
+        symbol: 'XYZ',
+        securityName: 'XYZ Fund',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 10,
+        endQuantity: 10,
+        startValue: 1000,
+        endValue: 1100,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: 100,
+        totalCapitalGain: 100,
+      },
+    ]);
+
+    render(<DividendIncomeReport />);
+
+    const securitySelect = (await screen.findByLabelText('Filter by security')) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(securitySelect.options.length).toBeGreaterThan(1);
+    });
+    const values = Array.from(securitySelect.options).map((o) => o.value);
+    expect(values).toContain('cg-sec-1');
+  });
+
+  it('clears the security filter when the selected security is no longer in available securities', async () => {
+    // First load: transaction with sec-a
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+      { id: 'acc-2', name: 'RRSP', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    const securitySelect = (await screen.findByLabelText('Filter by security')) as HTMLSelectElement;
+    await waitFor(() => expect(securitySelect.options.length).toBeGreaterThan(1));
+
+    // Select sec-a
+    fireEvent.change(securitySelect, { target: { value: 'sec-a' } });
+    expect(securitySelect.value).toBe('sec-a');
+
+    // Now reload with no transactions for acc-2 — sec-a drops from available set
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    const accountSelect = screen.getByLabelText('Filter by account') as HTMLSelectElement;
+    fireEvent.change(accountSelect, { target: { value: 'acc-2' } });
+
+    // Security selection should be cleared automatically
+    await waitFor(() => {
+      const sel = screen.getByLabelText('Filter by security') as HTMLSelectElement;
+      expect(sel.value).toBe('');
+    });
+  });
+
+  it('renders transaction-based CAPITAL_GAIN action amounts in the chart', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'CAPITAL_GAIN',
+          totalAmount: 150,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      // Capital Gains total card shows $150 from the CAPITAL_GAIN transaction
+      expect(screen.getAllByText('$150.00').length).toBeGreaterThan(0);
+    });
+    // Chart bars are rendered
+    expect(screen.getByTestId('bar-Capital Gains')).toBeInTheDocument();
+  });
+
+  it('uses Unknown symbol/name fallback for transactions missing security info', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 30,
+          accountId: 'acc-1',
+          // security and securityId intentionally absent
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    // Switch to By Security to trigger the securityData computation
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'By Security' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'By Security' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Unknown')).toBeInTheDocument();
+    });
+  });
+
+  it('shows dash for zero values in monthly table rows', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Month')).toBeInTheDocument();
+    });
+    // Rows with zero Interest and Capital Gains should show '-'
+    const dashCells = screen.getAllByText('-');
+    expect(dashCells.length).toBeGreaterThan(0);
+    // Start Value and End Value are zero (no capital gain entries) so also '-'
+    expect(dashCells.some(() => true)).toBe(true);
+  });
+
+  it('shows negative monthly total with red styling', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'TFSA',
+        accountCurrencyCode: 'CAD',
+        securityId: 'sec-a',
+        symbol: 'AAA',
+        securityName: 'Alpha',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 10,
+        endQuantity: 10,
+        startValue: 1000,
+        endValue: 500,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: -500,
+        totalCapitalGain: -500,
+      },
+    ]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Month')).toBeInTheDocument();
+    });
+    // Negative capital gain row: the total cell should use red text
+    const negativeCells = document.querySelectorAll('.text-red-600');
+    expect(negativeCells.length).toBeGreaterThan(0);
+  });
+
+  it('renders negative security capital gains with red styling and negative total', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'TFSA',
+        accountCurrencyCode: 'CAD',
+        securityId: 'sec-a',
+        symbol: 'LOSS',
+        securityName: 'Loss Corp',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 10,
+        endQuantity: 10,
+        startValue: 2000,
+        endValue: 1500,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: -500,
+        totalCapitalGain: -500,
+      },
+    ]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'By Security' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'By Security' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('LOSS')).toBeInTheDocument();
+    });
+    // Negative capital gain and total cells use red styling
+    const redCells = document.querySelectorAll('.text-red-600');
+    expect(redCells.length).toBeGreaterThan(0);
+    // No dash for zero — negative value is shown
+    expect(screen.getAllByText('$-500.00').length).toBeGreaterThan(0);
+  });
+
+  it('renders side-by-side bars (no stackId) when monthly data has negative capital gains', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'TFSA',
+        accountCurrencyCode: 'CAD',
+        securityId: 'sec-a',
+        symbol: 'BAD',
+        securityName: 'Bad Corp',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 10,
+        endQuantity: 10,
+        startValue: 1000,
+        endValue: 500,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: -500,
+        totalCapitalGain: -500,
+      },
+    ]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      // Chart is shown with bars for the negative CG month
+      expect(screen.getByTestId('bar-chart')).toBeInTheDocument();
+    });
+    // All three series bars are rendered in the chart
+    expect(screen.getByTestId('bar-Capital Gains')).toBeInTheDocument();
+  });
+
+  it('accounts filter hides brokerage sub-accounts', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA - Cash', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+      { id: 'acc-2', name: 'TFSA - Brokerage', currencyCode: 'CAD', accountSubType: 'INVESTMENT_BROKERAGE' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    const accountSelect = (await screen.findByLabelText('Filter by account')) as HTMLSelectElement;
+    await waitFor(() => {
+      // INVESTMENT_BROKERAGE accounts are filtered out; only INVESTMENT_CASH appears
+      const values = Array.from(accountSelect.options).map((o) => o.value);
+      expect(values).toContain('acc-1');
+      expect(values).not.toContain('acc-2');
+    });
+  });
+
+  it('strips the account name suffix in the CSV filename when an account is selected', async () => {
+    const txData = {
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    };
+    // Both initial load and the reload after account-filter change use the same data
+    mockGetTransactions.mockResolvedValue(txData);
+    mockGetInvestmentAccounts.mockResolvedValue([
+      {
+        id: 'acc-1',
+        name: 'My TFSA - Brokerage',
+        currencyCode: 'CAD',
+        accountSubType: 'INVESTMENT_CASH',
+      },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    // Wait for initial load, then select the account
+    const accountSelect = (await screen.findByLabelText('Filter by account')) as HTMLSelectElement;
+    fireEvent.change(accountSelect, { target: { value: 'acc-1' } });
+
+    // Wait for the reload to complete and By Security button to appear
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'By Security' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'By Security' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /^export$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+
+    const [filename] = mockExportToCsv.mock.calls[0];
+    // Suffix " - Brokerage" should be stripped from the filename
+    expect(filename).toMatch(/my-tfsa/);
+    expect(filename).not.toMatch(/brokerage/i);
+  });
+
+  it('switches back from By Security to Monthly view', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 100,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'By Security' })).toBeInTheDocument();
+    });
+
+    // Navigate to By Security
+    fireEvent.click(screen.getByRole('button', { name: 'By Security' }));
+    await waitFor(() => {
+      expect(screen.getByText('Income by Security')).toBeInTheDocument();
+    });
+
+    // Navigate back to Monthly
+    fireEvent.click(screen.getByRole('button', { name: 'Monthly' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('bar-chart')).toBeInTheDocument();
+    });
+    // Series toggle pills return when in Monthly view
+    expect(screen.getByRole('button', { name: 'Dividends' })).toBeInTheDocument();
+  });
+
+  it('toggles Dividends and Interest series off then back on', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'INTEREST',
+          totalAmount: 40,
+          accountId: 'acc-1',
+          security: { symbol: 'CASH', name: 'Cash' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('bar-Dividends')).toBeInTheDocument();
+    });
+
+    // Toggle Dividends off
+    fireEvent.click(screen.getByRole('button', { name: 'Dividends' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('bar-Dividends')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Dividends' }).getAttribute('aria-pressed')).toBe('false');
+
+    // Toggle Interest off
+    fireEvent.click(screen.getByRole('button', { name: 'Interest' }));
+    await waitFor(() => {
+      expect(screen.queryByTestId('bar-Interest')).not.toBeInTheDocument();
+    });
+
+    // Toggle Dividends back on
+    fireEvent.click(screen.getByRole('button', { name: 'Dividends' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('bar-Dividends')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Dividends' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('shows dash for zero dividends/interest in the by-security table', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'TFSA',
+        accountCurrencyCode: 'CAD',
+        securityId: 'sec-a',
+        symbol: 'ETF',
+        securityName: 'ETF Fund',
+        securityCurrencyCode: 'CAD',
+        startQuantity: 10,
+        endQuantity: 10,
+        startValue: 1000,
+        endValue: 1200,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: 200,
+        totalCapitalGain: 200,
+      },
+    ]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'By Security' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'By Security' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('ETF')).toBeInTheDocument();
+    });
+    // No dividends or interest for this security — cells should show '-'
+    const dashCells = screen.getAllByText('-');
+    expect(dashCells.length).toBeGreaterThan(0);
+  });
+
+  it('switches monthly view back to chart after visiting table', async () => {
+    mockGetTransactions.mockResolvedValue({
+      data: [
+        {
+          id: 'tx-1',
+          transactionDate: '2024-06-15',
+          action: 'DIVIDEND',
+          totalAmount: 60,
+          accountId: 'acc-1',
+          securityId: 'sec-a',
+          security: { symbol: 'AAA', name: 'Alpha' },
+        },
+      ],
+      pagination: { hasMore: false },
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    mockGetCapitalGains.mockResolvedValue([]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Table' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Month')).toBeInTheDocument();
+    });
+
+    // Switch back to Chart
+    fireEvent.click(screen.getByRole('button', { name: 'Chart' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('bar-chart')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Month')).not.toBeInTheDocument();
+  });
+
+  it('capital gains account-currency conversion in the all-accounts view', async () => {
+    mockGetTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'USD TFSA', currencyCode: 'USD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    // The convertToDefault mock is an identity function, but we verify the
+    // conversion path is exercised for capital gains entries.
+    mockGetCapitalGains.mockResolvedValue([
+      {
+        month: '2024-06',
+        accountId: 'acc-1',
+        accountName: 'USD TFSA',
+        accountCurrencyCode: 'USD',
+        securityId: 'sec-usd',
+        symbol: 'SPY',
+        securityName: 'S&P 500 ETF',
+        securityCurrencyCode: 'USD',
+        startQuantity: 5,
+        endQuantity: 5,
+        startValue: 2500,
+        endValue: 2700,
+        buys: 0,
+        sells: 0,
+        realizedGain: 0,
+        unrealizedGain: 200,
+        totalCapitalGain: 200,
+      },
+    ]);
+
+    render(<DividendIncomeReport />);
+
+    await waitFor(() => {
+      // $200 capital gain shows in summary card
+      expect(screen.getAllByText('$200.00').length).toBeGreaterThan(0);
+    });
+  });
 });

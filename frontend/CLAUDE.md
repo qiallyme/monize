@@ -11,7 +11,7 @@ npm run lint               # ESLint
 npm run type-check         # tsc --noEmit
 npm run test               # Vitest (single run)
 npm run test:watch         # Vitest (watch mode)
-npm run test:cov           # Coverage report (83% lines, 81% stmts, 78% funcs, 73% branches; goal 85%)
+npm run test:cov           # Coverage report (91% lines, 90% stmts, 87% funcs, 85% branches)
 ```
 
 ## Layout
@@ -22,7 +22,7 @@ npm run test:cov           # Coverage report (83% lines, 81% stmts, 78% funcs, 7
 
 - **Path alias:** `@/*` maps to `src/*` (tsconfig + Vitest resolve alias)
 - **TypeScript:** ES2017 target, strict mode, bundler module resolution, React JSX
-- **Vitest:** jsdom environment, 30s timeout, V8 coverage provider; thresholds 83% lines, 81% statements, 78% functions, 73% branches (raise toward 85% as coverage grows)
+- **Vitest:** jsdom environment, 30s timeout, V8 coverage provider; thresholds 91% lines, 90% statements, 87% functions, 85% branches
 - **Tailwind CSS v4:** Via `@tailwindcss/postcss` in `postcss.config.js`, `@import "tailwindcss"` in `globals.css`
 - **Next.js:** Standalone output (Docker), strict mode, security headers in `next.config.js`
 
@@ -82,6 +82,16 @@ it('renders data', async () => {
 ```
 
 Wrap user interactions that trigger async state updates: `await act(async () => { fireEvent.click(button); });`
+
+When a mock rejects a Promise, the component's error handler runs in a subsequent microtask after `act()` resolves. Add a flush after the interaction to drain it:
+
+```typescript
+await act(async () => { fireEvent.click(runBtn); });
+await act(async () => {}); // flush pending rejection handlers
+await waitFor(() => expect(screen.getByText('Error message')).toBeInTheDocument());
+```
+
+Never use synchronous `act(() => {...})` for calls that trigger async side-effects — always `await act(async () => {...})`.
 
 ## Testing Conventions
 

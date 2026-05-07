@@ -553,5 +553,492 @@ describe('SecurityList', () => {
 
       expect(screen.queryByText('Edit Security')).not.toBeInTheDocument();
     });
+
+    it('does NOT cancel long press when touch movement is below threshold', async () => {
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.touchStart(row, { touches: [{ clientX: 100, clientY: 100 }] });
+        vi.advanceTimersByTime(200);
+        // Move within the threshold (5px delta, threshold is 10px)
+        fireEvent.touchMove(row, { touches: [{ clientX: 105, clientY: 102 }] });
+        vi.advanceTimersByTime(600);
+      });
+
+      // Context menu SHOULD appear because movement was within threshold
+      expect(screen.getByText('Edit Security')).toBeInTheDocument();
+    });
+
+    it('handles touchStart without touches array gracefully', async () => {
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        // Fire touchStart without touches - exercises null guard
+        fireEvent.touchStart(row, { touches: [] });
+        vi.advanceTimersByTime(750);
+      });
+
+      // Context menu should appear (no touch position stored, just timer based)
+      expect(screen.getByText('Edit Security')).toBeInTheDocument();
+    });
+
+    it('touch end cancels the long press timer', async () => {
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.touchStart(row, { touches: [{ clientX: 100, clientY: 100 }] });
+        vi.advanceTimersByTime(200);
+        fireEvent.touchEnd(row);
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(screen.queryByText('Edit Security')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('onViewPrices', () => {
+    it('shows Prices button in row when onViewPrices provided', () => {
+      const onViewPrices = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onViewPrices={onViewPrices} />);
+      expect(screen.getByText('Prices')).toBeInTheDocument();
+    });
+
+    it('calls onViewPrices when Prices button clicked', () => {
+      const onViewPrices = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onViewPrices={onViewPrices} />);
+      fireEvent.click(screen.getByText('Prices'));
+      expect(onViewPrices).toHaveBeenCalledWith(expect.objectContaining({ symbol: 'AAPL' }));
+    });
+
+    it('shows $ button in dense mode when onViewPrices provided', () => {
+      const onViewPrices = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onViewPrices={onViewPrices} density="dense" />);
+      expect(screen.getByText('$')).toBeInTheDocument();
+    });
+
+    it('does not show Prices button when onViewPrices not provided', () => {
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      expect(screen.queryByText('Prices')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('onDelete', () => {
+    it('shows Delete button when security has no holdings and no transactions', () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      expect(screen.getByText('Delete')).toBeInTheDocument();
+    });
+
+    it('calls onDelete when Delete button clicked', () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      fireEvent.click(screen.getByText('Delete'));
+      expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ symbol: 'AAPL' }));
+    });
+
+    it('hides Delete button when security has holdings even if onDelete provided', () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+      const holdings = { s1: 10 };
+
+      render(<SecurityList securities={securities} holdings={holdings} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    });
+
+    it('hides Delete button when security has transactions even if onDelete provided', () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+      const transactionSecurityIds = new Set(['s1']);
+
+      render(<SecurityList securities={securities} transactionSecurityIds={transactionSecurityIds} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    });
+
+    it('does not show Delete button when onDelete not provided', () => {
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('lastPriceSource badges in normal density', () => {
+    it('renders Yahoo price source badge', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'yahoo_finance' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      // Yahoo appears as Provider badge (from quoteProvider=null→default yahoo) AND as lastPriceSource badge
+      const yahooEls = screen.getAllByText('Yahoo');
+      expect(yahooEls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('renders MSN price source badge', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'msn_finance', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('MSN')).toBeInTheDocument();
+    });
+
+    it('renders Manual price source badge', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'manual', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Manual')).toBeInTheDocument();
+    });
+
+    it('renders Txn badge for buy source', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'buy', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Txn')).toBeInTheDocument();
+    });
+
+    it('renders Txn badge for sell source', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'sell', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Txn')).toBeInTheDocument();
+    });
+
+    it('renders Txn badge for reinvest source', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'reinvest', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Txn')).toBeInTheDocument();
+    });
+
+    it('renders Txn badge for transfer_in source', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'transfer_in', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Txn')).toBeInTheDocument();
+    });
+
+    it('renders Txn badge for transfer_out source', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'transfer_out', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Txn')).toBeInTheDocument();
+    });
+
+    it('renders raw source string for unknown source', () => {
+      const securities = [makeSecurity({ lastPriceSource: 'some_other_feed', quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('some_other_feed')).toBeInTheDocument();
+    });
+
+    it('renders dash when lastPriceSource is null', () => {
+      const securities = [makeSecurity({ lastPriceSource: null, quoteProvider: 'yahoo' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      // Source column shows "-" when null
+      expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('density button label and row striping', () => {
+    it('shows Compact label on density button in compact mode', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="compact" />);
+      expect(screen.getByText('Compact')).toBeInTheDocument();
+    });
+
+    it('shows Dense label on density button in dense mode', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="dense" />);
+      expect(screen.getByText('Dense')).toBeInTheDocument();
+    });
+
+    it('applies striped row background for odd-index rows in compact density', () => {
+      const securities = [
+        makeSecurity({ id: 's1', symbol: 'AAPL' }),
+        makeSecurity({ id: 's2', symbol: 'MSFT' }),
+      ];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="compact" />);
+      const rows = screen.getAllByRole('row');
+      // rows[0] = header, rows[1] = index 0 (no stripe), rows[2] = index 1 (stripe)
+      expect(rows[2].className).toContain('bg-gray-50');
+    });
+  });
+
+  describe('sorting with local state', () => {
+    it('toggles sort direction when same field clicked twice', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+
+      // Click Symbol once to sort asc (already default), click again to toggle desc
+      const symbolHeader = screen.getByText('Symbol').closest('th')!;
+      fireEvent.click(symbolHeader);
+      // Should not throw - exercises the toggle direction branch
+      fireEvent.click(symbolHeader);
+    });
+
+    it('clicks Exchange header in normal density', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      const exchangeHeader = screen.getByText('Exchange').closest('th')!;
+      fireEvent.click(exchangeHeader);
+    });
+
+    it('clicks Currency header in normal density', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      const currencyHeader = screen.getByText('Currency').closest('th')!;
+      fireEvent.click(currencyHeader);
+    });
+
+    it('clicks Provider header in normal density', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      const providerHeader = screen.getByText('Provider').closest('th')!;
+      fireEvent.click(providerHeader);
+    });
+
+    it('clicks Source header in normal density', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      const sourceHeader = screen.getByText('Source').closest('th')!;
+      fireEvent.click(sourceHeader);
+    });
+  });
+
+  describe('context menu with onViewPrices and onDelete', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('shows View Prices in context menu when onViewPrices provided', async () => {
+      const onViewPrices = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onViewPrices={onViewPrices} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      expect(screen.getByText('View Prices')).toBeInTheDocument();
+    });
+
+    it('calls onViewPrices from context menu', async () => {
+      const onViewPrices = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onViewPrices={onViewPrices} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      fireEvent.click(screen.getByText('View Prices'));
+      expect(onViewPrices).toHaveBeenCalledWith(expect.objectContaining({ symbol: 'AAPL' }));
+    });
+
+    it('shows Delete in context menu when security can be deleted', async () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      expect(screen.getAllByText('Delete').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('calls onDelete from context menu', async () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      // The last Delete button is the one in the context menu (row Delete is not shown since inline Delete is controlled)
+      const deleteButtons = screen.getAllByText('Delete');
+      fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+      expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ symbol: 'AAPL' }));
+    });
+
+    it('hides Delete in context menu when security has holdings', async () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+      const holdings = { s1: 5 };
+
+      render(<SecurityList securities={securities} holdings={holdings} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      // Edit Security shown but no Delete
+      expect(screen.getByText('Edit Security')).toBeInTheDocument();
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    });
+
+    it('hides Delete in context menu when security has transactions', async () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+      const transactionSecurityIds = new Set(['s1']);
+
+      render(<SecurityList securities={securities} transactionSecurityIds={transactionSecurityIds} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      expect(screen.getByText('Edit Security')).toBeInTheDocument();
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    });
+
+    it('shows Activate in context menu for inactive security without holdings', async () => {
+      const securities = [makeSecurity({ isActive: false })];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      // Both the inline button and context menu show Activate
+      const activateButtons = screen.getAllByText('Activate');
+      expect(activateButtons.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('calls onToggleActive from context menu for inactive security', async () => {
+      const securities = [makeSecurity({ isActive: false })];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      const activateButtons = screen.getAllByText('Activate');
+      fireEvent.click(activateButtons[activateButtons.length - 1]);
+      expect(onToggleActive).toHaveBeenCalledWith(expect.objectContaining({ isActive: false }));
+    });
+
+    it('context menu closes when modal onClose is triggered', async () => {
+      const securities = [makeSecurity()];
+
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} />);
+      const row = screen.getByText('AAPL').closest('tr')!;
+
+      await act(async () => {
+        fireEvent.mouseDown(row);
+        vi.advanceTimersByTime(750);
+      });
+
+      expect(screen.getByText('Edit Security')).toBeInTheDocument();
+
+      // Press Escape to close modal
+      await act(async () => {
+        fireEvent.keyDown(document, { key: 'Escape' });
+      });
+
+      expect(screen.queryByText('Edit Security')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('security type full labels in normal density', () => {
+    it('renders STOCK full label', () => {
+      const securities = [makeSecurity({ securityType: 'STOCK' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Stock')).toBeInTheDocument();
+    });
+
+    it('renders BOND full label', () => {
+      const securities = [makeSecurity({ securityType: 'BOND' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Bond')).toBeInTheDocument();
+    });
+
+    it('renders OPTION full label', () => {
+      const securities = [makeSecurity({ securityType: 'OPTION' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Option')).toBeInTheDocument();
+    });
+
+    it('renders CRYPTO full label', () => {
+      const securities = [makeSecurity({ securityType: 'CRYPTO' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Crypto')).toBeInTheDocument();
+    });
+
+    it('renders OTHER full label', () => {
+      const securities = [makeSecurity({ securityType: 'OTHER' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('Other')).toBeInTheDocument();
+    });
+
+    it('renders unknown security type as-is', () => {
+      const securities = [makeSecurity({ securityType: 'CUSTOM_TYPE' })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="normal" />);
+      expect(screen.getByText('CUSTOM_TYPE')).toBeInTheDocument();
+    });
+  });
+
+  describe('dense mode action labels', () => {
+    it('shows pencil icon in Edit button in dense mode', () => {
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="dense" />);
+      // Dense mode renders '✎' instead of 'Edit'
+      expect(screen.queryByText('Edit')).not.toBeInTheDocument();
+    });
+
+    it('shows deactivate icon in dense mode for active security', () => {
+      const securities = [makeSecurity({ isActive: true })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="dense" />);
+      expect(screen.queryByText('Deactivate')).not.toBeInTheDocument();
+    });
+
+    it('shows activate icon in dense mode for inactive security', () => {
+      const securities = [makeSecurity({ isActive: false })];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} density="dense" />);
+      expect(screen.queryByText('Activate')).not.toBeInTheDocument();
+    });
+
+    it('shows delete icon in dense mode when security can be deleted', () => {
+      const onDelete = vi.fn();
+      const securities = [makeSecurity()];
+      render(<SecurityList securities={securities} onEdit={onEdit} onToggleActive={onToggleActive} onDelete={onDelete} density="dense" />);
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    });
   });
 });

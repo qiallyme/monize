@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, fireEvent, act } from '@/test/render';
+import toast from 'react-hot-toast';
 import BudgetDetailPage from './page';
 
 // Mock next/navigation
@@ -309,5 +310,76 @@ describe('BudgetDetailPage', () => {
     capturedOnCategoryClick!('non-existent-bc');
 
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('navigates to edit page when Edit button is clicked', async () => {
+    render(<BudgetDetailPage />);
+    await waitFor(() => expect(screen.getByText('Edit')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Edit'));
+    expect(mockPush).toHaveBeenCalledWith('/budgets/budget-1/edit');
+  });
+
+  it('navigates to budgets list when Back button is clicked', async () => {
+    render(<BudgetDetailPage />);
+    await waitFor(() => expect(screen.getByText('Back')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Back'));
+    expect(mockPush).toHaveBeenCalledWith('/budgets');
+  });
+
+  it('shows delete confirm dialog when Delete button is clicked', async () => {
+    render(<BudgetDetailPage />);
+    await waitFor(() => expect(screen.getByText('Delete')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Delete'));
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
+    });
+  });
+
+  it('deletes budget and navigates to list when confirmed', async () => {
+    mockDeleteBudget.mockResolvedValue(undefined);
+    render(<BudgetDetailPage />);
+    await waitFor(() => expect(screen.getByText('Delete')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Delete'));
+    await waitFor(() => expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-btn'));
+    });
+    await waitFor(() => {
+      expect(mockDeleteBudget).toHaveBeenCalledWith('budget-1');
+      expect(mockPush).toHaveBeenCalledWith('/budgets');
+    });
+  });
+
+  it('shows error toast when delete fails', async () => {
+    mockDeleteBudget.mockRejectedValueOnce(new Error('Delete failed'));
+    render(<BudgetDetailPage />);
+    await waitFor(() => expect(screen.getByText('Delete')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Delete'));
+    await waitFor(() => expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-btn'));
+    });
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+  });
+
+  it('closes delete dialog when Cancel is clicked', async () => {
+    render(<BudgetDetailPage />);
+    await waitFor(() => expect(screen.getByText('Delete')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Delete'));
+    await waitFor(() => expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('navigates to budgets when Back to Budgets is clicked in error state', async () => {
+    mockGetSummary.mockRejectedValue(new Error('Not found'));
+    render(<BudgetDetailPage />);
+    await waitFor(() => expect(screen.getByText('Back to Budgets')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Back to Budgets'));
+    expect(mockPush).toHaveBeenCalledWith('/budgets');
   });
 });

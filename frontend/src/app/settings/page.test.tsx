@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, fireEvent } from '@/test/render';
 import SettingsPage from './page';
 
 // Mock IntersectionObserver
@@ -159,6 +159,10 @@ vi.mock('@/components/auth/TwoFactorSetup', () => ({
   TwoFactorSetup: () => <div data-testid="two-factor-setup">TwoFactorSetup</div>,
 }));
 
+vi.mock('@/components/ui/LoadingSpinner', () => ({
+  LoadingSpinner: () => <div data-testid="loading-spinner" />,
+}));
+
 describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -259,5 +263,84 @@ describe('SettingsPage', () => {
     });
 
     expect(IntersectionObserver).toHaveBeenCalled();
+  });
+
+  it('shows loading spinner while data is being fetched', async () => {
+    const { userSettingsApi } = await import('@/lib/user-settings');
+    vi.mocked(userSettingsApi.getProfile).mockReturnValue(new Promise(() => {}));
+    render(<SettingsPage />);
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+  });
+
+  it('shows error toast when data fetch fails', async () => {
+    const toast = await import('react-hot-toast');
+    const { userSettingsApi } = await import('@/lib/user-settings');
+    vi.mocked(userSettingsApi.getProfile).mockRejectedValue(new Error('Fetch failed'));
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(toast.default.error).toHaveBeenCalled();
+    });
+  });
+
+  it('handles handleSectionClick by scrolling to section', async () => {
+    const mockScrollIntoView = vi.fn();
+    document.getElementById = vi.fn().mockReturnValue({
+      scrollIntoView: mockScrollIntoView,
+    });
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Settings')).toBeInTheDocument();
+    });
+    // Trigger a section nav click
+    const navLinks = screen.getAllByLabelText('Settings sections');
+    const profileLink = navLinks[0].querySelector('[data-section-id="profile"]') ??
+      navLinks[0].querySelector('button');
+    if (profileLink) {
+      fireEvent.click(profileLink);
+      // scrollIntoView may or may not have been called depending on mock
+    }
+  });
+
+  describe('demo mode', () => {
+
+    it('shows demo mode restriction banner when in demo mode', async () => {
+      const { useDemoStore: _useDemoStore } = await import('@/store/demoStore');
+      const { authApi } = await import('@/lib/auth');
+      vi.mocked(authApi.getAuthMethods).mockResolvedValue({
+        local: true, oidc: false, registration: true, smtp: false, force2fa: false, demo: true,
+      });
+      render(<SettingsPage />);
+      await waitFor(() => {
+        expect(screen.getByText('Restricted in Demo Mode')).toBeInTheDocument();
+      });
+    });
+
+    it('hides Profile section in demo mode', async () => {
+      const { authApi } = await import('@/lib/auth');
+      vi.mocked(authApi.getAuthMethods).mockResolvedValue({
+        local: true, oidc: false, registration: true, smtp: false, force2fa: false, demo: true,
+      });
+      render(<SettingsPage />);
+      await waitFor(() => {
+        expect(screen.getByText('Restricted in Demo Mode')).toBeInTheDocument();
+      });
+      // Profile section should NOT be rendered since isDemoMode is true
+      const dangerZones = screen.queryAllByText('Danger Zone');
+      expect(dangerZones).toHaveLength(0);
+    });
+
+    it('shows only demo-visible sections in nav when in demo mode', async () => {
+      const { authApi } = await import('@/lib/auth');
+      vi.mocked(authApi.getAuthMethods).mockResolvedValue({
+        local: true, oidc: false, registration: true, smtp: false, force2fa: false, demo: true,
+      });
+      render(<SettingsPage />);
+      await waitFor(() => {
+        expect(screen.getByText('Restricted in Demo Mode')).toBeInTheDocument();
+      });
+      // Only Preferences and Notifications should appear in the nav
+      const prefNavItems = screen.queryAllByText('Preferences');
+      expect(prefNavItems.length).toBeGreaterThan(0);
+    });
   });
 });

@@ -353,6 +353,24 @@ describe('evaluateExpression', () => {
     expect(evaluateExpression('2+3*4')).toBe(14);
     expect(evaluateExpression('10-2*3')).toBe(4);
   });
+
+  it('handles unary plus', () => {
+    expect(evaluateExpression('+5')).toBe(5);
+    expect(evaluateExpression('+10+20')).toBe(30);
+  });
+
+  it('returns undefined for non-finite result', () => {
+    // 10^309 exceeds Number.MAX_VALUE, parseFloat returns Infinity
+    expect(evaluateExpression('1' + '0'.repeat(309))).toBeUndefined();
+  });
+});
+
+describe('parseAmount – additional edge cases', () => {
+  it('returns undefined when filtered string produces NaN (e.g. multiple dots)', () => {
+    // '..' passes the empty/'.'/ '-' checks but parseFloat('..') = NaN
+    expect(parseAmount('..')).toBeUndefined();
+    expect(parseAmount('..5')).toBeUndefined();
+  });
 });
 
 describe('formatRelativeTime', () => {
