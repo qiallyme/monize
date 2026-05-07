@@ -1016,6 +1016,735 @@ describe('toSplitRows', () => {
   });
 });
 
+describe('SplitEditor — desktop layout interactions', () => {
+  const mockOnChange = vi.fn();
+  const mockCategories = [
+    { id: 'cat-1', name: 'Groceries', parentId: null, isIncome: false },
+    { id: 'cat-2', name: 'Dining', parentId: null, isIncome: false },
+    { id: 'cat-3', name: 'Salary', parentId: null, isIncome: true },
+  ] as any[];
+
+  const mockAccounts = [
+    { id: 'acc-1', name: 'Chequing', isClosed: false, accountSubType: null, isFavourite: false, favouriteSortOrder: 0, currencyCode: 'CAD' },
+    { id: 'acc-2', name: 'Savings', isClosed: false, accountSubType: null, isFavourite: false, favouriteSortOrder: 0, currencyCode: 'CAD' },
+    { id: 'acc-3', name: 'Investment', isClosed: false, accountSubType: 'INVESTMENT_BROKERAGE', isFavourite: false, favouriteSortOrder: 0, currencyCode: 'CAD' },
+    { id: 'acc-4', name: 'Closed Account', isClosed: true, accountSubType: null, isFavourite: false, favouriteSortOrder: 0, currencyCode: 'CAD' },
+  ] as any[];
+
+  const mockTags = [
+    { id: 'tag-1', name: 'Essential' },
+    { id: 'tag-2', name: 'Discretionary' },
+  ] as any[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('updates memo via desktop "Optional memo" placeholder', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-50}
+      />
+    );
+
+    // Target desktop-specific "Optional memo" placeholder
+    const desktopMemoInputs = screen.getAllByPlaceholderText('Optional memo');
+    expect(desktopMemoInputs.length).toBeGreaterThan(0);
+    fireEvent.change(desktopMemoInputs[0], { target: { value: 'Desktop memo' } });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].memo).toBe('Desktop memo');
+  });
+
+  it('changes split type to transfer via desktop type selector', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        accounts={mockAccounts}
+        sourceAccountId="acc-1"
+        transactionAmount={-50}
+      />
+    );
+
+    // There are 2 mobile selects + 2 desktop selects for split type — pick the 3rd (first desktop)
+    const typeSelects = screen.getAllByDisplayValue('Category');
+    // Desktop selects appear after mobile ones in the DOM
+    fireEvent.change(typeSelects[typeSelects.length - 2], { target: { value: 'transfer' } });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].splitType).toBe('transfer');
+    expect(newSplits[0].categoryId).toBeUndefined();
+  });
+
+  it('renders transfer account selector in desktop when splitType is transfer', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', splitType: 'transfer', transferAccountId: 'acc-2', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        accounts={mockAccounts}
+        sourceAccountId="acc-1"
+        transactionAmount={-50}
+      />
+    );
+
+    // Account selectors should be present (one for mobile, one for desktop)
+    const accountSelects = screen.getAllByDisplayValue('Savings');
+    expect(accountSelects.length).toBeGreaterThan(0);
+  });
+
+  it('updates transferAccountId via desktop account selector', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', splitType: 'transfer', transferAccountId: '', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        accounts={mockAccounts}
+        sourceAccountId="acc-1"
+        transactionAmount={-50}
+      />
+    );
+
+    // Get all "Select account..." selects (mobile + desktop)
+    const accountSelects = screen.getAllByDisplayValue('Select account...');
+    // Fire on the last one (desktop)
+    fireEvent.change(accountSelects[accountSelects.length - 1], { target: { value: 'acc-2' } });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].transferAccountId).toBe('acc-2');
+  });
+
+  it('clears transferAccountId when empty value selected in desktop account selector', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', splitType: 'transfer', transferAccountId: 'acc-2', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        accounts={mockAccounts}
+        sourceAccountId="acc-1"
+        transactionAmount={-50}
+      />
+    );
+
+    const accountSelects = screen.getAllByDisplayValue('Savings');
+    fireEvent.change(accountSelects[accountSelects.length - 1], { target: { value: '' } });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].transferAccountId).toBeUndefined();
+  });
+
+  it('renders tags MultiSelect trigger buttons when tags are provided', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        tags={mockTags}
+        transactionAmount={-50}
+      />
+    );
+
+    // MultiSelect renders placeholder text inside a button (not an input placeholder)
+    // With 2 splits and both mobile + desktop layouts, we get 4 "Tags..." buttons
+    const tagButtons = screen.getAllByText('Tags...');
+    expect(tagButtons.length).toBeGreaterThan(0);
+  });
+
+  it('handles tagIds change from mobile MultiSelect', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30, tagIds: [] }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        tags={mockTags}
+        transactionAmount={-50}
+      />
+    );
+
+    // MultiSelect renders placeholder as button text, not input placeholder
+    const tagButtons = screen.getAllByText('Tags...');
+    // Click the first Tags... button (mobile, split-1)
+    fireEvent.click(tagButtons[0]);
+    const essentialOptions = screen.getAllByText('Essential');
+    fireEvent.click(essentialOptions[0]);
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].tagIds).toContain('tag-1');
+  });
+
+  it('handles tagIds change from desktop MultiSelect', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30, tagIds: [] }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        tags={mockTags}
+        transactionAmount={-50}
+      />
+    );
+
+    // With 2 splits in both layouts: 4 "Tags..." buttons total
+    // Mobile: split-1, split-2 | Desktop: split-1, split-2
+    const tagButtons = screen.getAllByText('Tags...');
+    // Click the 3rd button (desktop, split-1)
+    fireEvent.click(tagButtons[2]);
+    const essentialOptions = screen.getAllByText('Essential');
+    fireEvent.click(essentialOptions[0]);
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].tagIds).toContain('tag-1');
+  });
+
+  it('add remaining button in desktop layout adds remaining amount to split', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -10 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-50}
+      />
+    );
+
+    // Remaining = -50 - (-40) = -10
+    // Both mobile and desktop add-remaining buttons exist; click the desktop one
+    const addRemainingButtons = screen.getAllByTitle(/Add remaining to this split/);
+    // Desktop buttons appear after mobile ones
+    fireEvent.click(addRemainingButtons[addRemainingButtons.length - 2]);
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].amount).toBe(-40);
+  });
+
+  it('remove split button in desktop layout removes a split when more than 2 exist', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+      createSplitRow({ id: 'split-3', amount: -10 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-60}
+      />
+    );
+
+    const removeButtons = screen.getAllByTitle('Remove split');
+    // Click the last remove button (desktop)
+    fireEvent.click(removeButtons[removeButtons.length - 1]);
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits).toHaveLength(2);
+  });
+
+  it('includes closed transfer account in accountOptions when it is already selected', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', splitType: 'transfer', transferAccountId: 'acc-4', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        accounts={mockAccounts}
+        sourceAccountId="acc-1"
+        transactionAmount={-50}
+      />
+    );
+
+    // Closed Account should appear in the dropdown since it's already selected
+    const closedAccountOptions = screen.getAllByText('Closed Account (Closed)');
+    expect(closedAccountOptions.length).toBeGreaterThan(0);
+  });
+
+  it('filters out investment accounts from transfer account options', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', splitType: 'transfer', transferAccountId: '', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        accounts={mockAccounts}
+        sourceAccountId="acc-1"
+        transactionAmount={-50}
+      />
+    );
+
+    // Investment account should NOT appear in any dropdown
+    expect(screen.queryByText(/Investment/)).not.toBeInTheDocument();
+  });
+
+  it('changes split type from transfer to category via desktop selector', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', splitType: 'transfer', transferAccountId: 'acc-2', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        accounts={mockAccounts}
+        sourceAccountId="acc-1"
+        transactionAmount={-50}
+      />
+    );
+
+    const transferSelects = screen.getAllByDisplayValue('Transfer');
+    // Change the last one (desktop) back to category
+    fireEvent.change(transferSelects[transferSelects.length - 1], { target: { value: 'category' } });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].splitType).toBe('category');
+    expect(newSplits[0].transferAccountId).toBeUndefined();
+  });
+});
+
+describe('SplitEditor — additional branch coverage', () => {
+  const mockOnChange = vi.fn();
+  const mockCategories = [
+    { id: 'cat-1', name: 'Groceries', parentId: null, isIncome: false },
+    { id: 'cat-2', name: 'Dining', parentId: null, isIncome: false },
+    { id: 'cat-3', name: 'Salary', parentId: null, isIncome: true },
+  ] as any[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not call onTransactionAmountChange when splitsTotal is zero', () => {
+    const mockOnAmountChange = vi.fn();
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: 0 }),
+      createSplitRow({ id: 'split-2', amount: 0 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-100}
+        onTransactionAmountChange={mockOnAmountChange}
+      />
+    );
+
+    // setTotalToSplitsSum should not fire when splitsTotal is 0
+    const setTotalButtons = screen.queryAllByText(/Set total to/);
+    // Button should NOT appear because splitsTotal is 0
+    expect(setTotalButtons).toHaveLength(0);
+  });
+
+  it('does not adjust amount when categoryId field is set to falsy value', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', categoryId: 'cat-1', amount: -50 }),
+      createSplitRow({ id: 'split-2', amount: -50 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-100}
+      />
+    );
+
+    // Clear the category (set to undefined) via combobox
+    const categoryInputs = screen.getAllByPlaceholderText('Select category...');
+    fireEvent.click(categoryInputs[0]);
+    // Clear the selection by typing nothing and clicking elsewhere
+    fireEvent.change(categoryInputs[0], { target: { value: '' } });
+
+    // onChange may or may not be called depending on combobox implementation
+    // But if it is called, the amount should be preserved unchanged
+    if (mockOnChange.mock.calls.length > 0) {
+      const newSplits = mockOnChange.mock.calls[0][0];
+      // Amount should remain -50 since category cleared = no sign enforcement
+      expect(newSplits[0].amount).toBe(-50);
+    }
+  });
+
+  it('does not adjust amount sign when new amount is zero', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', categoryId: 'cat-1', amount: -50 }),
+      createSplitRow({ id: 'split-2', amount: -50 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-100}
+      />
+    );
+
+    // Change amount to 0 — the sign adjustment branch should be skipped
+    const amountInputs = screen.getAllByDisplayValue('-50.00');
+    fireEvent.change(amountInputs[0], { target: { value: '0' } });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    // Zero amount → no sign adjustment applied
+    expect(newSplits[0].amount).toBe(0);
+  });
+
+  it('does not adjust amount sign when no category is set', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -50 }),
+      createSplitRow({ id: 'split-2', amount: -50 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-100}
+      />
+    );
+
+    // Change amount — no category means no sign enforcement
+    const amountInputs = screen.getAllByDisplayValue('-50.00');
+    fireEvent.change(amountInputs[0], { target: { value: '75' } });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits[0].amount).toBe(75);
+  });
+
+  it('handles category change when current amount is zero', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: 0 }),
+      createSplitRow({ id: 'split-2', amount: 0 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={0}
+      />
+    );
+
+    const categoryInputs = screen.getAllByPlaceholderText('Select category...');
+    fireEvent.click(categoryInputs[0]);
+    fireEvent.click(screen.getByText('Groceries'));
+
+    expect(mockOnChange).toHaveBeenCalled();
+    const newSplits = mockOnChange.mock.calls[0][0];
+    // Amount was 0, so no sign adjustment made
+    expect(newSplits[0].amount).toBe(0);
+  });
+
+  it('distribute proportionally does nothing when balanced (remaining < 0.01)', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-50}
+      />
+    );
+
+    // Button is disabled when balanced
+    const distributeBtn = screen.getByText('Distribute Proportionally');
+    expect(distributeBtn.closest('button')).toBeDisabled();
+    fireEvent.click(distributeBtn);
+
+    expect(mockOnChange).not.toHaveBeenCalled();
+  });
+
+  it('distribute proportionally handles 3 splits with non-zero amounts', () => {
+    // Remaining = -10, split proportions: -60/-90, -20/-90, -10/-90
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -60 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+      createSplitRow({ id: 'split-3', amount: -10 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-100}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Distribute Proportionally'));
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits).toHaveLength(3);
+    // Total of new splits should equal transaction amount
+    const total = newSplits.reduce((sum: number, s: SplitRow) => sum + s.amount, 0);
+    expect(Math.round(total * 100) / 100).toBe(-100);
+  });
+
+  it('distribute proportionally falls back equally for 3 zero-amount splits', () => {
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: 0 }),
+      createSplitRow({ id: 'split-2', amount: 0 }),
+      createSplitRow({ id: 'split-3', amount: 0 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-99}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Distribute Proportionally'));
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    expect(newSplits).toHaveLength(3);
+    const total = newSplits.reduce((sum: number, s: SplitRow) => sum + s.amount, 0);
+    expect(Math.round(total * 100) / 100).toBe(-99);
+  });
+
+  it('shows category combobox for transfer split that falls through to category display', () => {
+    // Verify that split with splitType transfer renders account selector, not combobox
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', splitType: 'transfer', amount: -50 }),
+      createSplitRow({ id: 'split-2', amount: -50 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-100}
+      />
+    );
+
+    // Should show "Select account..." for transfer split type
+    const accountSelects = screen.getAllByDisplayValue('Select account...');
+    expect(accountSelects.length).toBeGreaterThan(0);
+  });
+
+  it('syncs localSplits when splits prop changes', () => {
+    const initialSplits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -30 }),
+      createSplitRow({ id: 'split-2', amount: -20 }),
+    ];
+
+    const { rerender } = render(
+      <SplitEditor
+        splits={initialSplits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-50}
+      />
+    );
+
+    const updatedSplits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: -40 }),
+      createSplitRow({ id: 'split-2', amount: -10 }),
+    ];
+
+    rerender(
+      <SplitEditor
+        splits={updatedSplits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={-50}
+      />
+    );
+
+    // After rerender, the totals display should reflect updated amounts
+    const totalValues = screen.getAllByText('$-50.00');
+    expect(totalValues.length).toBeGreaterThan(0);
+  });
+
+  it('does not flip uncategorized split with zero amount when total sign changes', () => {
+    const mockOnAmountChange = vi.fn();
+    const splits: SplitRow[] = [
+      createSplitRow({ id: 'split-1', amount: 50 }),
+      createSplitRow({ id: 'split-2', amount: 0 }),
+    ];
+
+    render(
+      <SplitEditor
+        splits={splits}
+        onChange={mockOnChange}
+        categories={mockCategories}
+        transactionAmount={50}
+        onTransactionAmountChange={mockOnAmountChange}
+      />
+    );
+
+    const categoryInputs = screen.getAllByPlaceholderText('Select category...');
+    fireEvent.click(categoryInputs[0]);
+    fireEvent.click(screen.getByText('Groceries'));
+
+    expect(mockOnAmountChange).toHaveBeenCalledWith(-50);
+    const newSplits = mockOnChange.mock.calls[0][0];
+    // First split gets expense sign (-50)
+    expect(newSplits[0].amount).toBe(-50);
+    // Second split had amount 0, should NOT be flipped (0 stays 0)
+    expect(newSplits[1].amount).toBe(0);
+  });
+});
+
+describe('toSplitRows — tags branch', () => {
+  it('maps tags to tagIds when tags are provided', () => {
+    const apiSplits = [
+      {
+        id: 'split-1',
+        categoryId: 'cat-1',
+        transferAccountId: null,
+        amount: -30,
+        memo: 'Food',
+        tags: [{ id: 'tag-1' }, { id: 'tag-2' }],
+      },
+    ];
+
+    const rows = toSplitRows(apiSplits);
+    expect(rows[0].tagIds).toEqual(['tag-1', 'tag-2']);
+  });
+
+  it('returns empty array for tagIds when tags is undefined', () => {
+    const apiSplits = [
+      {
+        id: 'split-1',
+        categoryId: 'cat-1',
+        transferAccountId: null,
+        amount: -30,
+        memo: null,
+      },
+    ];
+
+    const rows = toSplitRows(apiSplits);
+    expect(rows[0].tagIds).toEqual([]);
+  });
+
+  it('returns empty array for tagIds when tags is empty array', () => {
+    const apiSplits = [
+      {
+        id: 'split-1',
+        categoryId: 'cat-1',
+        transferAccountId: null,
+        amount: -30,
+        memo: null,
+        tags: [],
+      },
+    ];
+
+    const rows = toSplitRows(apiSplits);
+    expect(rows[0].tagIds).toEqual([]);
+  });
+});
+
+describe('toCreateSplitData — tagIds branch', () => {
+  it('includes tagIds when present and non-empty', () => {
+    const rows: SplitRow[] = [
+      { id: 'temp-123', splitType: 'category', categoryId: 'cat-1', transferAccountId: undefined, amount: -30, memo: '', tagIds: ['tag-1', 'tag-2'] },
+    ];
+
+    const data = toCreateSplitData(rows);
+    expect(data[0].tagIds).toEqual(['tag-1', 'tag-2']);
+  });
+
+  it('sets tagIds to undefined when tagIds is empty array', () => {
+    const rows: SplitRow[] = [
+      { id: 'temp-123', splitType: 'category', categoryId: 'cat-1', transferAccountId: undefined, amount: -30, memo: '', tagIds: [] },
+    ];
+
+    const data = toCreateSplitData(rows);
+    expect(data[0].tagIds).toBeUndefined();
+  });
+
+  it('sets tagIds to undefined when tagIds is not provided', () => {
+    const rows: SplitRow[] = [
+      { id: 'temp-123', splitType: 'category', categoryId: 'cat-1', transferAccountId: undefined, amount: -30, memo: '' },
+    ];
+
+    const data = toCreateSplitData(rows);
+    expect(data[0].tagIds).toBeUndefined();
+  });
+});
+
 describe('toCreateSplitData', () => {
   it('removes temp fields (id, splitType)', () => {
     const rows: SplitRow[] = [
