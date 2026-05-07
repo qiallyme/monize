@@ -281,4 +281,56 @@ describe('BudgetWizard', () => {
 
     expect(screen.getByTestId('step-analysis')).toBeInTheDocument();
   });
+
+  it('calls onCancel when popstate event has no wizardStep in state', () => {
+    render(
+      <BudgetWizard
+        onComplete={mockOnComplete}
+        onCancel={mockOnCancel}
+        defaultCurrency="USD"
+      />,
+    );
+
+    // Simulate browser back past the wizard start (null state)
+    act(() => {
+      const popStateEvent = new PopStateEvent('popstate', { state: null });
+      window.dispatchEvent(popStateEvent);
+    });
+
+    expect(mockOnCancel).toHaveBeenCalled();
+  });
+
+  it('calls onCancel when popstate event state is empty object', () => {
+    render(
+      <BudgetWizard
+        onComplete={mockOnComplete}
+        onCancel={mockOnCancel}
+        defaultCurrency="USD"
+      />,
+    );
+
+    // Simulate popstate with state that has no wizardStep
+    act(() => {
+      const popStateEvent = new PopStateEvent('popstate', { state: {} });
+      window.dispatchEvent(popStateEvent);
+    });
+
+    expect(mockOnCancel).toHaveBeenCalled();
+  });
+
+  it('initializes categories from analysis successfully', () => {
+    render(
+      <BudgetWizard
+        onComplete={mockOnComplete}
+        onCancel={mockOnCancel}
+        defaultCurrency="USD"
+      />,
+    );
+
+    // Click analyze which triggers onAnalysisComplete
+    fireEvent.click(screen.getByTestId('analyze-btn'));
+    // Verify we advanced to categories step (analysis completed with categories)
+    expect(screen.getByTestId('step-categories')).toBeInTheDocument();
+  });
 });
+
