@@ -62,11 +62,12 @@ export const investmentsApi = {
     displayCurrency?: string;
   }): Promise<{
     points: Array<{ timestamp: string; value: number }>;
-    interval: '1m' | '5m' | '15m';
+    interval: '1m' | '2m' | '5m' | '15m' | '30m' | '60m' | '90m';
     currency: string;
     range: '1d' | '1w' | '1m';
     fetchedAt: string;
     skippedSymbols: string[];
+    failedSymbols: string[];
     fallbackToDaily: boolean;
   }> => {
     const response = await apiClient.get('/portfolio/intraday-value', { params });
@@ -154,11 +155,12 @@ export const investmentsApi = {
     return response.data;
   },
 
-  // Per-month capital gain breakdown (realized + unrealized) by security.
+  // Per-period capital gain breakdown (realized + unrealized) by security.
   getCapitalGains: async (params: {
     accountIds?: string;
     startDate: string;
     endDate: string;
+    granularity?: 'month' | 'day';
   }): Promise<CapitalGainEntry[]> => {
     const response = await apiClient.get<CapitalGainEntry[]>(
       '/investment-transactions/capital-gains',
@@ -332,7 +334,12 @@ export const investmentsApi = {
     }>;
     lastUpdated: string;
   }> => {
-    const response = await apiClient.post('/securities/prices/refresh');
+    // The default 10s axios timeout is too short for this endpoint -- it
+    // hits Yahoo Finance once per active security and can easily exceed
+    // 10s for larger catalogs. Give it 2 minutes.
+    const response = await apiClient.post('/securities/prices/refresh', undefined, {
+      timeout: 120_000,
+    });
     invalidateCache('investments:');
     return response.data;
   },
@@ -351,7 +358,11 @@ export const investmentsApi = {
     }>;
     lastUpdated: string;
   }> => {
-    const response = await apiClient.post('/securities/prices/refresh/selected', { securityIds });
+    const response = await apiClient.post(
+      '/securities/prices/refresh/selected',
+      { securityIds },
+      { timeout: 120_000 },
+    );
     invalidateCache('investments:');
     return response.data;
   },
