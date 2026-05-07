@@ -16,6 +16,7 @@ vi.mock("@/hooks/useNumberFormat", () => ({
   }),
 }));
 
+let mockIsValid = true;
 vi.mock("@/hooks/useDateRange", () => ({
   useDateRange: () => ({
     dateRange: "3m",
@@ -25,7 +26,7 @@ vi.mock("@/hooks/useDateRange", () => ({
     endDate: "",
     setEndDate: vi.fn(),
     resolvedRange: { start: "2025-01-01", end: "2025-03-31" },
-    isValid: true,
+    get isValid() { return mockIsValid; },
   }),
 }));
 
@@ -38,7 +39,25 @@ vi.mock("@/components/ui/DateRangeSelector", () => ({
 }));
 
 vi.mock("@/components/ui/ChartViewToggle", () => ({
-  ChartViewToggle: () => <div data-testid="chart-view-toggle" />,
+  ChartViewToggle: ({ onChange }: any) => (
+    <div data-testid="chart-view-toggle">
+      <button data-testid="toggle-bar" onClick={() => onChange("bar")}>Bar</button>
+      <button data-testid="toggle-pie" onClick={() => onChange("pie")}>Pie</button>
+    </div>
+  ),
+}));
+
+vi.mock("@/components/ui/ExportDropdown", () => ({
+  ExportDropdown: ({ onExportPdf }: any) => (
+    <div data-testid="export-dropdown">
+      <button data-testid="export-pdf" onClick={onExportPdf}>PDF</button>
+    </div>
+  ),
+}));
+
+const mockExportToPdf = vi.fn();
+vi.mock("@/lib/pdf-export", () => ({
+  exportToPdf: (...args: any[]) => mockExportToPdf(...args),
 }));
 
 vi.mock("recharts", () => ({
@@ -82,6 +101,7 @@ describe("SpendingByCategoryReport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPush.mockClear();
+    mockIsValid = true;
   });
 
   it("shows loading state initially", () => {
@@ -218,5 +238,132 @@ describe("SpendingByCategoryReport", () => {
     expect(mockPush).toHaveBeenCalledWith(
       "/transactions?categoryId=cat-1&startDate=2025-01-01&endDate=2025-03-31",
     );
+  });
+
+  it("does not navigate when legend button has no categoryId", async () => {
+    mockGetSpendingByCategory.mockResolvedValue({
+      data: [
+        { categoryId: "", categoryName: "Uncategorized2", total: 50, color: "" },
+      ],
+      totalSpending: 50,
+    });
+    render(<SpendingByCategoryReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Uncategorized2")).toBeInTheDocument();
+    });
+    const btn = screen.getByText("Uncategorized2").closest("button")!;
+    fireEvent.click(btn);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("switches to bar chart view when toggle is clicked", async () => {
+    mockGetSpendingByCategory.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Food", total: 300, color: "" },
+      ],
+      totalSpending: 300,
+    });
+    render(<SpendingByCategoryReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Food")).toBeInTheDocument();
+    });
+    // Initially shows pie chart
+    expect(screen.getByTestId("pie-chart")).toBeInTheDocument();
+    // Switch to bar
+    fireEvent.click(screen.getByTestId("toggle-bar"));
+    await waitFor(() => {
+      expect(screen.getByTestId("bar-chart")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pie-chart")).not.toBeInTheDocument();
+  });
+
+  it("switches back to pie chart view from bar view", async () => {
+    mockGetSpendingByCategory.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Food", total: 300, color: "" },
+      ],
+      totalSpending: 300,
+    });
+    render(<SpendingByCategoryReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Food")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("toggle-bar"));
+    await waitFor(() => {
+      expect(screen.getByTestId("bar-chart")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("toggle-pie"));
+    await waitFor(() => {
+      expect(screen.getByTestId("pie-chart")).toBeInTheDocument();
+    });
+  });
+
+  it("calls exportToPdf with legend items when data is present", async () => {
+    mockExportToPdf.mockResolvedValue(undefined);
+    mockGetSpendingByCategory.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Food", total: 300, color: "#ff0000" },
+        { categoryId: "cat-2", categoryName: "Rent", total: 700, color: "" },
+      ],
+      totalSpending: 1000,
+    });
+    render(<SpendingByCategoryReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Food")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("export-pdf"));
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Spending by Category",
+          filename: "spending-by-category",
+          chartLegend: expect.arrayContaining([
+            expect.objectContaining({ label: expect.stringContaining("Food") }),
+          ]),
+        }),
+      );
+    });
+  });
+
+  it("calls exportToPdf with undefined chartLegend when chart data is empty", async () => {
+    mockExportToPdf.mockResolvedValue(undefined);
+    mockGetSpendingByCategory.mockResolvedValue({ data: [], totalSpending: 0 });
+    render(<SpendingByCategoryReport />);
+    await waitFor(() => {
+      expect(
+        screen.getByText("No expense data for this period."),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("export-pdf"));
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chartLegend: undefined,
+        }),
+      );
+    });
+  });
+
+  it("shows 0% percentage in legend when totalExpenses is zero", async () => {
+    mockGetSpendingByCategory.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Food", total: 0, color: "" },
+      ],
+      totalSpending: 0,
+    });
+    render(<SpendingByCategoryReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Food")).toBeInTheDocument();
+    });
+    // When totalExpenses is 0, percentage should display as '0'
+    expect(screen.getByText("$0.00 (0%)")).toBeInTheDocument();
+  });
+
+  it("does not load data when isValid is false", () => {
+    mockIsValid = false;
+    mockGetSpendingByCategory.mockResolvedValue({ data: [], totalSpending: 0 });
+    render(<SpendingByCategoryReport />);
+    // loadData is gated on isValid, so the API should not be called
+    expect(mockGetSpendingByCategory).not.toHaveBeenCalled();
   });
 });

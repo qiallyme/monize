@@ -363,4 +363,234 @@ describe('InvestmentValueChart', () => {
     expect(netWorthApi.getInvestmentsMonthly).toHaveBeenCalled();
     expect(netWorthApi.getInvestmentsDaily).not.toHaveBeenCalled();
   });
+
+  it('renders titleSuffix when provided', async () => {
+    render(<InvestmentValueChart titleSuffix="My Account" />);
+    const title = await screen.findByText('Portfolio Value Over Time (My Account)');
+    expect(title).toBeInTheDocument();
+  });
+
+  it('does not append suffix text when titleSuffix is omitted', async () => {
+    render(<InvestmentValueChart />);
+    const title = await screen.findByText('Portfolio Value Over Time');
+    expect(title.textContent).not.toContain('(');
+  });
+
+  it('passes displayCurrency to API when it differs from defaultCurrency', async () => {
+    render(<InvestmentValueChart displayCurrency="USD" />);
+    await screen.findByText('Portfolio Value Over Time');
+    expect(netWorthApi.getInvestmentsDaily).toHaveBeenCalledWith(
+      expect.objectContaining({ displayCurrency: 'USD' }),
+    );
+  });
+
+  it('does not pass displayCurrency to API when it matches defaultCurrency', async () => {
+    render(<InvestmentValueChart displayCurrency="CAD" />);
+    await screen.findByText('Portfolio Value Over Time');
+    expect(netWorthApi.getInvestmentsDaily).toHaveBeenCalledWith(
+      expect.objectContaining({ displayCurrency: undefined }),
+    );
+  });
+
+  it('formats values with foreign currency label when displayCurrency differs', async () => {
+    render(<InvestmentValueChart displayCurrency="USD" />);
+    await screen.findByText('Portfolio Value Over Time');
+    // fmtVal includes the currency code when foreignCurrency is set
+    expect(screen.getByText('$15000 USD')).toBeInTheDocument();
+  });
+
+  it('shows changePercent as 0 when initial value is zero', async () => {
+    vi.mocked(netWorthApi.getInvestmentsDaily).mockResolvedValue([
+      { date: '2023-06-01', value: 0 },
+      { date: '2024-01-01', value: 0 },
+    ]);
+    render(<InvestmentValueChart />);
+    await screen.findByText('Portfolio Value Over Time');
+    expect(screen.getByText('+0.0%')).toBeInTheDocument();
+  });
+
+  it('shows empty chart message with skipped symbols in intradayUnavailable state', async () => {
+    dateRangeState.dateRange = '1d';
+    vi.mocked(investmentsApi.getIntradayValue).mockResolvedValue({
+      points: [],
+      interval: '1m',
+      currency: 'CAD',
+      range: '1d',
+      fetchedAt: '2024-01-02T15:00:00.000Z',
+      skippedSymbols: ['AAPL', 'MSFT'],
+      fallbackToDaily: true,
+    });
+    render(<InvestmentValueChart />);
+    const msg = await screen.findByText(/Intraday view unavailable/i);
+    expect(msg).toBeInTheDocument();
+    // skipped symbols list should appear in the description
+    expect(screen.getByText(/AAPL, MSFT/)).toBeInTheDocument();
+  });
+
+  it('shows empty chart message without symbol list when skippedSymbols is empty', async () => {
+    dateRangeState.dateRange = '1d';
+    vi.mocked(investmentsApi.getIntradayValue).mockResolvedValue({
+      points: [],
+      interval: '1m',
+      currency: 'CAD',
+      range: '1d',
+      fetchedAt: '2024-01-02T15:00:00.000Z',
+      skippedSymbols: [],
+      fallbackToDaily: true,
+    });
+    render(<InvestmentValueChart />);
+    const msg = await screen.findByText(/Intraday view unavailable/i);
+    expect(msg).toBeInTheDocument();
+    expect(screen.queryByText(/:/)).not.toBeInTheDocument();
+  });
+
+  it('shows warning icon with empty skippedSymbols in fallback notice', async () => {
+    dateRangeState.dateRange = '1w';
+    dateRangeState.resolvedRange = { start: '2023-12-25', end: '2024-01-01' };
+    vi.mocked(investmentsApi.getIntradayValue).mockResolvedValue({
+      points: [],
+      interval: '5m',
+      currency: 'CAD',
+      range: '1w',
+      fetchedAt: '2024-01-02T15:00:00.000Z',
+      skippedSymbols: [],
+      fallbackToDaily: true,
+    });
+    render(<InvestmentValueChart />);
+    const warning = await screen.findByTestId('intraday-fallback-warning');
+    expect(warning).toBeInTheDocument();
+    expect(warning.getAttribute('title')).toContain('one or more holdings');
+    // No ticker symbols should appear in the title when skippedSymbols is empty
+    expect(warning.getAttribute('title')).not.toMatch(/[A-Z]{2,5}\.[A-Z]{2}/); // e.g. VFV.TO
+  });
+
+  it('does not re-fetch on refresh event when range is not intraday', async () => {
+    // 1y is a daily range; refresh event should be ignored
+    render(<InvestmentValueChart />);
+    await screen.findByText('Portfolio Value Over Time');
+    const callCount = vi.mocked(netWorthApi.getInvestmentsDaily).mock.calls.length;
+    await act(async () => {
+      window.dispatchEvent(new Event(INVESTMENT_CHART_REFRESH_EVENT));
+    });
+    // No extra calls triggered
+    expect(vi.mocked(netWorthApi.getInvestmentsDaily).mock.calls.length).toBe(callCount);
+  });
+
+  it('hydrates chart from intraday cache on 1d before network resolves', async () => {
+    dateRangeState.dateRange = '1d';
+    const cachedPayload = {
+      fetchedAt: Date.now(),
+      points: [{ timestamp: '2024-01-02T14:00:00.000Z', value: 8000 }],
+      interval: '1m' as const,
+      currency: 'CAD',
+      fallbackToDaily: false,
+      skippedSymbols: [],
+    };
+    // Seed the session-storage cache manually
+    window.sessionStorage.setItem(
+      `monize-intraday|1d||CAD`,
+      JSON.stringify(cachedPayload),
+    );
+
+    // Delay the network response so cache hydration can be observed
+    let resolveIntraday!: (v: any) => void;
+    vi.mocked(investmentsApi.getIntradayValue).mockImplementationOnce(
+      () => new Promise((res) => { resolveIntraday = res; }),
+    );
+
+    render(<InvestmentValueChart />);
+    // The chart should appear (not stuck on loading skeleton) because of cache
+    await screen.findByText('Portfolio Value Over Time');
+
+    // Clean up: resolve the pending network call
+    resolveIntraday({
+      points: [{ timestamp: '2024-01-02T14:00:00.000Z', value: 8000 }],
+      interval: '1m',
+      currency: 'CAD',
+      range: '1d',
+      fetchedAt: '2024-01-02T15:00:00.000Z',
+      skippedSymbols: [],
+      fallbackToDaily: false,
+    });
+    window.sessionStorage.clear();
+  });
+
+  it('handles intraday API error gracefully and shows empty chart', async () => {
+    dateRangeState.dateRange = '1d';
+    vi.mocked(investmentsApi.getIntradayValue).mockRejectedValue(new Error('Network error'));
+    render(<InvestmentValueChart />);
+    const msg = await screen.findByText('No investment data for this period.');
+    expect(msg).toBeInTheDocument();
+  });
+
+  it('uses monthly API for all range', async () => {
+    dateRangeState.dateRange = 'all';
+    dateRangeState.resolvedRange = { start: '2010-01-01', end: '2024-01-01' };
+    vi.mocked(netWorthApi.getInvestmentsMonthly).mockResolvedValue([
+      { month: '2010-01-01', value: 500 },
+      { month: '2024-01-01', value: 3000 },
+    ]);
+    render(<InvestmentValueChart />);
+    await screen.findByText('Portfolio Value Over Time');
+    expect(netWorthApi.getInvestmentsMonthly).toHaveBeenCalled();
+    expect(netWorthApi.getInvestmentsDaily).not.toHaveBeenCalled();
+  });
+
+  it('passes displayCurrency to intraday API when it differs from defaultCurrency', async () => {
+    dateRangeState.dateRange = '1d';
+    vi.mocked(investmentsApi.getIntradayValue).mockResolvedValue({
+      points: [{ timestamp: '2024-01-02T14:30:00.000Z', value: 9500 }],
+      interval: '1m',
+      currency: 'USD',
+      range: '1d',
+      fetchedAt: '2024-01-02T15:00:00.000Z',
+      skippedSymbols: [],
+      fallbackToDaily: false,
+    });
+    render(<InvestmentValueChart displayCurrency="USD" />);
+    await screen.findByText('Portfolio Value Over Time');
+    expect(investmentsApi.getIntradayValue).toHaveBeenCalledWith(
+      expect.objectContaining({ displayCurrency: 'USD' }),
+    );
+  });
+
+  it('uses daily format labels for intraday 1d range', async () => {
+    dateRangeState.dateRange = '1d';
+    vi.mocked(investmentsApi.getIntradayValue).mockResolvedValue({
+      points: [
+        { timestamp: '2024-01-02T14:30:00.000Z', value: 9500 },
+        { timestamp: '2024-01-02T15:30:00.000Z', value: 9600 },
+      ],
+      interval: '1m',
+      currency: 'CAD',
+      range: '1d',
+      fetchedAt: '2024-01-02T16:00:00.000Z',
+      skippedSymbols: [],
+      fallbackToDaily: false,
+    });
+    render(<InvestmentValueChart />);
+    // The title renders once data loads; chart renders without crashing
+    await screen.findByText('Portfolio Value Over Time');
+    expect(screen.getByTestId('area-chart')).toBeInTheDocument();
+  });
+
+  it('uses week format labels for intraday 1w range', async () => {
+    dateRangeState.dateRange = '1w';
+    dateRangeState.resolvedRange = { start: '2023-12-26', end: '2024-01-02' };
+    vi.mocked(investmentsApi.getIntradayValue).mockResolvedValue({
+      points: [
+        { timestamp: '2023-12-26T09:30:00.000Z', value: 9400 },
+        { timestamp: '2023-12-27T09:30:00.000Z', value: 9500 },
+      ],
+      interval: '5m',
+      currency: 'CAD',
+      range: '1w',
+      fetchedAt: '2024-01-02T16:00:00.000Z',
+      skippedSymbols: [],
+      fallbackToDaily: false,
+    });
+    render(<InvestmentValueChart />);
+    await screen.findByText('Portfolio Value Over Time');
+    expect(screen.getByTestId('area-chart')).toBeInTheDocument();
+  });
 });

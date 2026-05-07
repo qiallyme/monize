@@ -479,3 +479,27 @@ describe("TokenService", () => {
     });
   });
 });
+
+describe("TokenService with zero REMEMBER_ME_DAYS", () => {
+  it("defaults to 30 days when REMEMBER_ME_DAYS is 0", async () => {
+    const refreshTokensRepository: Record<string, jest.Mock> = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        TokenService,
+        { provide: getRepositoryToken(RefreshToken), useValue: refreshTokensRepository },
+        { provide: JwtService, useValue: { sign: jest.fn() } },
+        { provide: DataSource, useValue: { createQueryRunner: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue("0") } },
+      ],
+    }).compile();
+
+    const svc = module.get<TokenService>(TokenService);
+    // With REMEMBER_ME_DAYS=0, it falls back to 30 days
+    expect(svc.getRefreshExpiryMs(true)).toBe(30 * 24 * 60 * 60 * 1000);
+  });
+});

@@ -622,4 +622,338 @@ describe('ScheduledTransactionList', () => {
     const dashes = screen.getAllByText('\u2014');
     expect(dashes.length).toBeGreaterThan(0);
   });
+
+  // --- Payee from payee object (not payeeName) ---
+  it('shows payee from payee object when payeeName is null', () => {
+    const transactions = [createTransaction({
+      name: 'Monthly Rent',
+      payeeName: null,
+      payee: { name: 'Landlord Inc' },
+    })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    expect(screen.getByText('Landlord Inc')).toBeInTheDocument();
+  });
+
+  it('does not show payee when payee object name matches transaction name', () => {
+    const transactions = [createTransaction({
+      name: 'Netflix',
+      payeeName: null,
+      payee: { name: 'Netflix' },
+    })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    const elements = screen.getAllByText('Netflix');
+    expect(elements.length).toBe(1);
+  });
+
+  // --- formatAmount edge cases ---
+  it('renders dash for NaN amount', () => {
+    const transactions = [createTransaction({ amount: NaN })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    const dashes = screen.getAllByText('\u2014');
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+
+  // --- getDueDateStatus edge cases ---
+  it('does not show due date badge when nextDueDate is null', () => {
+    const transactions = [createTransaction({ nextDueDate: null })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    expect(screen.queryByText('Overdue')).not.toBeInTheDocument();
+    expect(screen.queryByText('Due Today')).not.toBeInTheDocument();
+  });
+
+  it('does not show due date badge for invalid date string', () => {
+    const transactions = [createTransaction({ nextDueDate: 'not-a-date' })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    expect(screen.queryByText('Overdue')).not.toBeInTheDocument();
+  });
+
+  // --- Override date same as nextDueDate (no strikethrough) ---
+  it('shows only one date when override date equals next due date', () => {
+    const transactions = [createTransaction({
+      nextDueDate: '2025-04-01',
+      nextOverride: {
+        overrideDate: '2025-04-01',
+        amount: -15.99,
+      },
+    })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    // Date should appear but NOT in strikethrough format (only one date shown)
+    const dateElements = screen.getAllByText('2025-04-01');
+    // No strikethrough: there should be only one element for that date
+    expect(dateElements.length).toBe(1);
+  });
+
+  // --- categoryColorMap override ---
+  it('uses categoryColorMap color when available', () => {
+    const colorMap = new Map<string, string | null>();
+    colorMap.set('cat-1', '#00FF00');
+    const transactions = [createTransaction({
+      category: { id: 'cat-1', name: 'Food', color: '#FF0000' },
+    })];
+    render(<ScheduledTransactionList transactions={transactions} categoryColorMap={colorMap} />);
+    const categoryEl = screen.getByText('Food');
+    // Color from map (#00FF00) should be used, not category color (#FF0000)
+    expect(categoryEl.style.backgroundColor).toContain('00FF00');
+  });
+
+  it('falls back to category color when categoryColorMap has null entry', () => {
+    const colorMap = new Map<string, string | null>();
+    colorMap.set('cat-1', null);
+    const transactions = [createTransaction({
+      category: { id: 'cat-1', name: 'Food', color: '#FF0000' },
+    })];
+    render(<ScheduledTransactionList transactions={transactions} categoryColorMap={colorMap} />);
+    const categoryEl = screen.getByText('Food');
+    // Falls back to category.color
+    expect(categoryEl.style.backgroundColor).toContain('FF0000');
+  });
+
+  // --- Long-press context menu ---
+  it('opens context menu after long press on a row', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+
+    // Simulate long press: mousedown and wait 800ms
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    // Context menu should open with the transaction name
+    expect(screen.getAllByText('Netflix').length).toBeGreaterThan(1);
+    expect(screen.getByText('Post Transaction')).toBeInTheDocument();
+  });
+
+  it('context menu shows Skip Occurrence for recurring transactions', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    expect(screen.getByText('Skip Occurrence')).toBeInTheDocument();
+  });
+
+  it('context menu does not show Skip for ONCE frequency', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'ONCE' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    expect(screen.queryByText('Skip Occurrence')).not.toBeInTheDocument();
+  });
+
+  it('context menu does not show Post/Skip for inactive transactions', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: false, frequency: 'MONTHLY', name: 'Inactive Sub' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Inactive Sub').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    expect(screen.queryByText('Post Transaction')).not.toBeInTheDocument();
+    expect(screen.queryByText('Skip Occurrence')).not.toBeInTheDocument();
+  });
+
+  it('context menu Post calls onPost when provided', async () => {
+    const { act } = await import('@/test/render');
+    const onPost = vi.fn();
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} onPost={onPost} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    fireEvent.click(screen.getByText('Post Transaction'));
+    expect(onPost).toHaveBeenCalledWith(transaction);
+  });
+
+  it('context menu Post opens confirm dialog when no onPost prop', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    fireEvent.click(screen.getByText('Post Transaction'));
+    expect(screen.getByText(/Post "Netflix"/)).toBeInTheDocument();
+  });
+
+  it('context menu Skip opens confirm dialog', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    // Click the "Skip Occurrence" button inside the context menu (it's inside the Modal)
+    const skipButtons = screen.getAllByText('Skip Occurrence');
+    fireEvent.click(skipButtons[0]);
+    // After clicking, the confirm dialog for "Skip" should appear
+    expect(screen.getByText(/Skip this occurrence of "Netflix"/)).toBeInTheDocument();
+  });
+
+  it('context menu Delete opens confirm dialog', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    fireEvent.click(screen.getByText('Delete'));
+    expect(screen.getByText('Delete Scheduled Transaction')).toBeInTheDocument();
+  });
+
+  it('context menu Edit Schedule calls onEdit', async () => {
+    const { act } = await import('@/test/render');
+    const onEdit = vi.fn();
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} onEdit={onEdit} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    fireEvent.click(screen.getByText('Edit Schedule'));
+    expect(onEdit).toHaveBeenCalledWith(transaction);
+  });
+
+  it('context menu Edit Occurrence calls onEditOccurrence', async () => {
+    const { act } = await import('@/test/render');
+    const onEditOccurrence = vi.fn();
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} onEditOccurrence={onEditOccurrence} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    fireEvent.click(screen.getByText('Edit Occurrence'));
+    expect(onEditOccurrence).toHaveBeenCalledWith(transaction);
+  });
+
+  it('does not open context menu when touch moves beyond threshold before long press fires', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+
+    // Start a touch (records touch position)
+    fireEvent.touchStart(row, {
+      touches: [{ clientX: 0, clientY: 0 }],
+    });
+
+    // Move beyond the 10px threshold to cancel the long press timer
+    fireEvent.touchMove(row, {
+      touches: [{ clientX: 50, clientY: 50 }],
+    });
+
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    // Context menu should NOT appear since touch moved beyond threshold
+    expect(screen.queryByText('Post Transaction')).not.toBeInTheDocument();
+  });
+
+  it('mouseUp cancels long press before context menu opens', async () => {
+    const { act } = await import('@/test/render');
+    const transaction = createTransaction({ isActive: true, frequency: 'MONTHLY' });
+    render(<ScheduledTransactionList transactions={[transaction]} />);
+
+    const row = screen.getByText('Netflix').closest('tr')!;
+    fireEvent.mouseDown(row);
+    fireEvent.mouseUp(row); // cancel before 750ms
+
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    expect(screen.queryByText('Post Transaction')).not.toBeInTheDocument();
+  });
+
+  it('row click is ignored immediately after long press was triggered', async () => {
+    const { act } = await import('@/test/render');
+    const onEdit = vi.fn();
+    const transaction = createTransaction({ isActive: true });
+    render(<ScheduledTransactionList transactions={[transaction]} onEdit={onEdit} />);
+
+    const row = screen.getAllByText('Netflix')[0].closest('tr')!;
+    fireEvent.mouseDown(row);
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 800));
+    });
+
+    // While context menu is open, clicking the row would trigger onClick which
+    // checks longPressTriggered -- it should be true so onEdit is not called
+    fireEvent.click(row);
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  // --- occurrencesRemaining: null (no badge) ---
+  it('does not show occurrences remaining when null', () => {
+    const transactions = [createTransaction({ occurrencesRemaining: null })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    expect(screen.queryByText(/left/)).not.toBeInTheDocument();
+  });
+
+  // --- Split badge with no splits array ---
+  it('displays Split (0) when splits array is empty', () => {
+    const transactions = [createTransaction({
+      isSplit: true,
+      splits: [],
+    })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    expect(screen.getByText('Split (0)')).toBeInTheDocument();
+  });
+
+  // --- overrideCount singular vs plural ---
+  it('shows singular modified text for overrideCount of 1', () => {
+    const transactions = [createTransaction({ overrideCount: 1 })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    const badge = screen.getByText('1 modified');
+    expect(badge.title).toContain('1 upcoming occurrence modified');
+  });
+
+  it('shows plural modified text for overrideCount > 1', () => {
+    const transactions = [createTransaction({ overrideCount: 2 })];
+    render(<ScheduledTransactionList transactions={transactions} />);
+    const badge = screen.getByText('2 modified');
+    expect(badge.title).toContain('2 upcoming occurrences modified');
+  });
 });

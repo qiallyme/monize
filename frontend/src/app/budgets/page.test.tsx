@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@/test/render';
+import { render, screen, waitFor, fireEvent, act } from '@/test/render';
+import toast from 'react-hot-toast';
 import BudgetsPage from './page';
 
 // Mock next/navigation
@@ -249,6 +250,14 @@ describe('BudgetsPage', () => {
 
     fireEvent.click(screen.getByText('Budget'));
     expect(mockPush).toHaveBeenCalledWith('/budgets/budget-1');
+  });
+
+  it('shows error toast when loading budgets fails', async () => {
+    mockGetAll.mockRejectedValueOnce(new Error('Network error'));
+    render(<BudgetsPage />);
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
   });
 
 });

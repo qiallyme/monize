@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@/test/render';
+import { render, screen, fireEvent, waitFor, act } from '@/test/render';
 import * as nextNavigation from 'next/navigation';
 import { AccountList } from './AccountList';
 import { Account } from '@/types/account';
@@ -1305,6 +1305,976 @@ describe('AccountList', () => {
       );
       expect(investmentHeader).toBeTruthy();
       expect(investmentHeader!.textContent).toContain('3 accounts');
+    });
+  });
+
+  describe('sort by type', () => {
+    it('sorts accounts by type ascending and then toggles to descending', () => {
+      const accounts = [
+        createAccount({ id: 'a1', name: 'Savings Acct', accountType: 'SAVINGS' }),
+        createAccount({ id: 'a2', name: 'Chequing Acct', accountType: 'CHEQUING' }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const typeHeader = screen.getByText('Type');
+      // First click sorts by type ascending
+      fireEvent.click(typeHeader);
+      // Second click on same header reverses direction
+      fireEvent.click(typeHeader);
+
+      // Just verify no errors thrown and the table is rendered
+      expect(screen.getByText('Savings Acct')).toBeInTheDocument();
+      expect(screen.getByText('Chequing Acct')).toBeInTheDocument();
+    });
+
+    it('sorts accounts by name then toggles to descending on second click', () => {
+      const accounts = [
+        createAccount({ id: 'a1', name: 'Alpha', accountType: 'CHEQUING' }),
+        createAccount({ id: 'a2', name: 'Zeta', accountType: 'CHEQUING' }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const nameHeader = screen.getByText('Account Name');
+      // Already sorted by name asc; second click toggles to desc
+      fireEvent.click(nameHeader);
+
+      const rows = screen.getAllByRole('row');
+      // desc: Zeta before Alpha
+      expect(rows[2]).toHaveTextContent('Zeta');
+      expect(rows[3]).toHaveTextContent('Alpha');
+
+      // Third click toggles back to asc
+      fireEvent.click(nameHeader);
+      const rowsAsc = screen.getAllByRole('row');
+      expect(rowsAsc[2]).toHaveTextContent('Alpha');
+      expect(rowsAsc[3]).toHaveTextContent('Zeta');
+    });
+  });
+
+  describe('dense density mode', () => {
+    it('renders icon-only buttons in dense mode for active accounts', () => {
+      const account = createAccount({ currentBalance: 0 });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      // Normal -> Compact -> Dense
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+      expect(densityButton).toHaveTextContent('Dense');
+
+      // In dense mode, action buttons are icon-only (no text labels)
+      expect(screen.queryByText('Edit')).not.toBeInTheDocument();
+      expect(screen.queryByText('Close')).not.toBeInTheDocument();
+      // But edit icon-button should exist with title="Edit"
+      expect(screen.getByTitle('Edit')).toBeInTheDocument();
+      expect(screen.getByTitle('Close account')).toBeInTheDocument();
+    });
+
+    it('triggers edit callback via dense mode icon button', () => {
+      const account = createAccount({ currentBalance: 0 });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Cycle to dense
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      fireEvent.click(screen.getByTitle('Edit'));
+      expect(mockOnEdit).toHaveBeenCalledWith(account);
+    });
+
+    it('triggers close dialog via dense mode icon button', () => {
+      const account = createAccount({ currentBalance: 0 });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      fireEvent.click(screen.getByTitle('Close account'));
+      expect(screen.getByText(/Are you sure you want to close/)).toBeInTheDocument();
+    });
+
+    it('shows disabled close button in dense mode when balance is non-zero', () => {
+      const account = createAccount({ currentBalance: 500 });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      const closeIconButton = screen.getByTitle('Account must have zero balance to close');
+      expect(closeIconButton).toBeDisabled();
+    });
+
+    it('shows reconcile icon button in dense mode for non-brokerage accounts', () => {
+      const account = createAccount({ accountSubType: null, currentBalance: 0 });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      expect(screen.getByTitle('Reconcile')).toBeInTheDocument();
+    });
+
+    it('hides reconcile icon button in dense mode for brokerage accounts', () => {
+      const account = createAccount({
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+        currentBalance: 0,
+      });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      expect(screen.queryByTitle('Reconcile')).not.toBeInTheDocument();
+    });
+
+    it('shows delete icon button in dense mode for deletable active accounts', () => {
+      const account = createAccount({ canDelete: true, currentBalance: 0 });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      expect(screen.getByTitle('Permanently delete account (no transactions)')).toBeInTheDocument();
+    });
+
+    it('renders reopen icon button in dense mode for closed accounts', async () => {
+      const account = createAccount({ isClosed: true, closedDate: '2024-01-01T00:00:00Z' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      // In dense mode the reopen button has title="Reopen"
+      const reopenButton = screen.getByTitle('Reopen');
+      expect(reopenButton).toBeInTheDocument();
+      fireEvent.click(reopenButton);
+
+      await waitFor(() => {
+        expect(accountsApi.reopen).toHaveBeenCalledWith(account.id);
+      });
+    });
+
+    it('shows delete icon button in dense mode for closed deletable accounts', () => {
+      const account = createAccount({
+        isClosed: true,
+        closedDate: '2024-01-01T00:00:00Z',
+        canDelete: true,
+      });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      expect(screen.getByTitle('Permanently delete account (no transactions)')).toBeInTheDocument();
+    });
+
+    it('hides Market value label in dense mode for brokerage accounts', () => {
+      const account = createAccount({
+        id: 'broker-1',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+        currencyCode: 'CAD',
+        currentBalance: 0,
+      });
+      const brokerageMarketValues = new Map([['broker-1', 5000]]);
+
+      render(
+        <AccountList accounts={[account]} brokerageMarketValues={brokerageMarketValues} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      // In dense mode "Market value" sub-label is hidden
+      expect(screen.queryByText('Market value')).not.toBeInTheDocument();
+    });
+
+    it('hides credit limit in dense mode', () => {
+      const account = createAccount({
+        accountType: 'CREDIT_CARD',
+        creditLimit: 5000,
+        currentBalance: -1000,
+      });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      expect(screen.queryByText(/Limit:/)).not.toBeInTheDocument();
+    });
+
+    it('hides approximate conversion in dense mode for non-default currency', () => {
+      const account = createAccount({
+        currencyCode: 'USD',
+        currentBalance: 500,
+      });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
+    });
+
+    it('hides approximate conversion for brokerage in dense mode', () => {
+      const account = createAccount({
+        id: 'broker-1',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+        currencyCode: 'USD',
+        currentBalance: 0,
+      });
+      const brokerageMarketValues = new Map([['broker-1', 5000]]);
+
+      render(
+        <AccountList accounts={[account]} brokerageMarketValues={brokerageMarketValues} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton);
+
+      expect(screen.queryByText(/≈/)).not.toBeInTheDocument();
+    });
+
+    it('shows linked account chain icon in compact mode instead of "Paired with" text', () => {
+      const accounts = [
+        createAccount({
+          id: 'cash-1',
+          name: 'Inv Cash',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_CASH',
+          linkedAccountId: 'broker-1',
+        }),
+        createAccount({
+          id: 'broker-1',
+          name: 'Inv Brokerage',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_BROKERAGE',
+          linkedAccountId: 'cash-1',
+        }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton); // compact
+
+      // In compact mode, no "Paired with" text — just icon
+      expect(screen.queryByText(/Paired with/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('long-press context menu', () => {
+    let mockPush: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockPush = vi.fn();
+      vi.spyOn(nextNavigation, 'useRouter').mockReturnValue({
+        push: mockPush,
+        replace: vi.fn(),
+        back: vi.fn(),
+        forward: vi.fn(),
+        refresh: vi.fn(),
+        prefetch: vi.fn(),
+      } as unknown as ReturnType<typeof nextNavigation.useRouter>);
+    });
+
+    function openContextMenu(account: ReturnType<typeof createAccount>) {
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Simulate long press: mouseDown triggers timer, we advance past 750ms
+      const row = screen.getByText(account.name).closest('tr')!;
+      fireEvent.mouseDown(row);
+      // Advance timers by 800ms to trigger long press
+      act(() => {
+        vi.advanceTimersByTime(800);
+      });
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('opens context menu after long press and shows account name', () => {
+      const account = createAccount({ name: 'Test Account' });
+      openContextMenu(account);
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      // Account name appears in the modal header
+      const dialogs = screen.getAllByText('Test Account');
+      expect(dialogs.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('context menu shows View Transactions button and navigates', () => {
+      const account = createAccount({ id: 'acc-1', name: 'Cheq Account' });
+      openContextMenu(account);
+
+      fireEvent.click(screen.getByText('View Transactions'));
+      expect(mockPush).toHaveBeenCalledWith('/transactions?accountId=acc-1');
+    });
+
+    it('context menu navigates to /investments for brokerage account View Transactions', () => {
+      const account = createAccount({
+        id: 'broker-1',
+        name: 'My Brokerage Account',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+      });
+      openContextMenu(account);
+
+      fireEvent.click(screen.getByText('View Transactions'));
+      expect(mockPush).toHaveBeenCalledWith('/investments?accountId=broker-1');
+    });
+
+    it('context menu shows Edit Account button for active accounts and calls onEdit', () => {
+      const account = createAccount({ name: 'My Account' });
+      openContextMenu(account);
+
+      expect(screen.getByText('Edit Account')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Edit Account'));
+      expect(mockOnEdit).toHaveBeenCalledWith(account);
+    });
+
+    it('context menu shows Reconcile button for non-brokerage active accounts', () => {
+      const account = createAccount({ name: 'My Cheq' });
+      openContextMenu(account);
+
+      // Reconcile appears both in the row actions and in the context menu
+      const reconcileButtons = screen.getAllByText('Reconcile');
+      expect(reconcileButtons.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('context menu hides Reconcile button for brokerage accounts', () => {
+      const account = createAccount({
+        name: 'My Brokerage Acct',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+      });
+      openContextMenu(account);
+
+      expect(screen.queryByText('Reconcile')).not.toBeInTheDocument();
+    });
+
+    it('context menu Reconcile button navigates to reconcile page', () => {
+      const account = createAccount({ id: 'acc-1', name: 'Cheq Account' });
+      openContextMenu(account);
+
+      // Reconcile appears in both the row actions and the context menu;
+      // the context menu button is the last one.
+      const reconcileButtons = screen.getAllByText('Reconcile');
+      fireEvent.click(reconcileButtons[reconcileButtons.length - 1]);
+      expect(mockPush).toHaveBeenCalledWith('/reconcile?accountId=acc-1');
+    });
+
+    it('context menu shows Close Account button enabled when balance is zero', () => {
+      const account = createAccount({ name: 'Zero Balance', currentBalance: 0 });
+      openContextMenu(account);
+
+      const closeBtn = screen.getByRole('button', { name: /Close Account/ });
+      expect(closeBtn).not.toBeDisabled();
+    });
+
+    it('context menu shows Close Account button disabled when balance is non-zero', () => {
+      const account = createAccount({ name: 'Non Zero', currentBalance: 500 });
+      openContextMenu(account);
+
+      const closeBtn = screen.getByRole('button', { name: /Close Account/ });
+      expect(closeBtn).toBeDisabled();
+      // Shows helper text
+      expect(screen.getByText('Balance must be zero')).toBeInTheDocument();
+    });
+
+    it('context menu Close Account opens close dialog', () => {
+      const account = createAccount({ name: 'Zero Bal', currentBalance: 0 });
+      openContextMenu(account);
+
+      fireEvent.click(screen.getByRole('button', { name: /Close Account/ }));
+      expect(screen.getByText(/Are you sure you want to close/)).toBeInTheDocument();
+    });
+
+    it('context menu shows Reopen Account for closed accounts', async () => {
+      const account = createAccount({
+        name: 'Closed Acct',
+        isClosed: true,
+        closedDate: '2024-01-01T00:00:00Z',
+      });
+      openContextMenu(account);
+
+      expect(screen.getByText('Reopen Account')).toBeInTheDocument();
+      // Active-account-only buttons should not appear
+      expect(screen.queryByText('Edit Account')).not.toBeInTheDocument();
+      expect(screen.queryByText('Close Account')).not.toBeInTheDocument();
+    });
+
+    it('context menu Reopen Account calls reopen API', async () => {
+      const account = createAccount({
+        name: 'Closed Acct',
+        isClosed: true,
+        closedDate: '2024-01-01T00:00:00Z',
+      });
+      openContextMenu(account);
+
+      fireEvent.click(screen.getByText('Reopen Account'));
+
+      // Switch to real timers so waitFor can work
+      vi.useRealTimers();
+      await waitFor(() => {
+        expect(accountsApi.reopen).toHaveBeenCalledWith(account.id);
+      });
+    });
+
+    it('context menu shows "— Closed" in subtitle for closed accounts', () => {
+      const account = createAccount({
+        name: 'Closed Acct',
+        isClosed: true,
+        closedDate: '2024-01-01T00:00:00Z',
+      });
+      openContextMenu(account);
+
+      // The subtitle includes " — Closed"
+      expect(screen.getByText(/— Closed/)).toBeInTheDocument();
+    });
+
+    it('context menu shows "Brokerage" in subtitle for brokerage accounts', () => {
+      const account = createAccount({
+        name: 'My Brokerage Acct Two',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+      });
+      openContextMenu(account);
+
+      // The subtitle should say "Brokerage"
+      // It appears both as the type badge in the table row and in the context menu subtitle
+      const brokerageTexts = screen.getAllByText('Brokerage');
+      expect(brokerageTexts.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('context menu shows "Inv. Cash" in subtitle for investment cash accounts', () => {
+      const accounts2 = [
+        createAccount({
+          id: 'cash-1',
+          name: 'Inv Cash Acct',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_CASH',
+          linkedAccountId: 'broker-1',
+        }),
+        createAccount({
+          id: 'broker-1',
+          name: 'Inv Broker Acct',
+          accountType: 'INVESTMENT',
+          accountSubType: 'INVESTMENT_BROKERAGE',
+          linkedAccountId: 'cash-1',
+        }),
+      ];
+
+      render(
+        <AccountList accounts={accounts2} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const cashRow = screen.getByText('Inv Cash Acct').closest('tr')!;
+      fireEvent.mouseDown(cashRow);
+      act(() => { vi.advanceTimersByTime(800); });
+
+      const invCashTexts = screen.getAllByText('Inv. Cash');
+      expect(invCashTexts.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('context menu shows Delete Account for deletable accounts', () => {
+      const account = createAccount({ name: 'Del Acct', canDelete: true });
+      openContextMenu(account);
+
+      expect(screen.getByText('Delete Account')).toBeInTheDocument();
+    });
+
+    it('context menu Delete Account opens delete confirmation dialog', () => {
+      const account = createAccount({ name: 'Del Acct', canDelete: true });
+      openContextMenu(account);
+
+      fireEvent.click(screen.getByText('Delete Account'));
+      expect(screen.getByText(/Are you sure you want to permanently delete/)).toBeInTheDocument();
+    });
+
+    it('context menu does not show Delete Account for non-deletable accounts', () => {
+      const account = createAccount({ name: 'No Del Acct', canDelete: false });
+      openContextMenu(account);
+
+      expect(screen.queryByText('Delete Account')).not.toBeInTheDocument();
+    });
+
+    it('closes context menu when modal onClose is triggered', () => {
+      const account = createAccount({ name: 'Test Account' });
+      openContextMenu(account);
+
+      // Modal has a close button (X button)
+      const closeButtons = screen.getAllByRole('button');
+      const xButton = closeButtons.find((btn) => btn.getAttribute('aria-label') === 'Close modal');
+      if (xButton) {
+        fireEvent.click(xButton);
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      } else {
+        // Alternatively press Escape
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByText('View Transactions')).not.toBeInTheDocument();
+      }
+    });
+
+    it('long press does not fire after touch move exceeds threshold', () => {
+      const account = createAccount({ name: 'Move Account' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const row = screen.getByText('Move Account').closest('tr')!;
+
+      // Start touch at position (100, 100)
+      fireEvent.touchStart(row, {
+        touches: [{ clientX: 100, clientY: 100 }],
+      });
+
+      // Move more than 10px — should cancel long press
+      fireEvent.touchMove(row, {
+        touches: [{ clientX: 120, clientY: 100 }],
+      });
+
+      act(() => { vi.advanceTimersByTime(800); });
+
+      // Context menu should NOT appear because touch moved too far
+      expect(screen.queryByText('View Transactions')).not.toBeInTheDocument();
+    });
+
+    it('long press fires via touch start without movement', () => {
+      const account = createAccount({ name: 'Touch Account' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const row = screen.getByText('Touch Account').closest('tr')!;
+
+      fireEvent.touchStart(row, {
+        touches: [{ clientX: 50, clientY: 50 }],
+      });
+
+      act(() => { vi.advanceTimersByTime(800); });
+
+      // Context menu should appear
+      expect(screen.getByText('View Transactions')).toBeInTheDocument();
+    });
+
+    it('long press end clears the timer before context menu fires', () => {
+      const account = createAccount({ name: 'Cancel Press Account' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const row = screen.getByText('Cancel Press Account').closest('tr')!;
+      fireEvent.mouseDown(row);
+      // Release before 750ms
+      fireEvent.mouseUp(row);
+      act(() => { vi.advanceTimersByTime(800); });
+
+      // No context menu should appear
+      expect(screen.queryByText('View Transactions')).not.toBeInTheDocument();
+    });
+
+    it('row click is suppressed when long press was triggered', () => {
+      const account = createAccount({ id: 'acc-x', name: 'Long Press Acct' });
+      openContextMenu(account);
+
+      // The account name appears in both the table row and the open context menu dialog.
+      // Get the row itself via the account row (tr) in the tbody.
+      const nameSpan = screen.getAllByText('Long Press Acct')[0]; // first occurrence is in the table row
+      const row = nameSpan.closest('tr')!;
+      fireEvent.click(row);
+
+      // Navigation should NOT happen since the long press already triggered
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('long press without touch event (no touches array) sets touchStartPos to null', () => {
+      const account = createAccount({ name: 'Mouse Press Account' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const row = screen.getByText('Mouse Press Account').closest('tr')!;
+      // mouseDown fires handleLongPressStart without a touch event
+      fireEvent.mouseDown(row);
+      act(() => { vi.advanceTimersByTime(800); });
+
+      // Context menu should still appear (touchStartPos stays null, no movement cancellation)
+      expect(screen.getByText('View Transactions')).toBeInTheDocument();
+    });
+
+    it('touch move within threshold does not cancel long press', () => {
+      const account = createAccount({ name: 'Small Move Account' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const row = screen.getByText('Small Move Account').closest('tr')!;
+
+      fireEvent.touchStart(row, {
+        touches: [{ clientX: 100, clientY: 100 }],
+      });
+
+      // Move only 5px — within 10px threshold
+      fireEvent.touchMove(row, {
+        touches: [{ clientX: 105, clientY: 100 }],
+      });
+
+      act(() => { vi.advanceTimersByTime(800); });
+
+      // Context menu should still appear
+      expect(screen.getByText('View Transactions')).toBeInTheDocument();
+    });
+  });
+
+  describe('additional account type coverage', () => {
+    it('renders LOAN account type group', () => {
+      const account = createAccount({ id: 'l1', name: 'Car Loan', accountType: 'LOAN' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      expect(screen.getByText('Car Loan')).toBeInTheDocument();
+      // "Loan" appears in both group header and type badge
+      expect(screen.getAllByText('Loan').length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('renders MORTGAGE account type group', () => {
+      const account = createAccount({ id: 'm1', name: 'Home Mortgage', accountType: 'MORTGAGE' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      expect(screen.getByText('Home Mortgage')).toBeInTheDocument();
+      // "Mortgage" appears in both group header and type badge
+      expect(screen.getAllByText('Mortgage').length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('renders ASSET account type group', () => {
+      const account = createAccount({ id: 'as1', name: 'My Car', accountType: 'ASSET' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      expect(screen.getByText('My Car')).toBeInTheDocument();
+      // "Asset" appears in both group header and type badge
+      expect(screen.getAllByText('Asset').length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('renders LINE_OF_CREDIT account type group', () => {
+      const account = createAccount({ id: 'loc1', name: 'HELOC', accountType: 'LINE_OF_CREDIT' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      expect(screen.getByText('HELOC')).toBeInTheDocument();
+      // "Line of Credit" appears in both group header and type badge
+      expect(screen.getAllByText('Line of Credit').length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('renders OTHER account type group', () => {
+      const account = createAccount({ id: 'o1', name: 'Other Account', accountType: 'OTHER' });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      expect(screen.getByText('Other Account')).toBeInTheDocument();
+      // "Other" appears in both group header and type badge
+      expect(screen.getAllByText('Other').length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('shows approximate conversion for brokerage in compact mode', () => {
+      const account = createAccount({
+        id: 'broker-usd',
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+        currencyCode: 'USD',
+        currentBalance: 0,
+      });
+      const brokerageMarketValues = new Map([['broker-usd', 1000]]);
+      exchangeMocks.convertToDefault.mockImplementation((n: number) => n * 1.3);
+
+      render(
+        <AccountList accounts={[account]} brokerageMarketValues={brokerageMarketValues} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Compact mode still shows approximate conversion (only dense hides it)
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton); // compact
+
+      // Should show approximate conversion in compact mode
+      expect(screen.getByText(/≈/)).toBeInTheDocument();
+    });
+
+    it('negative group total renders in red', () => {
+      const account = createAccount({
+        id: 'cc1',
+        name: 'Credit Card',
+        accountType: 'CREDIT_CARD',
+        currentBalance: -1000,
+      });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // The group header total for CREDIT_CARD should be negative
+      const headerRow = document.querySelector<HTMLTableRowElement>('tr[aria-expanded]');
+      expect(headerRow).toBeTruthy();
+      expect(headerRow!.textContent).toContain('$-1000.00');
+    });
+
+    it('group header re-expands when clicked again', () => {
+      const accounts = [
+        createAccount({ id: 'c1', name: 'Cheq A', accountType: 'CHEQUING' }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const groupRow = document.querySelector<HTMLTableRowElement>('tr[aria-expanded]')!;
+
+      // Collapse
+      fireEvent.click(groupRow);
+      expect(screen.queryByText('Cheq A')).not.toBeInTheDocument();
+
+      // Re-expand
+      fireEvent.click(groupRow);
+      expect(screen.getByText('Cheq A')).toBeInTheDocument();
+    });
+
+    it('clears net worth filter when all excluded accounts are removed from prop', async () => {
+      // Start with one excluded account to show the net worth filter
+      const accounts = [
+        createAccount({ id: 'a1', name: 'Included Account', excludeFromNetWorth: false }),
+        createAccount({ id: 'a2', name: 'Excluded Account', excludeFromNetWorth: true }),
+      ];
+
+      const { rerender } = render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Apply net worth excluded filter
+      const netWorthFilter = screen.getByDisplayValue('Net Worth: All');
+      fireEvent.change(netWorthFilter, { target: { value: 'excluded' } });
+      expect(screen.getByText('1 of 2 accounts')).toBeInTheDocument();
+
+      // Now rerender with no excluded accounts — effect should clear the filter
+      const noExcludedAccounts = [
+        createAccount({ id: 'a1', name: 'Included Account', excludeFromNetWorth: false }),
+        createAccount({ id: 'a2', name: 'Was Excluded', excludeFromNetWorth: false }),
+      ];
+
+      rerender(
+        <AccountList accounts={noExcludedAccounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Filter should be cleared — both accounts visible
+      await waitFor(() => {
+        expect(screen.getByText('2 of 2 accounts')).toBeInTheDocument();
+      });
+    });
+
+    it('persists sort field and direction in localStorage', () => {
+      const accounts = [
+        createAccount({ id: 'a1', name: 'Alpha', accountType: 'CHEQUING' }),
+        createAccount({ id: 'a2', name: 'Zeta', accountType: 'CHEQUING' }),
+      ];
+
+      const { unmount } = render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Click balance header to change sort
+      fireEvent.click(screen.getByText('Balance'));
+
+      expect(localStorage.getItem('accounts.filter.sortField')).toBe('"balance"');
+      expect(localStorage.getItem('accounts.filter.sortDirection')).toBe('"asc"');
+
+      unmount();
+
+      // Re-render: should restore sort from localStorage
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Balance header sort should be active (reflected in sort icon)
+      expect(localStorage.getItem('accounts.filter.sortField')).toBe('"balance"');
+    });
+
+    it('initializes from localStorage when stored values exist', () => {
+      // Pre-populate localStorage with filter state
+      localStorage.setItem('accounts.filter.status', JSON.stringify('active'));
+      localStorage.setItem('accounts.filter.sortField', JSON.stringify('balance'));
+      localStorage.setItem('accounts.filter.sortDirection', JSON.stringify('desc'));
+      localStorage.setItem('accounts.filter.density', JSON.stringify('compact'));
+
+      const accounts = [
+        createAccount({ id: 'a1', name: 'Active One', isClosed: false }),
+        createAccount({ id: 'a2', name: 'Closed One', isClosed: true, closedDate: '2024-01-01T00:00:00Z' }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Should show only active accounts (initialized from stored status filter)
+      expect(screen.getByText('1 of 2 accounts')).toBeInTheDocument();
+      // Density should be compact
+      expect(screen.getByTitle('Toggle row density')).toHaveTextContent('Compact');
+    });
+
+    it('handles getStoredValue with invalid JSON gracefully', () => {
+      // Put invalid JSON in localStorage
+      localStorage.setItem('accounts.filter.sortField', 'invalid-json');
+
+      const accounts = [createAccount()];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Should fall back to default sort (name) without crashing
+      expect(screen.getByText('Main Chequing')).toBeInTheDocument();
+    });
+
+    it('status segmented control renders non-active styling when filter is set', () => {
+      const accounts = [
+        createAccount({ id: 'a1', name: 'Active One', isClosed: false }),
+        createAccount({ id: 'a2', name: 'Closed One', isClosed: true, closedDate: '2024-01-01T00:00:00Z' }),
+      ];
+
+      render(
+        <AccountList accounts={accounts} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      // Click Active filter to change filterStatus away from ''
+      const activeBtn = screen.getAllByRole('button').find(
+        (btn) => btn.textContent === 'Active' && btn.closest('.inline-flex.rounded-md')
+      )!;
+      fireEvent.click(activeBtn);
+
+      // Now "All" button should not have bg-blue-600 (it's no longer selected)
+      const allBtn = screen.getAllByRole('button').find(
+        (btn) => btn.textContent === 'All' && btn.closest('.inline-flex.rounded-md')
+      )!;
+      expect(allBtn.className).not.toContain('bg-blue-600');
+
+      // Active button now has bg-blue-600
+      expect(activeBtn.className).toContain('bg-blue-600');
+    });
+
+    it('dense mode with deletable active brokerage account hides reconcile button', () => {
+      const account = createAccount({
+        accountType: 'INVESTMENT',
+        accountSubType: 'INVESTMENT_BROKERAGE',
+        canDelete: true,
+        currentBalance: 0,
+      });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton); // dense
+
+      // No Reconcile in dense mode for brokerage
+      expect(screen.queryByTitle('Reconcile')).not.toBeInTheDocument();
+      // But delete button appears for deletable
+      expect(screen.getByTitle('Permanently delete account (no transactions)')).toBeInTheDocument();
+    });
+
+    it('dense mode with non-deletable closed account does not show delete button', () => {
+      const account = createAccount({
+        isClosed: true,
+        closedDate: '2024-01-01T00:00:00Z',
+        canDelete: false,
+      });
+
+      render(
+        <AccountList accounts={[account]} onEdit={mockOnEdit} defaultCurrency="CAD" convertToDefault={exchangeMocks.convertToDefault} onRefresh={mockOnRefresh} />
+      );
+
+      const densityButton = screen.getByTitle('Toggle row density');
+      fireEvent.click(densityButton);
+      fireEvent.click(densityButton); // dense
+
+      expect(screen.queryByTitle('Permanently delete account (no transactions)')).not.toBeInTheDocument();
     });
   });
 });

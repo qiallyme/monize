@@ -303,7 +303,47 @@ describe('AdminUsersPage', () => {
     });
   });
 
+  describe('Dialog cancel handlers', () => {
+    it('closes confirm dialog when Cancel is clicked', async () => {
+      render(<AdminUsersPage />);
+      await waitFor(() => expect(screen.getByTestId('user-table')).toBeInTheDocument());
+      fireEvent.click(screen.getAllByText('Delete')[0]);
+      await waitFor(() => expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Cancel'));
+      await waitFor(() => {
+        expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument();
+      });
+    });
+
+    it('closes reset password modal when Close is clicked', async () => {
+      mockResetUserPassword.mockResolvedValue({ temporaryPassword: 'TempPass123!' });
+      render(<AdminUsersPage />);
+      await waitFor(() => expect(screen.getByTestId('user-table')).toBeInTheDocument());
+      fireEvent.click(screen.getAllByText('Reset Password')[0]);
+      await waitFor(() => expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Reset Password', { selector: '[data-testid="confirm-dialog"] button' }));
+      await waitFor(() => expect(screen.getByTestId('reset-password-modal')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Close'));
+      await waitFor(() => {
+        expect(screen.queryByTestId('reset-password-modal')).not.toBeInTheDocument();
+      });
+    });
+  });
+
   describe('Error Handling', () => {
+    it('shows error toast when delete user fails', async () => {
+      const toast = await import('react-hot-toast');
+      mockDeleteUser.mockRejectedValueOnce(new Error('Delete failed'));
+      render(<AdminUsersPage />);
+      await waitFor(() => expect(screen.getByTestId('user-table')).toBeInTheDocument());
+      fireEvent.click(screen.getAllByText('Delete')[0]);
+      await waitFor(() => expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Delete User'));
+      await waitFor(() => {
+        expect(toast.default.error).toHaveBeenCalled();
+      });
+    });
+
     it('shows error toast when loading users fails', async () => {
       const toast = await import('react-hot-toast');
       mockGetUsers.mockRejectedValue(new Error('Network error'));

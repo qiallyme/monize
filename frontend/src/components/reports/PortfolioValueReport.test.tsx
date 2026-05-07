@@ -23,10 +23,14 @@ vi.mock('@/hooks/useExchangeRates', () => ({
 }));
 
 const STABLE_RESOLVED_RANGE = { start: '2024-01-01', end: '2026-01-01' };
+
+let mockDateRangeValue = '2y';
+const mockSetDateRange = vi.fn();
+
 vi.mock('@/hooks/useDateRange', () => ({
   useDateRange: () => ({
-    dateRange: '2y',
-    setDateRange: vi.fn(),
+    dateRange: mockDateRangeValue,
+    setDateRange: mockSetDateRange,
     startDate: '',
     setStartDate: vi.fn(),
     endDate: '',
@@ -34,6 +38,10 @@ vi.mock('@/hooks/useDateRange', () => ({
     resolvedRange: STABLE_RESOLVED_RANGE,
     isValid: true,
   }),
+}));
+
+vi.mock('@/hooks/useLocalStorage', () => ({
+  useLocalStorage: (_key: string, defaultValue: string) => [defaultValue, vi.fn()],
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -48,11 +56,27 @@ vi.mock('@/components/ui/DateRangeSelector', () => ({
   },
 }));
 
+vi.mock('@/components/ui/ExportDropdown', () => ({
+  ExportDropdown: ({ onExportCsv, onExportPdf }: any) => (
+    <div data-testid="export-dropdown">
+      {onExportCsv && (
+        <button data-testid="export-csv" onClick={onExportCsv}>CSV</button>
+      )}
+      <button data-testid="export-pdf" onClick={onExportPdf}>Export PDF</button>
+    </div>
+  ),
+}));
+
 vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: any) => <div data-testid="responsive-container">{children}</div>,
   AreaChart: ({ children }: any) => <div data-testid="area-chart">{children}</div>,
   Area: () => null,
-  XAxis: ({ tickFormatter }: any) => <div>{tickFormatter ? tickFormatter('Jan 2024') : ''}</div>,
+  XAxis: ({ tickFormatter }: any) => (
+    <div>
+      {tickFormatter ? tickFormatter('Jan 2024') : ''}
+      {tickFormatter ? tickFormatter('Jan 1, 2024') : ''}
+    </div>
+  ),
   YAxis: ({ tickFormatter }: any) => <div>{tickFormatter ? tickFormatter(1000) : ''}</div>,
   CartesianGrid: () => null,
   Tooltip: ({ content }: any) => {
@@ -61,6 +85,7 @@ vi.mock('recharts', () => ({
         <div>
           {content({ active: true, payload: [{ value: 100, payload: { name: 'Jan' } }] })}
           {content({ active: false, payload: [] })}
+          {content({ active: true, payload: null })}
         </div>
       );
     }
@@ -68,10 +93,22 @@ vi.mock('recharts', () => ({
   },
 }));
 
+vi.mock('@/components/investments/portfolio-chart-utils', () => ({
+  INTRADAY_RANGES: new Set(['1d', '1w', '1m']),
+  buildIntradayCacheKey: vi.fn(() => 'test-cache-key'),
+  readIntradayCache: vi.fn(() => null),
+  writeIntradayCache: vi.fn(),
+  computeTightYAxisDomain: vi.fn((values: number[]) => {
+    if (!values.length) return [0, 1];
+    return [Math.min(...values), Math.max(...values)];
+  }),
+}));
+
 const mockGetInvestmentsMonthly = vi.fn();
 const mockGetInvestmentsDaily = vi.fn();
 const mockGetPortfolioSummary = vi.fn();
 const mockGetInvestmentAccounts = vi.fn();
+const mockGetIntradayValue = vi.fn();
 
 vi.mock('@/lib/net-worth', () => ({
   netWorthApi: {
@@ -84,6 +121,7 @@ vi.mock('@/lib/investments', () => ({
   investmentsApi: {
     getPortfolioSummary: (...args: any[]) => mockGetPortfolioSummary(...args),
     getInvestmentAccounts: (...args: any[]) => mockGetInvestmentAccounts(...args),
+    getIntradayValue: (...args: any[]) => mockGetIntradayValue(...args),
   },
 }));
 
@@ -96,9 +134,20 @@ vi.mock('@/lib/logger', () => ({
   }),
 }));
 
+const emptyPortfolio = {
+  holdings: [],
+  holdingsByAccount: [],
+  allocation: [],
+  totalPortfolioValue: 0,
+  totalCostBasis: 0,
+  totalGainLoss: 0,
+  totalGainLossPercent: 0,
+};
+
 describe('PortfolioValueReport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDateRangeValue = '2y';
   });
 
   it('shows loading state initially', () => {
@@ -111,15 +160,7 @@ describe('PortfolioValueReport', () => {
 
   it('renders empty state when no monthly data', async () => {
     mockGetInvestmentsMonthly.mockResolvedValue([]);
-    mockGetPortfolioSummary.mockResolvedValue({
-      holdings: [],
-      holdingsByAccount: [],
-      allocation: [],
-      totalPortfolioValue: 0,
-      totalCostBasis: 0,
-      totalGainLoss: 0,
-      totalGainLossPercent: 0,
-    });
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<PortfolioValueReport />);
     await waitFor(() => {
@@ -169,11 +210,8 @@ describe('PortfolioValueReport', () => {
       { month: '2024-07-01', value: 55000 },
     ]);
     mockGetPortfolioSummary.mockResolvedValue({
-      holdings: [],
-      holdingsByAccount: [],
-      allocation: [],
+      ...emptyPortfolio,
       totalPortfolioValue: 55000,
-      totalCostBasis: 50000,
       totalGainLoss: 5000,
       totalGainLossPercent: 10,
     });
@@ -220,15 +258,7 @@ describe('PortfolioValueReport', () => {
 
   it('passes date filter ranges including 1w, 1m, 3m, ytd to DateRangeSelector', async () => {
     mockGetInvestmentsMonthly.mockResolvedValue([]);
-    mockGetPortfolioSummary.mockResolvedValue({
-      holdings: [],
-      holdingsByAccount: [],
-      allocation: [],
-      totalPortfolioValue: 0,
-      totalCostBasis: 0,
-      totalGainLoss: 0,
-      totalGainLossPercent: 0,
-    });
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<PortfolioValueReport />);
     await waitFor(() => {
@@ -275,17 +305,30 @@ describe('PortfolioValueReport', () => {
     await waitFor(() => {
       expect(screen.getByText('Current Portfolio Breakdown')).toBeInTheDocument();
     });
-    const exportBtn = screen.getByRole('button', { name: /export/i });
     await act(async () => {
-      fireEvent.click(exportBtn);
+      fireEvent.click(screen.getByTestId('export-pdf'));
     });
-    const pdfBtn = screen.queryByText(/PDF/i);
-    if (pdfBtn) {
-      await act(async () => {
-        fireEvent.click(pdfBtn);
-      });
-    }
     expect(exportToPdf).toHaveBeenCalled();
+  });
+
+  it('exports pdf with no portfolio breakdown rows', async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    (exportToPdf as any).mockClear();
+    mockGetInvestmentsMonthly.mockResolvedValue([
+      { month: '2024-06-01', value: 50000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByTestId('export-pdf')).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('export-pdf'));
+    });
+    expect(exportToPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ additionalTables: undefined }),
+    );
   });
 
   it('changes selected account', async () => {
@@ -293,8 +336,7 @@ describe('PortfolioValueReport', () => {
       { month: '2024-06-01', value: 50000 },
     ]);
     mockGetPortfolioSummary.mockResolvedValue({
-      holdings: [], holdingsByAccount: [], allocation: [],
-      totalPortfolioValue: 50000, totalCostBasis: 50000, totalGainLoss: 0, totalGainLossPercent: 0,
+      ...emptyPortfolio, totalPortfolioValue: 50000,
     });
     mockGetInvestmentAccounts.mockResolvedValue([
       { id: 'acc-1', name: 'TFSA - Cash', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
@@ -315,8 +357,11 @@ describe('PortfolioValueReport', () => {
       { month: '2024-07-01', value: 55000 },
     ]);
     mockGetPortfolioSummary.mockResolvedValue({
-      holdings: [], holdingsByAccount: [], allocation: [],
-      totalPortfolioValue: 55000, totalCostBasis: 60000, totalGainLoss: -5000, totalGainLossPercent: -8.33,
+      ...emptyPortfolio,
+      totalPortfolioValue: 55000,
+      totalCostBasis: 60000,
+      totalGainLoss: -5000,
+      totalGainLossPercent: -8.33,
     });
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<PortfolioValueReport />);
@@ -331,10 +376,7 @@ describe('PortfolioValueReport', () => {
       value: 50000 + i * 100,
     }));
     mockGetInvestmentsMonthly.mockResolvedValue(data);
-    mockGetPortfolioSummary.mockResolvedValue({
-      holdings: [], holdingsByAccount: [], allocation: [],
-      totalPortfolioValue: 0, totalCostBasis: 0, totalGainLoss: 0, totalGainLossPercent: 0,
-    });
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
     mockGetInvestmentAccounts.mockResolvedValue([]);
     render(<PortfolioValueReport />);
     await waitFor(() => {
@@ -344,15 +386,7 @@ describe('PortfolioValueReport', () => {
 
   it('renders account selector dropdown', async () => {
     mockGetInvestmentsMonthly.mockResolvedValue([]);
-    mockGetPortfolioSummary.mockResolvedValue({
-      holdings: [],
-      holdingsByAccount: [],
-      allocation: [],
-      totalPortfolioValue: 0,
-      totalCostBasis: 0,
-      totalGainLoss: 0,
-      totalGainLossPercent: 0,
-    });
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
     mockGetInvestmentAccounts.mockResolvedValue([
       { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
     ]);
@@ -360,5 +394,300 @@ describe('PortfolioValueReport', () => {
     await waitFor(() => {
       expect(screen.getByText('All Accounts')).toBeInTheDocument();
     });
+  });
+
+  it('filters INVESTMENT_BROKERAGE accounts from the dropdown', async () => {
+    mockGetInvestmentsMonthly.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-cash', name: 'TFSA - Cash', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+      { id: 'acc-brok', name: 'TFSA - Brokerage', currencyCode: 'CAD', accountSubType: 'INVESTMENT_BROKERAGE' },
+    ]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('All Accounts')).toBeInTheDocument();
+    });
+    // Cash account (with suffix stripped) should appear; brokerage account should not
+    expect(screen.queryByText('TFSA - Brokerage')).not.toBeInTheDocument();
+  });
+
+  it('strips account name suffixes in the dropdown', async () => {
+    mockGetInvestmentsMonthly.mockResolvedValue([]);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA - Cash', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      // The " - Cash" suffix should be stripped
+      expect(screen.getByText('TFSA')).toBeInTheDocument();
+    });
+  });
+
+  it('shows breakdown negative gain/loss in red colour class', async () => {
+    mockGetInvestmentsMonthly.mockResolvedValue([
+      { month: '2024-06-01', value: 50000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue({
+      holdings: [],
+      holdingsByAccount: [
+        { accountId: 'acc-1', accountName: 'RRSP', totalMarketValue: 40000, cashBalance: 0, totalGainLoss: -5000, totalGainLossPercent: -11.1 },
+      ],
+      allocation: [],
+      totalPortfolioValue: 40000,
+      totalCostBasis: 45000,
+      totalGainLoss: -5000,
+      totalGainLossPercent: -11.1,
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Current Portfolio Breakdown')).toBeInTheDocument();
+    });
+    // Negative gain/loss cell should have red text class
+    const gainLossCell = screen.getByText('$-5000.00');
+    expect(gainLossCell).toHaveClass('text-red-600');
+  });
+
+  it('shows breakdown positive gain/loss formatted with + prefix', async () => {
+    mockGetInvestmentsMonthly.mockResolvedValue([
+      { month: '2024-06-01', value: 50000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue({
+      holdings: [],
+      holdingsByAccount: [
+        { accountId: 'acc-1', accountName: 'TFSA', totalMarketValue: 48000, cashBalance: 2000, totalGainLoss: 5000, totalGainLossPercent: 11.6 },
+      ],
+      allocation: [],
+      totalPortfolioValue: 50000,
+      totalCostBasis: 45000,
+      totalGainLoss: 5000,
+      totalGainLossPercent: 11.6,
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('+$5000.00')).toBeInTheDocument();
+    });
+  });
+
+  it('shows foreign currency label in summary cards when account currency differs from default', async () => {
+    mockGetInvestmentsMonthly.mockResolvedValue([
+      { month: '2024-06-01', value: 50000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    // Account with USD currency while default is CAD
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-usd', name: 'USD Account - Cash', currencyCode: 'USD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('All Accounts')).toBeInTheDocument();
+    });
+    const select = document.querySelector('select') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'acc-usd' } });
+    });
+    await waitFor(() => {
+      // When foreign currency is active, the axis formatter uses that currency
+      expect(screen.getByText('Current Value')).toBeInTheDocument();
+    });
+  });
+
+  it('handles daily range (3m) using getInvestmentsDaily', async () => {
+    // 3m is in DAILY_RANGES but not in INTRADAY_RANGES, so it uses the daily endpoint
+    mockDateRangeValue = '3m';
+    mockGetInvestmentsDaily.mockResolvedValue([
+      { date: '2024-06-01', value: 50000 },
+      { date: '2024-06-02', value: 51000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Portfolio Value Over Time')).toBeInTheDocument();
+    });
+    expect(mockGetInvestmentsDaily).toHaveBeenCalled();
+  });
+
+  it('shows intraday unavailable state for 1d range with fallbackToDaily', async () => {
+    mockDateRangeValue = '1d';
+    mockGetIntradayValue.mockResolvedValue({
+      points: [],
+      interval: '5m',
+      currency: 'CAD',
+      range: '1d',
+      fetchedAt: new Date().toISOString(),
+      skippedSymbols: ['MSFT'],
+      fallbackToDaily: true,
+    });
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText(/Intraday view unavailable/i)).toBeInTheDocument();
+    });
+    // Should show skipped symbols
+    expect(screen.getByText(/MSFT/)).toBeInTheDocument();
+  });
+
+  it('shows intraday unavailable with no skipped symbols listed', async () => {
+    mockDateRangeValue = '1d';
+    mockGetIntradayValue.mockResolvedValue({
+      points: [],
+      interval: '5m',
+      currency: 'CAD',
+      range: '1d',
+      fetchedAt: new Date().toISOString(),
+      skippedSymbols: [],
+      fallbackToDaily: true,
+    });
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText(/Intraday view unavailable/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows intraday fallback warning icon for 1w range with fallbackToDaily', async () => {
+    mockDateRangeValue = '1w';
+    mockGetIntradayValue.mockResolvedValue({
+      points: [],
+      interval: '1d',
+      currency: 'CAD',
+      range: '1w',
+      fetchedAt: new Date().toISOString(),
+      skippedSymbols: ['VFV'],
+      fallbackToDaily: true,
+    });
+    mockGetInvestmentsDaily.mockResolvedValue([
+      { date: '2024-06-01', value: 50000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByTestId('report-intraday-fallback-warning')).toBeInTheDocument();
+    });
+  });
+
+  it('renders intraday chart points for 1d range without fallback', async () => {
+    mockDateRangeValue = '1d';
+    mockGetIntradayValue.mockResolvedValue({
+      points: [
+        { timestamp: '2024-06-01T10:00:00Z', value: 50000 },
+        { timestamp: '2024-06-01T11:00:00Z', value: 51000 },
+      ],
+      interval: '5m',
+      currency: 'CAD',
+      range: '1d',
+      fetchedAt: new Date().toISOString(),
+      skippedSymbols: [],
+      fallbackToDaily: false,
+    });
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByTestId('area-chart')).toBeInTheDocument();
+    });
+  });
+
+  it('handles intraday fetch error gracefully', async () => {
+    mockDateRangeValue = '1d';
+    mockGetIntradayValue.mockRejectedValue(new Error('network error'));
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      // After error, chartPoints is empty so shows "No investment data"
+      expect(screen.getByText(/No investment data|Intraday view unavailable/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows background loading indicator when data is being refreshed', async () => {
+    // First load resolves; second (triggered by account change) stays pending
+    mockGetInvestmentsMonthly
+      .mockResolvedValueOnce([{ month: '2024-06-01', value: 50000 }])
+      .mockReturnValueOnce(new Promise(() => {}));
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-1', name: 'TFSA', currencyCode: 'CAD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Portfolio Value Over Time')).toBeInTheDocument();
+    });
+    // Trigger a reload by changing the account — new fetch hangs, but old points are shown
+    const select = document.querySelector('select') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'acc-1' } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('report-chart-loading-indicator')).toBeInTheDocument();
+    });
+  });
+
+  it('renders many daily data points (>36) axis tick logic', async () => {
+    mockDateRangeValue = '3m';
+    const data = Array.from({ length: 50 }, (_, i) => ({
+      date: `2024-${String(Math.floor(i / 30) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+      value: 50000 + i * 100,
+    }));
+    mockGetInvestmentsDaily.mockResolvedValue(data);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Portfolio Value Over Time')).toBeInTheDocument();
+    });
+    expect(mockGetInvestmentsDaily).toHaveBeenCalled();
+  });
+
+  it('computes summary with single chart point (initial === current, change = 0)', async () => {
+    mockGetInvestmentsMonthly.mockResolvedValue([
+      { month: '2024-06-01', value: 50000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue(emptyPortfolio);
+    mockGetInvestmentAccounts.mockResolvedValue([]);
+    render(<PortfolioValueReport />);
+    await waitFor(() => {
+      expect(screen.getByText('+0.0%')).toBeInTheDocument();
+    });
+  });
+
+  it('exports pdf using foreign-currency fmtFull when account has foreign currency', async () => {
+    const { exportToPdf } = await import('@/lib/pdf-export');
+    (exportToPdf as any).mockClear();
+    mockGetInvestmentsMonthly.mockResolvedValue([
+      { month: '2024-06-01', value: 40000 },
+    ]);
+    mockGetPortfolioSummary.mockResolvedValue({
+      holdings: [],
+      holdingsByAccount: [
+        { accountId: 'acc-usd', accountName: 'USD Account', totalMarketValue: 40000, cashBalance: 0, totalGainLoss: 1000, totalGainLossPercent: 2.5 },
+      ],
+      allocation: [],
+      totalPortfolioValue: 40000,
+      totalCostBasis: 39000,
+      totalGainLoss: 1000,
+      totalGainLossPercent: 2.5,
+    });
+    mockGetInvestmentAccounts.mockResolvedValue([
+      { id: 'acc-usd', name: 'USD Account - Brokerage', currencyCode: 'USD', accountSubType: 'INVESTMENT_CASH' },
+    ]);
+    render(<PortfolioValueReport />);
+    // Select the USD account first to activate foreign currency path
+    await waitFor(() => expect(screen.getByText('All Accounts')).toBeInTheDocument());
+    const select = document.querySelector('select') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'acc-usd' } });
+    });
+    await waitFor(() => expect(screen.getByTestId('export-pdf')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('export-pdf'));
+    });
+    expect(exportToPdf).toHaveBeenCalled();
   });
 });

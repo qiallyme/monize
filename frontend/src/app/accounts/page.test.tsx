@@ -1,15 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@/test/render';
+import { render, screen, waitFor, act, fireEvent } from '@/test/render';
 import AccountsPage from './page';
+
+// Module-level state for controlling form modal in tests
+const formModalState = {
+  showForm: false,
+  editingItem: null as any,
+  isEditing: false,
+};
+
+// Captured onSubmit from AccountForm for testing
+let capturedOnSubmit: ((data: any) => Promise<void>) | null = null;
 
 // Mock next/image
 vi.mock('next/image', () => ({
   default: ({ priority, fill, ...props }: any) => <img alt="" {...props} />,
 }));
 
-// Mock next/dynamic
+// Mock next/dynamic - expose onSubmit/onCancel for form testing
 vi.mock('next/dynamic', () => ({
-  default: () => () => <div data-testid="account-form">AccountForm</div>,
+  default: () => (props: any) => {
+    capturedOnSubmit = props.onSubmit ?? null;
+    return (
+      <div data-testid="account-form">
+        <button
+          data-testid="submit-form"
+          onClick={() => props.onSubmit && props.onSubmit({})}
+        >
+          Submit
+        </button>
+      </div>
+    );
+  },
 }));
 
 // Mock logger
@@ -149,12 +171,12 @@ vi.mock('@/components/layout/PageHeader', () => ({
 
 vi.mock('@/hooks/useFormModal', () => ({
   useFormModal: () => ({
-    showForm: false,
-    editingItem: null,
+    showForm: formModalState.showForm,
+    editingItem: formModalState.editingItem,
     openCreate: vi.fn(),
     openEdit: vi.fn(),
     close: vi.fn(),
-    isEditing: false,
+    isEditing: formModalState.isEditing,
     modalProps: { pushHistory: true, onBeforeClose: vi.fn() },
     setFormDirty: vi.fn(),
     unsavedChangesDialog: { isOpen: false, onSave: vi.fn(), onDiscard: vi.fn(), onCancel: vi.fn() },
@@ -189,6 +211,11 @@ describe('AccountsPage', () => {
     vi.clearAllMocks();
     mockGetAll.mockResolvedValue([]);
     mockGetPortfolioSummary.mockResolvedValue(null);
+    // Reset form modal state
+    formModalState.showForm = false;
+    formModalState.editingItem = null;
+    formModalState.isEditing = false;
+    capturedOnSubmit = null;
   });
 
   it('renders the page header with title', async () => {
@@ -366,6 +393,275 @@ describe('AccountsPage', () => {
     // Page should still render without crashing
     await waitFor(() => {
       expect(screen.getByTestId('account-list')).toBeInTheDocument();
+    });
+  });
+
+  it('renders account form modal when showForm is true', async () => {
+    formModalState.showForm = true;
+    render(<AccountsPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('account-form')).toBeInTheDocument();
+    });
+  });
+
+  it('shows New Account heading in modal when creating', async () => {
+    formModalState.showForm = true;
+    formModalState.isEditing = false;
+    render(<AccountsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('New Account')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Edit Account heading in modal when editing', async () => {
+    formModalState.showForm = true;
+    formModalState.editingItem = mockAccounts[0];
+    formModalState.isEditing = true;
+    render(<AccountsPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Edit Account')).toBeInTheDocument();
+    });
+  });
+
+  describe('handleFormSubmit - create account', () => {
+    beforeEach(() => {
+      formModalState.showForm = true;
+      formModalState.editingItem = null;
+      formModalState.isEditing = false;
+    });
+
+    it('calls accountsApi.create when creating a new account', async () => {
+      mockCreate.mockResolvedValue({ id: 'new-acc', name: 'Test' });
+      mockGetAll.mockResolvedValue([]);
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ name: 'Test Account', accountType: 'CHECKING' });
+      });
+      expect(mockCreate).toHaveBeenCalled();
+    });
+
+    it('calls accountsApi.create with cleaned data (strips undefined fields)', async () => {
+      mockCreate.mockResolvedValue({ id: 'new-acc' });
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({
+          name: 'Test',
+          accountType: 'CHECKING',
+          openingBalance: '',
+          creditLimit: undefined,
+          interestRate: NaN,
+        });
+      });
+      const callArg = mockCreate.mock.calls[0][0];
+      expect(callArg).not.toHaveProperty('interestRate');
+    });
+
+    it('negates opening balance for CREDIT_CARD when creating', async () => {
+      mockCreate.mockResolvedValue({ id: 'new-acc' });
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'CREDIT_CARD', openingBalance: 1000 });
+      });
+      const callArg = mockCreate.mock.calls[0][0];
+      expect(callArg.openingBalance).toBe(-1000);
+    });
+
+    it('negates opening balance for LINE_OF_CREDIT when creating', async () => {
+      mockCreate.mockResolvedValue({ id: 'new-acc' });
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'LINE_OF_CREDIT', openingBalance: 500 });
+      });
+      const callArg = mockCreate.mock.calls[0][0];
+      expect(callArg.openingBalance).toBe(-500);
+    });
+
+    it('does NOT negate opening balance for LOAN/MORTGAGE (backend handles it)', async () => {
+      mockCreate.mockResolvedValue({ id: 'new-acc' });
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'LOAN', openingBalance: 10000 });
+      });
+      const callArg = mockCreate.mock.calls[0][0];
+      expect(callArg.openingBalance).toBe(10000);
+    });
+
+    it('does NOT negate zero opening balance', async () => {
+      mockCreate.mockResolvedValue({ id: 'new-acc' });
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'CREDIT_CARD', openingBalance: 0 });
+      });
+      const callArg = mockCreate.mock.calls[0][0];
+      expect(callArg.openingBalance).toBe(0);
+    });
+
+    it('preserves openingBalance when it is explicitly 0', async () => {
+      mockCreate.mockResolvedValue({ id: 'new-acc' });
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'CHECKING', openingBalance: 0 });
+      });
+      const callArg = mockCreate.mock.calls[0][0];
+      expect(callArg.openingBalance).toBe(0);
+    });
+
+    it('shows success toast after creating account', async () => {
+      const toast = await import('react-hot-toast');
+      mockCreate.mockResolvedValue({ id: 'new-acc' });
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'CHECKING' });
+      });
+      expect(toast.default.success).toHaveBeenCalledWith('Account created successfully');
+    });
+
+    it('shows error toast and rethrows on create failure', async () => {
+      const { showErrorToast } = await import('@/lib/errors');
+      mockCreate.mockRejectedValue(new Error('Create failed'));
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await expect(
+        act(async () => { await capturedOnSubmit!({ accountType: 'CHECKING' }); })
+      ).rejects.toThrow();
+      expect(showErrorToast).toHaveBeenCalled();
+    });
+  });
+
+  describe('handleFormSubmit - update account', () => {
+    beforeEach(() => {
+      formModalState.showForm = true;
+      formModalState.editingItem = mockAccounts[0];
+      formModalState.isEditing = true;
+    });
+
+    it('calls accountsApi.update when editing an existing account', async () => {
+      mockUpdate.mockResolvedValue({});
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ name: 'Updated Name', accountType: 'CHECKING' });
+      });
+      expect(mockUpdate).toHaveBeenCalledWith(mockAccounts[0].id, expect.any(Object));
+    });
+
+    it('shows success toast after updating account', async () => {
+      const toast = await import('react-hot-toast');
+      mockUpdate.mockResolvedValue({});
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ name: 'Updated', accountType: 'CHECKING' });
+      });
+      expect(toast.default.success).toHaveBeenCalledWith('Account updated successfully');
+    });
+
+    it('negates positive opening balance for liability types on update', async () => {
+      formModalState.editingItem = { ...mockAccounts[2], id: 'cc-1' };
+      mockUpdate.mockResolvedValue({});
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'CREDIT_CARD', openingBalance: 2000 });
+      });
+      const callArg = mockUpdate.mock.calls[0][1];
+      expect(callArg.openingBalance).toBe(-2000);
+    });
+
+    it('negates positive opening balance for LOAN on update', async () => {
+      formModalState.editingItem = { id: 'loan-1', accountType: 'LOAN' };
+      mockUpdate.mockResolvedValue({});
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'LOAN', openingBalance: 50000 });
+      });
+      const callArg = mockUpdate.mock.calls[0][1];
+      expect(callArg.openingBalance).toBe(-50000);
+    });
+
+    it('preserves creditLimit value when provided', async () => {
+      mockUpdate.mockResolvedValue({});
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'CREDIT_CARD', creditLimit: 5000 });
+      });
+      const callArg = mockUpdate.mock.calls[0][1];
+      expect(callArg.creditLimit).toBe(5000);
+    });
+
+    it('preserves creditLimit when it is 0', async () => {
+      mockUpdate.mockResolvedValue({});
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await act(async () => {
+        await capturedOnSubmit!({ accountType: 'CREDIT_CARD', creditLimit: 0 });
+      });
+      const callArg = mockUpdate.mock.calls[0][1];
+      expect(callArg.creditLimit).toBe(0);
+    });
+
+    it('shows error toast and rethrows on update failure', async () => {
+      const { showErrorToast } = await import('@/lib/errors');
+      mockUpdate.mockRejectedValue(new Error('Update failed'));
+      render(<AccountsPage />);
+      await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+      await expect(
+        act(async () => { await capturedOnSubmit!({ accountType: 'CHECKING' }); })
+      ).rejects.toThrow();
+      expect(showErrorToast).toHaveBeenCalled();
+    });
+  });
+
+  describe('calculateSummary - edge cases', () => {
+    it('uses futureTransactionsSum when present', async () => {
+      mockGetAll.mockResolvedValue([
+        { id: 'acc-x', name: 'Checking', accountType: 'CHECKING', accountSubType: null, currencyCode: 'USD', currentBalance: 1000, futureTransactionsSum: 500, isClosed: false },
+      ]);
+      render(<AccountsPage />);
+      await waitFor(() => {
+        expect(screen.getByTestId('summary-Total Assets')).toHaveTextContent('$1500.00');
+      });
+    });
+
+    it('handles MORTGAGE as a liability type', async () => {
+      mockGetAll.mockResolvedValue([
+        { id: 'acc-m', name: 'Mortgage', accountType: 'MORTGAGE', accountSubType: null, currencyCode: 'USD', currentBalance: -200000, isClosed: false },
+      ]);
+      render(<AccountsPage />);
+      await waitFor(() => {
+        expect(screen.getByTestId('summary-Total Liabilities')).toHaveTextContent('$200000.00');
+      });
+    });
+
+    it('handles LOAN as a liability type', async () => {
+      mockGetAll.mockResolvedValue([
+        { id: 'acc-l', name: 'Car Loan', accountType: 'LOAN', accountSubType: null, currencyCode: 'USD', currentBalance: -15000, isClosed: false },
+      ]);
+      render(<AccountsPage />);
+      await waitFor(() => {
+        expect(screen.getByTestId('summary-Total Liabilities')).toHaveTextContent('$15000.00');
+      });
+    });
+
+    it('handles brokerage with no portfolio summary (falls back to 0)', async () => {
+      mockGetAll.mockResolvedValue([
+        { id: 'acc-b', name: 'Brokerage', accountType: 'INVESTMENT', accountSubType: 'INVESTMENT_BROKERAGE', currencyCode: 'USD', currentBalance: 9999, isClosed: false },
+      ]);
+      mockGetPortfolioSummary.mockResolvedValue(null);
+      render(<AccountsPage />);
+      await waitFor(() => {
+        expect(screen.getByTestId('summary-Total Assets')).toHaveTextContent('$0.00');
+      });
     });
   });
 });

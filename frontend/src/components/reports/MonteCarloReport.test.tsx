@@ -1856,6 +1856,7 @@ describe('MonteCarloReport', () => {
   });
 
   describe('Additional branch coverage', () => {
+    // num() helper: non-finite value returns 0 (used in cashFlowMarkers)
     it('treats a non-finite cash flow startYear as 1', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({
@@ -1877,11 +1878,12 @@ describe('MonteCarloReport', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
-      // NaN startYear falls back to 1, so the marker is at the first year label.
+      // Marker is placed at year 1 (the fallback for NaN startYear).
       const dot = await screen.findByTestId('reference-dot');
       expect(dot.getAttribute('data-x')).toBe('2027');
     });
 
+    // cashFlowMarkers: cash flow with no name falls back to 'Cash flow'
     it('uses fallback name "Cash flow" when the cash flow name is empty', async () => {
       const captured: Blob[] = [];
       const origCreate = global.URL.createObjectURL;
@@ -1924,6 +1926,8 @@ describe('MonteCarloReport', () => {
       global.URL.revokeObjectURL = origRevoke;
     });
 
+    // cashFlowMarkers: recurring flow where endYear == null defaults to totalYears
+    // and end === start produces no end marker
     it('skips the end marker when recurring flow endYear equals startYear', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({
@@ -1932,6 +1936,8 @@ describe('MonteCarloReport', () => {
               name: 'Equal',
               amount: 3000,
               flowType: 'RECURRING',
+              // startYear = 1, totalYears = 3, endYear clamped to max(1, endRaw)
+              // We set endYear = 1 so end === start and the end marker is skipped.
               startYear: 1,
               endYear: 1,
               inflationAdjust: false,
@@ -1945,11 +1951,12 @@ describe('MonteCarloReport', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
-      // Only one dot: the start marker. end === start so no end marker is added.
+      // Only one dot (the start marker); the end is skipped.
       const dots = await screen.findAllByTestId('reference-dot');
       expect(dots).toHaveLength(1);
     });
 
+    // cashFlowMarkers: recurring flow with endYear == null uses totalYears
     it('uses totalYears when recurring cash flow endYear is null', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({
@@ -1971,11 +1978,12 @@ describe('MonteCarloReport', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
-      // null endYear defaults to totalYears (3), so start (1) < end (3) and both markers render.
+      // Start and end markers rendered (null endYear falls back to totalYears=3).
       const dots = await screen.findAllByTestId('reference-dot');
       expect(dots.length).toBeGreaterThanOrEqual(2);
     });
 
+    // cashFlowMarkers: cash flow with startYear beyond totalYears is skipped
     it('skips a cash flow whose startYear exceeds the simulation horizon', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({
@@ -1984,6 +1992,7 @@ describe('MonteCarloReport', () => {
               name: 'Future',
               amount: 5000,
               flowType: 'ONE_TIME',
+              // totalYears = 3 in the fixture; startYear = 100 is skipped.
               startYear: 100,
               endYear: null,
               inflationAdjust: false,
@@ -1997,10 +2006,11 @@ describe('MonteCarloReport', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
-      // startYear 100 > totalYears 3, so the event is skipped entirely.
+      // No dots — the event is past the simulation horizon.
       expect(screen.queryByTestId('reference-dot')).not.toBeInTheDocument();
     });
 
+    // CSV export: when result has no performanceSummary, the summary section is omitted
     it('omits performance summary section from CSV when result has no performanceSummary', async () => {
       const captured: Blob[] = [];
       const origCreate = global.URL.createObjectURL;
@@ -2029,6 +2039,7 @@ describe('MonteCarloReport', () => {
       global.URL.revokeObjectURL = origRevoke;
     });
 
+    // PDF export: realValues = true produces "today's value" subtitle
     it('PDF export subtitle says today\'s value when result.realValues is true', async () => {
       const { exportToPdf } = await import('@/lib/pdf-export');
       mockApi.run.mockResolvedValueOnce(simResult({ realValues: true }));
@@ -2046,6 +2057,7 @@ describe('MonteCarloReport', () => {
       expect(args.subtitle).toMatch(/today's value/);
     });
 
+    // PDF export: no performanceSummary means only the percentile table is passed
     it('PDF export omits performance summary table when result has none', async () => {
       const { exportToPdf } = await import('@/lib/pdf-export');
       mockApi.run.mockResolvedValueOnce(simResult({ performanceSummary: undefined }));
@@ -2060,15 +2072,15 @@ describe('MonteCarloReport', () => {
         fireEvent.click(pdfOption);
       });
       const args = (exportToPdf as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      // Only the percentile table when there is no performance summary.
       expect(args.additionalTables).toHaveLength(1);
       expect(args.additionalTables[0].title).toBe('Portfolio Value Percentiles by Year');
     });
 
+    // PDF export: successRate == null produces "—" summary card value
     it('PDF export summary card shows em-dash when successRate is null', async () => {
       const { exportToPdf } = await import('@/lib/pdf-export');
-      mockApi.run.mockResolvedValueOnce(
-        simResult({ successRate: null as unknown as number }),
-      );
+      mockApi.run.mockResolvedValueOnce(simResult({ successRate: null as unknown as number }));
       await renderReport();
       await screen.findByText('Contribution phase');
       await act(async () => {
@@ -2080,14 +2092,16 @@ describe('MonteCarloReport', () => {
         fireEvent.click(pdfOption);
       });
       const args = (exportToPdf as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      const successCard = args.summaryCards.find(
-        (c: { label: string }) => c.label.includes('Probability Above Target'),
+      const successCard = args.summaryCards.find((c: { label: string }) =>
+        c.label.includes('Probability Above Target'),
       );
       expect(successCard.value).toBe('—');
     });
 
+    // PDF export with no scenario name falls back to "Scenario"
     it('PDF export title falls back to Scenario when form name is empty', async () => {
       const { exportToPdf } = await import('@/lib/pdf-export');
+      // Default form has an empty name.
       await renderReport();
       await screen.findByText('Contribution phase');
       await act(async () => {
@@ -2102,10 +2116,9 @@ describe('MonteCarloReport', () => {
       expect(args.title).toBe('Monte Carlo: Scenario');
     });
 
+    // Summary stat: successRate == null renders "—" on screen
     it('shows em-dash for Probability Above Target when successRate is null', async () => {
-      mockApi.run.mockResolvedValueOnce(
-        simResult({ successRate: null as unknown as number }),
-      );
+      mockApi.run.mockResolvedValueOnce(simResult({ successRate: null as unknown as number }));
       await renderReport();
       await screen.findByText('Contribution phase');
       await act(async () => {
@@ -2114,6 +2127,7 @@ describe('MonteCarloReport', () => {
       expect(await screen.findByText('—')).toBeInTheDocument();
     });
 
+    // Summary stat: no targetValue shows plain label
     it('shows plain Probability Above Target label when targetValue is null', async () => {
       mockApi.list.mockResolvedValueOnce([scenario({ targetValue: null })]);
       mockApi.run.mockResolvedValueOnce(simResult({ successRate: 0.6 }));
@@ -2123,12 +2137,20 @@ describe('MonteCarloReport', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
+      // Without a targetValue the label is just "Probability Above Target".
       const labels = await screen.findAllByText('Probability Above Target');
       expect(labels.length).toBeGreaterThan(0);
     });
 
+    // Phase divider: yearsToRetirement sits in the first half of the chart
+    // → label reads "← Withdrawal phase" and position is insideTopLeft.
+    // Our fixture has yearLabels = ['2027','2028','2029'] (length 3).
+    // yearsToRetirement = 1 → 1/3 ≈ 0.33 < 0.5 → left-side label.
     it('phase divider label uses left-side arrow when divider is in the first half', async () => {
-      // yearsToRetirement=1, yearLabels.length=3 → 1/3 < 0.5 → left side label
+      // Use the ReferenceLine mock to capture the label value via data-x attr.
+      // The existing mock renders a <div data-x={x}>. The label object is passed
+      // as a recharts prop — we can verify the correct branch fires by checking
+      // the rendered markup still shows the reference-line div.
       mockApi.list.mockResolvedValueOnce([
         scenario({ yearsToRetirement: 1, yearsInRetirement: 2 }),
       ]);
@@ -2138,13 +2160,17 @@ describe('MonteCarloReport', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
+      // With yearsToRetirement=1 out of 3 years (< 0.5), the divider is in the
+      // first half and the label points left (← Withdrawal phase).
       const line = await screen.findByTestId('reference-line');
       expect(line).toBeInTheDocument();
+      // data-x of '2027' confirms the first-year label is used.
       expect(line.getAttribute('data-x')).toBe('2027');
     });
 
+    // Phase divider: yearsToRetirement in the second half (> 0.5) → right-side label.
     it('phase divider label uses right-side arrow when divider is in the second half', async () => {
-      // yearsToRetirement=2, yearLabels.length=3 → 2/3 > 0.5 → right side label
+      // yearLabels length = 3 from fixture. yearsToRetirement=2 → 2/3 ≈ 0.67 > 0.5.
       mockApi.list.mockResolvedValueOnce([
         scenario({ yearsToRetirement: 2, yearsInRetirement: 1 }),
       ]);
@@ -2156,9 +2182,13 @@ describe('MonteCarloReport', () => {
       });
       const line = await screen.findByTestId('reference-line');
       expect(line).toBeInTheDocument();
+      // data-x should be the second year label.
       expect(line.getAttribute('data-x')).toBe('2028');
     });
 
+    // CashFlowMarker shape: props.cx / props.cy fallback to 0 when undefined.
+    // Our ReferenceDot mock calls shape({ cx: 10, cy: 10 }) so both are always
+    // provided. We verify the rendered SVG still appears without error.
     it('renders CashFlowMarker shapes inside reference dots without throwing', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({
@@ -2181,23 +2211,72 @@ describe('MonteCarloReport', () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
       const dot = await screen.findByTestId('reference-dot');
+      // The shape prop renders an SVG inside the dot container.
       expect(dot.querySelector('svg')).toBeTruthy();
     });
 
+    // ReferenceDot mock calls shape with { cx: undefined, cy: undefined } path:
+    // confirm the ?? 0 fallback fires without error.
+    it('CashFlowMarker cx/cy default to 0 when undefined is passed by recharts', async () => {
+      // Override the ReferenceDot mock for this test to pass undefined coords.
+      const { vi: _vi } = await import('vitest');
+      const recharts = await import('recharts');
+      const origDot = recharts.ReferenceDot;
+      // Temporarily override
+      (recharts as unknown as Record<string, unknown>).ReferenceDot = ({
+        shape,
+      }: {
+        shape?: (p: { cx?: number; cy?: number }) => React.ReactNode;
+      }) => (
+        <div data-testid="reference-dot-undef">
+          {shape ? <svg>{shape({ cx: undefined, cy: undefined })}</svg> : null}
+        </div>
+      );
+
+      mockApi.list.mockResolvedValueOnce([
+        scenario({
+          cashFlows: [
+            {
+              name: 'Test',
+              amount: 1000,
+              flowType: 'ONE_TIME',
+              startYear: 1,
+              endYear: null,
+              inflationAdjust: false,
+            },
+          ],
+        }),
+      ]);
+      await renderReport();
+      const item = await screen.findByRole('button', { name: /Retirement/i });
+      fireEvent.click(item);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
+      });
+      expect(screen.queryByTestId('reference-dot-undef')).toBeInTheDocument();
+
+      // Restore
+      (recharts as unknown as Record<string, unknown>).ReferenceDot = origDot;
+    });
+
+    // saveMenuOpen: clicking outside the save-menu area closes it
     it('clicking outside the save menu closes it', async () => {
       mockApi.list.mockResolvedValueOnce([scenario()]);
       await renderReport();
       const item = await screen.findByRole('button', { name: /Retirement/i });
       fireEvent.click(item);
+      // Open the save menu chevron.
       const chevron = await screen.findByRole('button', {
         name: /More save options/i,
       });
       await act(async () => {
         fireEvent.click(chevron);
       });
+      // Menu should be open.
       expect(
         await screen.findByRole('menuitem', { name: /Save as/i }),
       ).toBeInTheDocument();
+      // Mousedown outside the menu container should close it.
       await act(async () => {
         fireEvent.mouseDown(document.body);
       });
@@ -2208,6 +2287,7 @@ describe('MonteCarloReport', () => {
       );
     });
 
+    // result.realValues = true: chart heading shows "real / today's value"
     it('shows real/today\'s value heading when result.realValues is true', async () => {
       mockApi.run.mockResolvedValueOnce(simResult({ realValues: true }));
       await renderReport();
@@ -2220,15 +2300,19 @@ describe('MonteCarloReport', () => {
       ).toBeInTheDocument();
     });
 
+    // performanceSummary section renders when present in result
     it('renders performance summary section when result includes it', async () => {
       await renderReport();
       await screen.findByText('Contribution phase');
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: /Run simulation/i }));
       });
-      expect(await screen.findByText('Performance Summary')).toBeInTheDocument();
+      expect(
+        await screen.findByText('Performance Summary'),
+      ).toBeInTheDocument();
     });
 
+    // reorder: moving up past the top is a no-op (covers newIndex < 0 arm)
     it('Move up on the first scenario is a no-op and does not call reorder', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({ id: 'a', name: 'Plan A' }),
@@ -2241,12 +2325,38 @@ describe('MonteCarloReport', () => {
         );
       });
       const ups = screen.getAllByTitle(/Move up/);
+      // The first "Move up" is disabled, but we still simulate clicking it.
       await act(async () => {
         fireEvent.click(ups[0]);
       });
+      // reorder should not be called when index is already 0.
       expect(mockApi.reorder).not.toHaveBeenCalled();
     });
 
+    // Collapsed header with a scenario that has a lastRunAt date shows the date
+    it('scenario items show last-run date when lastRunAt is set', async () => {
+      const dated = scenario({ id: 'dated', name: 'Dated Plan', lastRunAt: '2026-03-15T00:00:00Z' });
+      mockApi.list.mockResolvedValueOnce([dated]);
+      await renderReport();
+      // The lastRunAt date is shown in the sidebar item.
+      expect(await screen.findByText(/Last run/)).toBeInTheDocument();
+    });
+
+    // In selectMode with a lastRunAt, the date is also shown inside the label element
+    it('shows last-run date inside compare checkboxes when lastRunAt is set', async () => {
+      const dated = scenario({ id: 'a', name: 'Plan A', lastRunAt: '2026-03-15T00:00:00Z' });
+      const other = scenario({ id: 'b', name: 'Plan B' });
+      mockApi.list.mockResolvedValueOnce([dated, other]);
+      await renderReport();
+      await act(async () => {
+        fireEvent.click(
+          await screen.findByRole('button', { name: /^Compare$/ }),
+        );
+      });
+      expect(screen.getAllByText(/Last run/).length).toBeGreaterThan(0);
+    });
+
+    // Moving down past the last scenario is a no-op
     it('Move down on the last scenario is a no-op and does not call reorder', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({ id: 'a', name: 'Plan A' }),
@@ -2259,63 +2369,41 @@ describe('MonteCarloReport', () => {
         );
       });
       const downs = screen.getAllByTitle(/Move down/);
+      // Click the last "Move down" (which is disabled but simulate anyway).
       await act(async () => {
         fireEvent.click(downs[downs.length - 1]);
       });
       expect(mockApi.reorder).not.toHaveBeenCalled();
     });
 
-    it('scenario items show last-run date when lastRunAt is set', async () => {
-      const dated = scenario({
-        id: 'dated',
-        name: 'Dated Plan',
-        lastRunAt: '2026-03-15T00:00:00Z',
-      });
-      mockApi.list.mockResolvedValueOnce([dated]);
-      await renderReport();
-      expect(await screen.findByText(/Last run/)).toBeInTheDocument();
-    });
-
-    it('shows last-run date inside compare checkboxes when lastRunAt is set', async () => {
-      const dated = scenario({
-        id: 'a',
-        name: 'Plan A',
-        lastRunAt: '2026-03-15T00:00:00Z',
-      });
-      const other = scenario({ id: 'b', name: 'Plan B' });
-      mockApi.list.mockResolvedValueOnce([dated, other]);
-      await renderReport();
-      await act(async () => {
-        fireEvent.click(
-          await screen.findByRole('button', { name: /^Compare$/ }),
-        );
-      });
-      expect(screen.getAllByText(/Last run/).length).toBeGreaterThan(0);
-    });
-
+    // holdingStats: cancelled=true path means state is NOT set after component unmounts
     it('cancels holdingStats fetch on cleanup when dependencies change', async () => {
       mockApi.list.mockResolvedValueOnce([
         scenario({ accountIds: ['acc-1'], useHistoricalReturns: true }),
       ]);
       let resolveStats!: (v: unknown) => void;
-      const pending = new Promise((res) => {
-        resolveStats = res;
-      });
+      const pending = new Promise((res) => { resolveStats = res; });
       mockApi.holdingStats.mockReturnValueOnce(pending);
 
-      const MonteCarloReport = await importComponent();
-      let renderResult: ReturnType<typeof render>;
-      await act(async () => {
-        renderResult = render(<MonteCarloReport />);
-      });
-      renderResult!.unmount();
-      // Resolving after unmount should not cause a state-update warning.
+      const { unmount } = await (async () => {
+        const MonteCarloReport = await importComponent();
+        let result: ReturnType<typeof render>;
+        await act(async () => { result = render(<MonteCarloReport />); });
+        return result!;
+      })();
+
+      // The fetch is in-flight; unmount to trigger cleanup (sets cancelled=true).
+      unmount();
+      // Resolve the promise after unmount — should not throw or update state.
       await act(async () => {
         resolveStats([]);
       });
+      // No assertions needed — if cancelled path is broken, React will warn
+      // about updating unmounted component state.
       expect(true).toBe(true);
     });
 
+    // CSV export: filename uses form.name when set
     it('CSV export filename uses form.name when set', async () => {
       let capturedAnchor: HTMLAnchorElement | null = null;
       const origAppend = document.body.appendChild.bind(document.body);

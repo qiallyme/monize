@@ -37,12 +37,18 @@ vi.mock('@/lib/logger', () => ({
   }),
 }));
 
+// Module-level state for TwoFactorVerify mock user
+const twoFactorUser = {
+  id: 'u1', email: 'test@example.com', firstName: 'Test', lastName: 'User',
+  role: 'user', hasPassword: true, mustChangePassword: false,
+};
+
 // Mock TwoFactorVerify
 vi.mock('@/components/auth/TwoFactorVerify', () => ({
   TwoFactorVerify: ({ onVerified, onCancel }: any) => (
     <div data-testid="two-factor-verify">
       TwoFactorVerify
-      <button data-testid="verify-2fa" onClick={() => onVerified({ id: 'u1', email: 'test@example.com', firstName: 'Test', lastName: 'User', role: 'user', hasPassword: true, mustChangePassword: false })}>Verify</button>
+      <button data-testid="verify-2fa" onClick={() => onVerified({ ...twoFactorUser })}>Verify</button>
       <button data-testid="cancel-2fa" onClick={onCancel}>Cancel</button>
     </div>
   ),
@@ -52,6 +58,7 @@ vi.mock('@/components/auth/TwoFactorVerify', () => ({
 import { authApi } from '@/lib/auth';
 
 const mockPush = vi.fn();
+let mockReturnTo: string | null = null;
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
@@ -62,13 +69,15 @@ vi.mock('next/navigation', () => ({
     prefetch: vi.fn(),
   }),
   usePathname: () => '/login',
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => ({ get: (key: string) => key === 'returnTo' ? mockReturnTo : null }),
 }));
 
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLogin.mockClear();
+    mockReturnTo = null;
+    twoFactorUser.mustChangePassword = false;
     (authApi.getAuthMethods as ReturnType<typeof vi.fn>).mockResolvedValue({
       local: true,
       oidc: false,
@@ -354,6 +363,188 @@ describe('LoginPage', () => {
     render(<LoginPage />);
     await waitFor(() => {
       expect(screen.getByText(/^v/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows loading indicator while fetching auth methods', async () => {
+    (authApi.getAuthMethods as ReturnType<typeof vi.fn>).mockReturnValue(new Promise(() => {}));
+    render(<LoginPage />);
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+  });
+
+  it('uses window.location.href for returnTo redirect after successful login', async () => {
+    mockReturnTo = '/bills';
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'u1', email: 'test@example.com', firstName: 'Test', lastName: 'User', role: 'user', hasPassword: true, mustChangePassword: false },
+    });
+
+    render(<LoginPage />);
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+
+    await waitFor(() => {
+      // With a valid returnTo, router.push('/dashboard') should NOT be called
+      // (window.location.href is used instead for the redirect)
+      expect(mockPush).not.toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('shows demo welcome toast in demo mode', async () => {
+    (authApi.getAuthMethods as ReturnType<typeof vi.fn>).mockResolvedValue({
+      local: true, oidc: false, registration: true, smtp: false, force2fa: false, demo: true,
+    });
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'u1', email: 'test@example.com', firstName: 'Test', lastName: 'User', role: 'user', hasPassword: true, mustChangePassword: false },
+    });
+
+    render(<LoginPage />);
+    // In demo mode the button text is "Try Demo", not "Sign in"
+    // Wait for demo credentials to be pre-filled by the useEffect
+    await waitFor(() => {
+      const emailInput = screen.getByLabelText(/email/i) as HTMLInputElement;
+      expect(emailInput.value).toBe('demo@monize.com');
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /try demo/i }));
+    });
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        expect.stringContaining('Demo'),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it('cancels 2FA and returns to login form', async () => {
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({ requires2FA: true, tempToken: 'temp-token-123' });
+    render(<LoginPage />);
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+    await waitFor(() => expect(screen.getByTestId('two-factor-verify')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('cancel-2fa'));
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('two-factor-verify')).not.toBeInTheDocument();
+    });
+  });
+
+  it('completes login after 2FA verification', async () => {
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({ requires2FA: true, tempToken: 'temp-token-123' });
+    render(<LoginPage />);
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+    await waitFor(() => expect(screen.getByTestId('two-factor-verify')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('verify-2fa'));
+    });
+    await waitFor(() => {
+      expect(mockLogin).toHaveBeenCalled();
+    });
+  });
+
+  it('redirects to change-password after 2FA when mustChangePassword', async () => {
+    twoFactorUser.mustChangePassword = true;
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({ requires2FA: true, tempToken: 'temp-123' });
+    render(<LoginPage />);
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+    await waitFor(() => expect(screen.getByTestId('verify-2fa')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('verify-2fa'));
+    });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/change-password');
+    });
+  });
+
+  it('safeReturnTo rejects absolute URLs', async () => {
+    mockReturnTo = 'http://evil.com';
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'u1', email: 'test@example.com', firstName: 'Test', lastName: 'User', role: 'user', hasPassword: true, mustChangePassword: false },
+    });
+    render(<LoginPage />);
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+    await waitFor(() => {
+      // Should redirect to /dashboard, not evil.com
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('safeReturnTo rejects protocol-relative URLs (//)', async () => {
+    mockReturnTo = '//evil.com';
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'u1', email: 'test@example.com', firstName: 'Test', lastName: 'User', role: 'user', hasPassword: true, mustChangePassword: false },
+    });
+    render(<LoginPage />);
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('safeReturnTo accepts valid path and skips router.push', async () => {
+    mockReturnTo = '/transactions';
+    (authApi.login as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: 'u1', email: 'test@example.com', firstName: 'Test', lastName: 'User', role: 'user', hasPassword: true, mustChangePassword: false },
+    });
+    render(<LoginPage />);
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'test@example.com' } });
+      fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    });
+    await waitFor(() => {
+      // Valid returnTo means window.location.href is used, not router.push('/dashboard')
+      expect(mockPush).not.toHaveBeenCalledWith('/dashboard');
     });
   });
 });

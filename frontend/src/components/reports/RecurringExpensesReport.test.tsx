@@ -39,6 +39,20 @@ vi.mock("@/lib/built-in-reports", () => ({
   },
 }));
 
+const mockExportToCsv = vi.fn();
+vi.mock("@/lib/csv-export", () => ({
+  exportToCsv: (...args: any[]) => mockExportToCsv(...args),
+}));
+
+vi.mock("@/components/ui/ExportDropdown", () => ({
+  ExportDropdown: ({ onExportCsv, onExportPdf }: any) => (
+    <div data-testid="export-dropdown">
+      <button data-testid="export-csv" onClick={onExportCsv}>CSV</button>
+      <button data-testid="export-pdf" onClick={onExportPdf}>PDF</button>
+    </div>
+  ),
+}));
+
 vi.mock("@/lib/logger", () => ({
   createLogger: () => ({
     error: vi.fn(),
@@ -233,5 +247,65 @@ describe("RecurringExpensesReport", () => {
     });
     fireEvent.click(screen.getByText("Netflix"));
     expect(mockPush).toHaveBeenCalledWith("/transactions?payeeId=p-1");
+  });
+
+  it("does not navigate when payeeId is null", async () => {
+    mockGetRecurringExpenses.mockResolvedValue({
+      data: [
+        {
+          payeeId: null,
+          payeeName: "Unknown Store",
+          categoryName: "Shopping",
+          frequency: "Monthly",
+          occurrences: 4,
+          averageAmount: 50,
+          totalAmount: 200,
+          lastTransactionDate: "2025-01-10",
+        },
+      ],
+      summary: { uniquePayees: 1, totalRecurring: 200, monthlyEstimate: 50 },
+    });
+    render(<RecurringExpensesReport />);
+    await waitFor(() => expect(screen.getByText("Unknown Store")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Unknown Store"));
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("exports CSV when export button clicked", async () => {
+    mockGetRecurringExpenses.mockResolvedValue({
+      data: [
+        {
+          payeeId: "p-1",
+          payeeName: "Netflix",
+          categoryName: "Entertainment",
+          frequency: "Monthly",
+          occurrences: 6,
+          averageAmount: 15.99,
+          totalAmount: 95.94,
+          lastTransactionDate: "2025-01-15",
+        },
+      ],
+      summary: { uniquePayees: 1, totalRecurring: 95.94, monthlyEstimate: 15.99 },
+    });
+    render(<RecurringExpensesReport />);
+    await waitFor(() => expect(screen.getByTestId("export-csv")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("export-csv"));
+    expect(mockExportToCsv).toHaveBeenCalledWith(
+      "recurring-expenses",
+      expect.any(Array),
+      expect.any(Array),
+    );
+  });
+
+  it("changes min occurrences when selector changes", async () => {
+    mockGetRecurringExpenses.mockResolvedValue({
+      data: [],
+      summary: { uniquePayees: 0, totalRecurring: 0, monthlyEstimate: 0 },
+    });
+    render(<RecurringExpensesReport />);
+    await waitFor(() => expect(screen.getByText("Minimum occurrences:")).toBeInTheDocument());
+    const select = screen.getByRole("combobox");
+    fireEvent.change(select, { target: { value: "5" } });
+    await waitFor(() => expect(mockGetRecurringExpenses).toHaveBeenCalledWith(5));
   });
 });

@@ -62,6 +62,15 @@ vi.mock("@/lib/built-in-reports", () => ({
   },
 }));
 
+vi.mock("@/components/ui/ExportDropdown", () => ({
+  ExportDropdown: ({ onExportCsv, onExportPdf }: any) => (
+    <div data-testid="export-dropdown">
+      <button data-testid="export-csv" onClick={onExportCsv}>CSV</button>
+      <button data-testid="export-pdf" onClick={onExportPdf}>PDF</button>
+    </div>
+  ),
+}));
+
 vi.mock("@/lib/logger", () => ({
   createLogger: () => ({
     error: vi.fn(),
@@ -153,5 +162,23 @@ describe("SpendingByPayeeReport", () => {
     expect(mockPush).toHaveBeenCalledWith(
       "/transactions?payeeId=p-1&startDate=2025-01-01&endDate=2025-03-31",
     );
+  });
+
+  it("renders items with null payeeId (uses empty string)", async () => {
+    mockGetSpendingByPayee.mockResolvedValue({
+      data: [{ payeeId: null, payeeName: "Unknown", total: 50 }],
+      totalSpending: 50,
+    });
+    render(<SpendingByPayeeReport />);
+    await waitFor(() => expect(screen.getByTestId("bar-chart")).toBeInTheDocument());
+  });
+
+  it("renders export dropdown when data is present", async () => {
+    mockGetSpendingByPayee.mockResolvedValue({
+      data: [{ payeeId: "p-1", payeeName: "Superstore", total: 300 }],
+      totalSpending: 300,
+    });
+    render(<SpendingByPayeeReport />);
+    await waitFor(() => expect(screen.getByTestId("export-dropdown")).toBeInTheDocument());
   });
 });

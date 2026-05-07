@@ -16,6 +16,7 @@ vi.mock("@/hooks/useNumberFormat", () => ({
   }),
 }));
 
+let mockIsValid = true;
 vi.mock("@/hooks/useDateRange", () => ({
   useDateRange: () => ({
     dateRange: "1y",
@@ -25,7 +26,7 @@ vi.mock("@/hooks/useDateRange", () => ({
     endDate: "",
     setEndDate: vi.fn(),
     resolvedRange: { start: "2024-01-01", end: "2025-01-01" },
-    isValid: true,
+    get isValid() { return mockIsValid; },
   }),
 }));
 
@@ -38,7 +39,25 @@ vi.mock("@/components/ui/DateRangeSelector", () => ({
 }));
 
 vi.mock("@/components/ui/ChartViewToggle", () => ({
-  ChartViewToggle: () => <div data-testid="chart-view-toggle" />,
+  ChartViewToggle: ({ onChange }: any) => (
+    <div data-testid="chart-view-toggle">
+      <button data-testid="toggle-bar" onClick={() => onChange("bar")}>Bar</button>
+      <button data-testid="toggle-pie" onClick={() => onChange("pie")}>Pie</button>
+    </div>
+  ),
+}));
+
+vi.mock("@/components/ui/ExportDropdown", () => ({
+  ExportDropdown: ({ onExportPdf }: any) => (
+    <div data-testid="export-dropdown">
+      <button data-testid="export-pdf" onClick={onExportPdf}>PDF</button>
+    </div>
+  ),
+}));
+
+const mockExportToPdf = vi.fn();
+vi.mock("@/lib/pdf-export", () => ({
+  exportToPdf: (...args: any[]) => mockExportToPdf(...args),
 }));
 
 vi.mock("recharts", () => ({
@@ -81,6 +100,7 @@ describe("IncomeBySourceReport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPush.mockClear();
+    mockIsValid = true;
   });
 
   it("shows loading state initially", () => {
@@ -201,5 +221,136 @@ describe("IncomeBySourceReport", () => {
     expect(mockPush).toHaveBeenCalledWith(
       "/transactions?categoryId=cat-1&startDate=2024-01-01&endDate=2025-01-01",
     );
+  });
+
+  it("does not navigate when legend button has no categoryId", async () => {
+    mockGetIncomeBySource.mockResolvedValue({
+      data: [
+        { categoryId: "", categoryName: "Unknown", total: 500, color: "" },
+      ],
+      totalIncome: 500,
+    });
+    render(<IncomeBySourceReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Unknown")).toBeInTheDocument();
+    });
+    // Button is disabled so click should not call router.push
+    const btn = screen.getByText("Unknown").closest("button")!;
+    fireEvent.click(btn);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("switches to bar chart view when toggle is clicked", async () => {
+    mockGetIncomeBySource.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Salary", total: 5000, color: "" },
+      ],
+      totalIncome: 5000,
+    });
+    render(<IncomeBySourceReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Salary")).toBeInTheDocument();
+    });
+    // Initially shows pie chart
+    expect(screen.getByTestId("pie-chart")).toBeInTheDocument();
+    // Switch to bar
+    fireEvent.click(screen.getByTestId("toggle-bar"));
+    await waitFor(() => {
+      expect(screen.getByTestId("bar-chart")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("pie-chart")).not.toBeInTheDocument();
+  });
+
+  it("switches back to pie chart view from bar view", async () => {
+    mockGetIncomeBySource.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Salary", total: 5000, color: "" },
+      ],
+      totalIncome: 5000,
+    });
+    render(<IncomeBySourceReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Salary")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("toggle-bar"));
+    await waitFor(() => {
+      expect(screen.getByTestId("bar-chart")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("toggle-pie"));
+    await waitFor(() => {
+      expect(screen.getByTestId("pie-chart")).toBeInTheDocument();
+    });
+  });
+
+  it("calls exportToPdf with legend items when data is present", async () => {
+    mockExportToPdf.mockResolvedValue(undefined);
+    mockGetIncomeBySource.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Salary", total: 8000, color: "#00ff00" },
+        { categoryId: "cat-2", categoryName: "Freelance", total: 2000, color: "" },
+      ],
+      totalIncome: 10000,
+    });
+    render(<IncomeBySourceReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Salary")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("export-pdf"));
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Income by Source",
+          filename: "income-by-source",
+          chartLegend: expect.arrayContaining([
+            expect.objectContaining({ label: expect.stringContaining("Salary") }),
+          ]),
+        }),
+      );
+    });
+  });
+
+  it("calls exportToPdf with undefined chartLegend when chart data is empty", async () => {
+    mockExportToPdf.mockResolvedValue(undefined);
+    // Data becomes empty after load
+    mockGetIncomeBySource.mockResolvedValue({ data: [], totalIncome: 0 });
+    render(<IncomeBySourceReport />);
+    await waitFor(() => {
+      expect(
+        screen.getByText("No income data for this period."),
+      ).toBeInTheDocument();
+    });
+    // ExportDropdown is still rendered in controls even with empty data
+    fireEvent.click(screen.getByTestId("export-pdf"));
+    await waitFor(() => {
+      expect(mockExportToPdf).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chartLegend: undefined,
+        }),
+      );
+    });
+  });
+
+  it("shows 0% percentage in legend when totalIncome is zero", async () => {
+    // Simulate items but totalIncome = 0 (edge case data mismatch)
+    mockGetIncomeBySource.mockResolvedValue({
+      data: [
+        { categoryId: "cat-1", categoryName: "Salary", total: 0, color: "" },
+      ],
+      totalIncome: 0,
+    });
+    render(<IncomeBySourceReport />);
+    await waitFor(() => {
+      expect(screen.getByText("Salary")).toBeInTheDocument();
+    });
+    // When totalIncome is 0, percentage should display as '0'
+    expect(screen.getByText("$0.00 (0%)")).toBeInTheDocument();
+  });
+
+  it("does not load data when isValid is false", () => {
+    mockIsValid = false;
+    mockGetIncomeBySource.mockResolvedValue({ data: [], totalIncome: 0 });
+    render(<IncomeBySourceReport />);
+    // loadData is gated on isValid, so the API should not be called
+    expect(mockGetIncomeBySource).not.toHaveBeenCalled();
   });
 });
