@@ -402,7 +402,10 @@ export function DividendIncomeReport() {
     });
 
     filteredDailyCapitalGains.forEach((entry) => {
-      // entry.month holds YYYY-MM-DD for daily entries
+      // Daily entries use YYYY-MM-DD in the month field. Skip anything that
+      // doesn't match (e.g. an older backend echoing monthly entries) so
+      // parseLocalDate / format() don't blow up on a partial date.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.month)) return;
       const txDate = parseLocalDate(entry.month);
       const bucket = getOrCreateBucket(entry.month, txDate);
       const gain = convertCapitalGain(entry);
