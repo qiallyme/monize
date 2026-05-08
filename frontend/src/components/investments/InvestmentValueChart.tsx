@@ -173,8 +173,11 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
           // Hydrate from cache immediately so the chart appears even before
           // the network round-trip resolves.
           if (cached && !cached.fallbackToDaily) {
+            const cachedPoints = dateRange === 'mtd'
+              ? cached.points.filter((p) => p.timestamp >= resolvedRange.start)
+              : cached.points;
             setChartPoints(
-              cached.points.map((p) => ({
+              cachedPoints.map((p) => ({
                 name: formatIntradayLabel(p.timestamp, dateRange),
                 Value: p.value,
               })),
@@ -229,8 +232,11 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
             return;
           }
 
+          const responsePoints = dateRange === 'mtd'
+            ? response.points.filter((p) => p.timestamp >= resolvedRange.start)
+            : response.points;
           setChartPoints(
-            response.points.map((p) => ({
+            responsePoints.map((p) => ({
               name: formatIntradayLabel(p.timestamp, dateRange),
               Value: p.value,
             })),
@@ -249,6 +255,7 @@ export function InvestmentValueChart({ accountIds, displayCurrency, titleSuffix 
     [
       isIntraday,
       dateRange,
+      resolvedRange,
       accountIds,
       effectiveCurrency,
       foreignCurrency,
