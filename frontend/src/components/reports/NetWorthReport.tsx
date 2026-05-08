@@ -106,7 +106,11 @@ export function NetWorthReport() {
 
   const chartData = useMemo(() =>
     monthlyData.map((d) => ({
+      // `name` is the formatted display label; `sortKey` is the ISO month
+      // (YYYY-MM) so the table can sort chronologically rather than
+      // alphabetically by month-name ("Apr 2021" < "Aug 2020" lexically).
       name: format(parseLocalDate(d.month), 'MMM yyyy'),
+      sortKey: d.month,
       Assets: Math.round(d.assets),
       Liabilities: Math.round(d.liabilities),
       NetWorth: Math.round(d.netWorth),
@@ -128,7 +132,7 @@ export function NetWorthReport() {
       let comparison = 0;
       switch (sortField) {
         case 'name':
-          comparison = compareValues(a.name, b.name);
+          comparison = compareValues(a.sortKey, b.sortKey);
           break;
         case 'assets':
           comparison = compareValues(a.Assets, b.Assets);

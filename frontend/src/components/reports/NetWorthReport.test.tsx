@@ -11,6 +11,7 @@ vi.mock('@/components/ui/ChartViewToggle', () => ({
     <div data-testid="chart-view-toggle">
       <button onClick={() => onChange('line')}>line</button>
       <button onClick={() => onChange('bar')}>bar</button>
+      <button onClick={() => onChange('table')}>table</button>
       <span>val:{value}</span>
     </div>
   ),
@@ -280,5 +281,30 @@ describe('NetWorthReport', () => {
     await waitFor(() => {
       expect(screen.getByTestId('date-range-selector')).toBeInTheDocument();
     });
+  });
+
+  it('sorts table by date chronologically (not alphabetically)', async () => {
+    // Months that would sort wrong alphabetically: "Apr 2021" < "Aug 2020".
+    mockGetMonthly.mockResolvedValue([
+      { month: '2020-08-01', assets: 1, liabilities: 0, netWorth: 1 },
+      { month: '2021-04-01', assets: 2, liabilities: 0, netWorth: 2 },
+      { month: '2020-04-01', assets: 3, liabilities: 0, netWorth: 3 },
+      { month: '2021-08-01', assets: 4, liabilities: 0, netWorth: 4 },
+    ]);
+    render(<NetWorthReport />);
+    await waitFor(() => {
+      expect(screen.getByText('Current Net Worth')).toBeInTheDocument();
+    });
+    // Switch to the table view.
+    await act(async () => {
+      fireEvent.click(screen.getByText('table'));
+    });
+    const monthCells = screen.getAllByRole('cell').filter((td) =>
+      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}\b/.test(
+        td.textContent ?? '',
+      ),
+    );
+    const months = monthCells.map((td) => td.textContent?.trim() ?? '');
+    expect(months).toEqual(['Apr 2020', 'Aug 2020', 'Apr 2021', 'Aug 2021']);
   });
 });
