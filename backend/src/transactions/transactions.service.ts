@@ -607,7 +607,7 @@ export class TransactionsService {
           .replace(/_/g, "\\_");
         const searchPattern = `%${escaped}%`;
         countQuery.andWhere(
-          "(t.description ILIKE :search OR t.payeeName ILIKE :search OR s.memo ILIKE :search)",
+          "(t.description ILIKE :search OR t.payeeName ILIKE :search OR t.referenceNumber ILIKE :search OR s.memo ILIKE :search)",
           { search: searchPattern },
         );
       }
