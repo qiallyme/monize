@@ -1826,3 +1826,46 @@ describe('toCreateSplitData', () => {
     expect(data[1].memo).toBe('Transfer');
   });
 });
+
+describe('SplitEditor — investment kind gating by parent account', () => {
+  const baseAccounts = [
+    { id: 'acc-cash', name: 'Chequing', isClosed: false, accountSubType: null, isFavourite: false, favouriteSortOrder: 0, currencyCode: 'CAD' },
+    { id: 'acc-savings', name: 'Savings', isClosed: false, accountSubType: null, isFavourite: false, favouriteSortOrder: 0, currencyCode: 'CAD' },
+  ] as any[];
+
+  const baseSplits = [
+    { id: 's1', splitType: 'category', categoryId: undefined, transferAccountId: undefined, amount: -50, memo: '' },
+    { id: 's2', splitType: 'category', categoryId: undefined, transferAccountId: undefined, amount: -50, memo: '' },
+  ] as any[];
+
+  it('shows the Investment option when parentAccountSubType is INVESTMENT_CASH', () => {
+    render(
+      <SplitEditor
+        splits={baseSplits}
+        onChange={vi.fn()}
+        categories={[]}
+        accounts={baseAccounts}
+        sourceAccountId="acc-cash"
+        parentAccountSubType="INVESTMENT_CASH"
+        transactionAmount={-100}
+      />,
+    );
+    // Both desktop and mobile renderings include the Investment option
+    expect(screen.getAllByRole('option', { name: 'Investment' }).length).toBeGreaterThan(0);
+  });
+
+  it('omits the Investment option for non-INVESTMENT_CASH parents', () => {
+    render(
+      <SplitEditor
+        splits={baseSplits}
+        onChange={vi.fn()}
+        categories={[]}
+        accounts={baseAccounts}
+        sourceAccountId="acc-cash"
+        parentAccountSubType={null}
+        transactionAmount={-100}
+      />,
+    );
+    expect(screen.queryByRole('option', { name: 'Investment' })).toBeNull();
+  });
+});

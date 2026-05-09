@@ -38,6 +38,8 @@ const ACTIONS_NEEDING_SECURITY: ReadonlySet<InvestmentAction> = new Set([
   'BUY',
   'SELL',
   'REINVEST',
+  'DIVIDEND',
+  'CAPITAL_GAIN',
 ]);
 
 const ACTIONS_NEEDING_QUANTITY_PRICE: ReadonlySet<InvestmentAction> = new Set([

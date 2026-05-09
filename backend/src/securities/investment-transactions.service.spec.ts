@@ -4391,6 +4391,25 @@ describe("InvestmentTransactionsService", () => {
       ).rejects.toThrow(/Security ID is required/);
     });
 
+    it.each([InvestmentAction.DIVIDEND, InvestmentAction.CAPITAL_GAIN])(
+      "rejects %s without a securityId",
+      async (action) => {
+        accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+
+        await expect(
+          service.createEmbeddedForSplit(
+            mockQueryRunner as any,
+            userId,
+            "2026-05-09",
+            "split-1",
+            accountId,
+            cashAccountId,
+            { action, price: 50 },
+          ),
+        ).rejects.toThrow(/Security ID is required/);
+      },
+    );
+
     it("creates a DIVIDEND embedded split (no quantity required)", async () => {
       accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
       securitiesService.findOne.mockResolvedValue(mockSecurity);

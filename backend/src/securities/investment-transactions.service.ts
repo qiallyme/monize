@@ -805,6 +805,8 @@ export class InvestmentTransactionsService {
       InvestmentAction.BUY,
       InvestmentAction.SELL,
       InvestmentAction.REINVEST,
+      InvestmentAction.DIVIDEND,
+      InvestmentAction.CAPITAL_GAIN,
     ];
     if (securityRequiredActions.includes(dto.action) && !dto.securityId) {
       throw new BadRequestException(
