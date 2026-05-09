@@ -161,6 +161,24 @@ describe("TransactionSplitService", () => {
       createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
     };
 
+    const investmentTransactionsService = {
+      createEmbeddedForSplit: jest.fn().mockResolvedValue({}),
+      reverseAndRemoveEmbedded: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const netWorthService = {
+      triggerDebouncedRecalc: jest.fn(),
+    };
+
+    const {
+      InvestmentTransactionsService,
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+    } = require("../securities/investment-transactions.service");
+    const {
+      NetWorthService,
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+    } = require("../net-worth/net-worth.service");
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TransactionSplitService,
@@ -177,6 +195,11 @@ describe("TransactionSplitService", () => {
           useValue: categoriesRepository,
         },
         { provide: AccountsService, useValue: accountsService },
+        {
+          provide: InvestmentTransactionsService,
+          useValue: investmentTransactionsService,
+        },
+        { provide: NetWorthService, useValue: netWorthService },
         { provide: DataSource, useValue: mockDataSource },
       ],
     }).compile();
@@ -266,6 +289,7 @@ describe("TransactionSplitService", () => {
         TransactionSplit,
         {
           transactionId: "tx-1",
+          kind: "category",
           categoryId: "cat-1",
           transferAccountId: null,
           amount: -60,
@@ -419,6 +443,7 @@ describe("TransactionSplitService", () => {
         TransactionSplit,
         {
           transactionId: "tx-1",
+          kind: "category",
           categoryId: null,
           transferAccountId: null,
           amount: -60,
@@ -540,7 +565,7 @@ describe("TransactionSplitService", () => {
 
       expect(splitsRepository.find).toHaveBeenCalledWith({
         where: { transactionId: "tx-1" },
-        relations: ["category", "transferAccount"],
+        relations: ["category", "transferAccount", "investmentTransaction"],
         order: { createdAt: "ASC" },
       });
       expect(result).toEqual([mockSplit, mockSplit2]);
@@ -668,6 +693,7 @@ describe("TransactionSplitService", () => {
 
       expect(splitsRepository.create).toHaveBeenCalledWith({
         transactionId: "tx-1",
+        kind: "category",
         categoryId: "cat-3",
         transferAccountId: null,
         amount: -10,
@@ -1273,6 +1299,164 @@ describe("TransactionSplitService", () => {
       expect(externalQr.commitTransaction).not.toHaveBeenCalled();
       expect(externalQr.rollbackTransaction).not.toHaveBeenCalled();
       expect(externalQr.release).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("investment splits", () => {
+    it("validates that the cash impact matches the split amount for BUY", () => {
+      // 75 shares @ $10 = $750 cash out (negative)
+      const splits = [
+        { amount: 1000, categoryId: "cat-1" },
+        { amount: -250, categoryId: "cat-2" },
+        {
+          amount: -750,
+          investment: {
+            action: "BUY" as any,
+            securityId: "sec-1",
+            quantity: 75,
+            price: 10,
+            commission: 0,
+          },
+        },
+      ];
+      expect(() => service.validateSplits(splits, 0)).not.toThrow();
+    });
+
+    it("rejects when investment split amount does not match computed cash impact", () => {
+      const splits = [
+        { amount: 1000, categoryId: "cat-1" },
+        { amount: -250, categoryId: "cat-2" },
+        {
+          amount: -700, // Wrong: should be -750
+          investment: {
+            action: "BUY" as any,
+            securityId: "sec-1",
+            quantity: 75,
+            price: 10,
+            commission: 0,
+          },
+        },
+      ];
+      expect(() => service.validateSplits(splits, 50)).toThrow(
+        BadRequestException,
+      );
+      expect(() => service.validateSplits(splits, 50)).toThrow(
+        /does not match the cash impact/,
+      );
+    });
+
+    it("rejects investment splits that combine with categoryId", () => {
+      const splits = [
+        { amount: -50, categoryId: "cat-1" },
+        {
+          amount: -50,
+          categoryId: "cat-2",
+          investment: {
+            action: "BUY" as any,
+            securityId: "sec-1",
+            quantity: 5,
+            price: 10,
+          },
+        },
+      ];
+      expect(() => service.validateSplits(splits, -100)).toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("rejects disallowed actions inside a split", () => {
+      const splits = [
+        { amount: -100, categoryId: "cat-1" },
+        {
+          amount: 0,
+          investment: {
+            action: "ADD_SHARES" as any,
+            securityId: "sec-1",
+            quantity: 5,
+          },
+        },
+      ];
+      expect(() => service.validateSplits(splits, -100)).toThrow(
+        BadRequestException,
+      );
+      expect(() => service.validateSplits(splits, -100)).toThrow(
+        /not allowed inside a split transaction/,
+      );
+    });
+
+    it("requires the parent account to be INVESTMENT_CASH", async () => {
+      accountsService.findOne.mockResolvedValueOnce({
+        id: "account-1",
+        accountSubType: "CHECKING",
+        linkedAccountId: null,
+      });
+
+      const splits = [
+        { amount: 1000, categoryId: "cat-1" },
+        { amount: -250, categoryId: "cat-2" },
+        {
+          amount: -750,
+          investment: {
+            action: "BUY" as any,
+            securityId: "sec-1",
+            quantity: 75,
+            price: 10,
+          },
+        },
+      ];
+
+      await expect(
+        service.createSplits(
+          "tx-1",
+          splits,
+          "user-1",
+          "account-1",
+          new Date("2026-05-09"),
+        ),
+      ).rejects.toThrow(/INVESTMENT_CASH/);
+    });
+
+    it("creates investment split via embedded path on INVESTMENT_CASH parent", async () => {
+      accountsService.findOne.mockResolvedValueOnce({
+        id: "account-1",
+        accountSubType: "INVESTMENT_CASH",
+        linkedAccountId: "brokerage-1",
+      });
+
+      const splits = [
+        { amount: 1000, categoryId: "cat-1" },
+        { amount: -250, categoryId: "cat-2" },
+        {
+          amount: -750,
+          investment: {
+            action: "BUY" as any,
+            securityId: "sec-1",
+            quantity: 75,
+            price: 10,
+            commission: 0,
+          },
+        },
+      ];
+
+      const result = await service.createSplits(
+        "tx-1",
+        splits,
+        "user-1",
+        "account-1",
+        new Date("2026-05-09"),
+      );
+
+      // Two regular splits + one investment split
+      expect(result).toHaveLength(3);
+      expect(mockQueryRunner.manager.create).toHaveBeenCalledWith(
+        TransactionSplit,
+        expect.objectContaining({
+          kind: "investment",
+          categoryId: null,
+          transferAccountId: null,
+          amount: -750,
+        }),
+      );
     });
   });
 });

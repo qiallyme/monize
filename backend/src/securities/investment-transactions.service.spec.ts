@@ -114,6 +114,8 @@ describe("InvestmentTransactionsService", () => {
     transaction: null as any,
     security: mockSecurity as any,
     fundingAccount: null,
+    transactionSplitId: null,
+    transactionSplit: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -137,6 +139,8 @@ describe("InvestmentTransactionsService", () => {
     transaction: null as any,
     security: mockSecurity as any,
     fundingAccount: null,
+    transactionSplitId: null,
+    transactionSplit: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -160,6 +164,8 @@ describe("InvestmentTransactionsService", () => {
     transaction: null as any,
     security: mockSecurity as any,
     fundingAccount: null,
+    transactionSplitId: null,
+    transactionSplit: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -4261,6 +4267,145 @@ describe("InvestmentTransactionsService", () => {
       expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
       expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
       expect(mockQueryRunner.release).toHaveBeenCalled();
+    });
+  });
+
+  describe("createEmbeddedForSplit", () => {
+    it("creates an embedded BUY without spawning a linked cash transaction", async () => {
+      accountsService.findOne.mockResolvedValue(mockInvestmentAccount);
+      securitiesService.findOne.mockResolvedValue(mockSecurity);
+      // resolveCashExchangeRate path: same currency -> rate 1
+      exchangeRateService.getLatestRate.mockResolvedValue(1);
+
+      const created = await service.createEmbeddedForSplit(
+        mockQueryRunner as any,
+        userId,
+        "2026-05-09",
+        "split-1",
+        accountId,
+        cashAccountId,
+        {
+          action: InvestmentAction.BUY,
+          securityId,
+          quantity: 75,
+          price: 10,
+          commission: 0,
+        },
+      );
+
+      // No linked cash transaction created
+      const transactionSaves = mockQueryRunner.manager.save.mock.calls.filter(
+        ([entity]: any[]) =>
+          entity && entity.constructor && entity.constructor.name === "Object",
+      );
+      expect(transactionSaves.length).toBeGreaterThan(0); // saved the InvestmentTransaction
+      expect(holdingsService.updateHolding).toHaveBeenCalledWith(
+        userId,
+        accountId,
+        securityId,
+        75,
+        10,
+        mockQueryRunner,
+        false,
+      );
+      // The embedded path should never invoke the cash-side balance update
+      // for a cash account (only holdings updates).
+      expect(accountsService.updateBalance).not.toHaveBeenCalled();
+
+      // The created entity carries the split linkage and a null transactionId
+      expect(mockQueryRunner.manager.create).toHaveBeenCalledWith(
+        InvestmentTransaction,
+        expect.objectContaining({
+          transactionSplitId: "split-1",
+          transactionId: null,
+          accountId,
+          securityId,
+          action: InvestmentAction.BUY,
+          quantity: 75,
+          price: 10,
+        }),
+      );
+      expect(created).toBeDefined();
+    });
+
+    it("rejects disallowed actions in an embedded split", async () => {
+      await expect(
+        service.createEmbeddedForSplit(
+          mockQueryRunner as any,
+          userId,
+          "2026-05-09",
+          "split-1",
+          accountId,
+          cashAccountId,
+          {
+            action: InvestmentAction.ADD_SHARES,
+            securityId,
+            quantity: 5,
+          },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("rejects non-brokerage target accounts", async () => {
+      accountsService.findOne.mockResolvedValueOnce({
+        ...mockInvestmentAccount,
+        accountSubType: AccountSubType.INVESTMENT_CASH,
+      });
+
+      await expect(
+        service.createEmbeddedForSplit(
+          mockQueryRunner as any,
+          userId,
+          "2026-05-09",
+          "split-1",
+          accountId,
+          cashAccountId,
+          {
+            action: InvestmentAction.BUY,
+            securityId,
+            quantity: 1,
+            price: 1,
+          },
+        ),
+      ).rejects.toThrow(/INVESTMENT_BROKERAGE/);
+    });
+  });
+
+  describe("reverseAndRemoveEmbedded", () => {
+    it("reverses holdings and removes the row", async () => {
+      const embedded: any = {
+        id: "emb-1",
+        userId,
+        accountId,
+        securityId,
+        action: InvestmentAction.BUY,
+        quantity: 5,
+        price: 10,
+        commission: 0,
+        totalAmount: 50,
+        exchangeRate: 1,
+        transactionDate: "2026-05-09",
+        transactionId: null,
+        transactionSplitId: "split-1",
+      };
+
+      await service.reverseAndRemoveEmbedded(
+        mockQueryRunner as any,
+        userId,
+        embedded,
+      );
+
+      // Reverse-of-BUY decrements holdings by qty
+      expect(holdingsService.updateHolding).toHaveBeenCalledWith(
+        userId,
+        accountId,
+        securityId,
+        -5,
+        10,
+        mockQueryRunner,
+        true,
+      );
+      expect(mockQueryRunner.manager.remove).toHaveBeenCalledWith(embedded);
     });
   });
 });
