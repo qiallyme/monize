@@ -687,7 +687,11 @@ describe('DividendYieldGrowthReport', () => {
   });
 
   it('detects annual dividend frequency', async () => {
-    // 2 payments ~365 days apart within trailing 12 months (current date is 2026-05-06)
+    // 2 payments ~365 days apart within trailing 12 months. Pin Date so the
+    // trailing-12-months cutoff stays consistent regardless of when the test
+    // runs (other timers stay real so waitFor still works).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-05-06T12:00:00'));
     mockGetTransactions.mockImplementation(async ({ action }: { action: string }) => {
       if (action === 'DIVIDEND') {
         return {
@@ -702,11 +706,15 @@ describe('DividendYieldGrowthReport', () => {
     });
     mockGetInvestmentAccounts.mockResolvedValue([]);
     mockGetPortfolioSummary.mockResolvedValue({ holdings: mockHoldings });
-    render(<DividendYieldGrowthReport />);
-    await waitFor(() => {
-      expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Annual')).toBeInTheDocument();
+    try {
+      render(<DividendYieldGrowthReport />);
+      await waitFor(() => {
+        expect(screen.getByText('Per-Security Dividend Yield (Trailing 12 Months)')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Annual')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('detects semi-annual dividend frequency', async () => {
