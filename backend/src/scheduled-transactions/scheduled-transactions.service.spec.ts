@@ -1738,6 +1738,311 @@ describe("ScheduledTransactionsService", () => {
       expect(dto.quantity).toBe(0.5);
       expect(dto.price).toBe(200);
     });
+
+    it("post() throws when investmentAction is missing on the scheduled row", async () => {
+      const scheduled = makeScheduled({
+        isInvestment: true,
+        investmentAction: null,
+        investmentSecurityId: "sec-voo",
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder();
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+
+      await expect(service.post(userId, stId)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("post() routes a DIVIDEND with stored qty+price as quantity*price", async () => {
+      const scheduled = makeScheduled({
+        isInvestment: true,
+        investmentAction: "DIVIDEND" as any,
+        investmentSecurityId: "sec-voo",
+        investmentQuantity: 100,
+        investmentPrice: 0.75,
+        investmentTotalAmount: null,
+      });
+      stubFindOne(scheduled);
+      const overrideQb = mockQueryBuilder();
+      overrideQb.getOne.mockResolvedValue(null);
+      overridesRepo.createQueryBuilder.mockReturnValue(overrideQb);
+
+      await service.post(userId, stId);
+
+      const dto = investmentTransactionsService.create.mock.calls[0][1];
+      expect(dto.action).toBe("DIVIDEND");
+      expect(dto.quantity).toBe(100);
+      expect(dto.price).toBe(0.75);
+    });
+
+    it("validateInvestmentFields rejects BUY when price is zero", async () => {
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-inv",
+        userId,
+        accountSubType: "INVESTMENT_BROKERAGE",
+      });
+
+      await expect(
+        service.create(userId, {
+          ...investmentBaseDto,
+          investmentPrice: 0,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("validateInvestmentFields rejects ADD_SHARES without quantity", async () => {
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-inv",
+        userId,
+        accountSubType: "INVESTMENT_BROKERAGE",
+      });
+
+      await expect(
+        service.create(userId, {
+          ...investmentBaseDto,
+          investmentAction: "ADD_SHARES" as any,
+          investmentPrice: undefined as any,
+          investmentQuantity: undefined as any,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("validateInvestmentFields rejects DIVIDEND without totalAmount or qty+price", async () => {
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-inv",
+        userId,
+        accountSubType: "INVESTMENT_BROKERAGE",
+      });
+
+      await expect(
+        service.create(userId, {
+          ...investmentBaseDto,
+          investmentAction: "DIVIDEND" as any,
+          investmentQuantity: undefined as any,
+          investmentPrice: undefined as any,
+          investmentTotalAmount: undefined as any,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("validateInvestmentFields rejects when action is missing", async () => {
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-inv",
+        userId,
+        accountSubType: "INVESTMENT_BROKERAGE",
+      });
+
+      await expect(
+        service.create(userId, {
+          ...investmentBaseDto,
+          investmentAction: undefined as any,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("validateInvestmentFields rejects BUY without a security", async () => {
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-inv",
+        userId,
+        accountSubType: "INVESTMENT_BROKERAGE",
+      });
+
+      await expect(
+        service.create(userId, {
+          ...investmentBaseDto,
+          investmentSecurityId: undefined as any,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("create() validates the funding account when supplied", async () => {
+      accountsService.findOne.mockImplementation(async (uid: string, id: string) => {
+        if (id === "acc-funding") return { id, userId: uid, accountType: "CHECKING" } as any;
+        return {
+          id,
+          userId: uid,
+          accountSubType: "INVESTMENT_BROKERAGE",
+        } as any;
+      });
+      const saved = makeScheduled({
+        isInvestment: true,
+        investmentAction: "BUY" as any,
+        investmentSecurityId: "sec-voo",
+        investmentFundingAccountId: "acc-funding",
+        investmentQuantity: 1,
+        investmentPrice: 500,
+      });
+      scheduledRepo.save.mockResolvedValue(saved);
+      stubFindOne(saved);
+
+      await service.create(userId, {
+        ...investmentBaseDto,
+        investmentFundingAccountId: "acc-funding",
+      });
+
+      expect(accountsService.findOne).toHaveBeenCalledWith(userId, "acc-funding");
+    });
+
+    it("update() rejects mixing isTransfer and isInvestment", async () => {
+      stubFindOne(
+        makeScheduled({
+          isInvestment: true,
+          investmentAction: "BUY" as any,
+        }),
+      );
+
+      await expect(
+        service.update(userId, stId, {
+          isTransfer: true,
+          transferAccountId: "acc-2",
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("update() rejects an investment-kind change to a non-brokerage account", async () => {
+      stubFindOne(
+        makeScheduled({
+          isInvestment: true,
+          investmentAction: "BUY" as any,
+          investmentSecurityId: "sec-voo",
+          investmentQuantity: 1,
+          investmentPrice: 500,
+        }),
+      );
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-cash",
+        userId,
+        accountSubType: "INVESTMENT_CASH",
+      });
+
+      await expect(
+        service.update(userId, stId, { accountId: "acc-cash" } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("update() persists changed investment fields", async () => {
+      stubFindOne(
+        makeScheduled({
+          isInvestment: true,
+          investmentAction: "BUY" as any,
+          investmentSecurityId: "sec-voo",
+          investmentQuantity: 1,
+          investmentPrice: 500,
+        }),
+      );
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-1",
+        userId,
+        accountSubType: "INVESTMENT_BROKERAGE",
+      });
+
+      await service.update(userId, stId, {
+        investmentQuantity: 2,
+        investmentPrice: 480,
+        investmentCommission: 5,
+      } as any);
+
+      const fields = scheduledRepo.update.mock.calls.find(
+        (c: any[]) => c[0] === stId && c[1].investmentQuantity !== undefined,
+      )?.[1];
+      expect(fields).toBeDefined();
+      expect(fields.investmentQuantity).toBe(2);
+      expect(fields.investmentPrice).toBe(480);
+      expect(fields.investmentCommission).toBe(5);
+    });
+
+    it("update() switching to isInvestment=true wipes split/transfer remnants", async () => {
+      stubFindOne(
+        makeScheduled({
+          isSplit: true,
+          isTransfer: false,
+        }),
+      );
+      accountsService.findOne.mockResolvedValue({
+        id: "acc-1",
+        userId,
+        accountSubType: "INVESTMENT_BROKERAGE",
+      });
+
+      await service.update(userId, stId, {
+        isInvestment: true,
+        investmentAction: "BUY" as any,
+        investmentSecurityId: "sec-voo",
+        investmentQuantity: 1,
+        investmentPrice: 500,
+      } as any);
+
+      const fields = scheduledRepo.update.mock.calls.find(
+        (c: any[]) => c[0] === stId && c[1].isInvestment !== undefined,
+      )?.[1];
+      expect(fields).toBeDefined();
+      expect(fields.isInvestment).toBe(true);
+      expect(fields.isSplit).toBe(false);
+      expect(fields.isTransfer).toBe(false);
+      expect(fields.categoryId).toBeNull();
+      expect(fields.transferAccountId).toBeNull();
+      expect(splitsRepo.delete).toHaveBeenCalledWith({
+        scheduledTransactionId: stId,
+      });
+    });
+
+    it("update() switching to isInvestment=false clears every investment field", async () => {
+      stubFindOne(
+        makeScheduled({
+          isInvestment: true,
+          investmentAction: "BUY" as any,
+          investmentSecurityId: "sec-voo",
+          investmentQuantity: 1,
+          investmentPrice: 500,
+        }),
+      );
+
+      await service.update(userId, stId, {
+        isInvestment: false,
+      } as any);
+
+      const fields = scheduledRepo.update.mock.calls.find(
+        (c: any[]) => c[0] === stId && c[1].isInvestment !== undefined,
+      )?.[1];
+      expect(fields).toBeDefined();
+      expect(fields.isInvestment).toBe(false);
+      expect(fields.investmentAction).toBeNull();
+      expect(fields.investmentSecurityId).toBeNull();
+      expect(fields.investmentFundingAccountId).toBeNull();
+      expect(fields.investmentQuantity).toBeNull();
+      expect(fields.investmentPrice).toBeNull();
+      expect(fields.investmentCommission).toBeNull();
+      expect(fields.investmentTotalAmount).toBeNull();
+      expect(fields.investmentExchangeRate).toBeNull();
+    });
+
+    it("update() switching to isTransfer=true clears investment fields too", async () => {
+      stubFindOne(
+        makeScheduled({
+          isInvestment: true,
+          investmentAction: "BUY" as any,
+          investmentSecurityId: "sec-voo",
+          investmentQuantity: 1,
+          investmentPrice: 500,
+        }),
+      );
+
+      await service.update(userId, stId, {
+        isInvestment: false,
+        isTransfer: true,
+        transferAccountId: "acc-2",
+      } as any);
+
+      const fields = scheduledRepo.update.mock.calls.find(
+        (c: any[]) =>
+          c[0] === stId && c[1].isTransfer === true,
+      )?.[1];
+      expect(fields).toBeDefined();
+      expect(fields.investmentAction).toBeNull();
+      expect(fields.investmentSecurityId).toBeNull();
+    });
   });
 
   // ==================== Override CRUD ====================
