@@ -399,6 +399,10 @@ CREATE TABLE scheduled_transaction_overrides (
     description TEXT,
     is_split BOOLEAN,
     splits JSONB, -- JSON array of split overrides: [{categoryId, amount, memo}]
+    -- Per-occurrence investment overrides (BUY/SELL/REINVEST etc.); NULL means "use base value"
+    investment_quantity NUMERIC(20, 8),
+    investment_price NUMERIC(20, 6),
+    investment_total_amount NUMERIC(20, 4),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(scheduled_transaction_id, override_date) -- NOTE: DB uses override_date, not original_date
@@ -535,6 +539,7 @@ CREATE TABLE user_preferences (
     dismissed_update_version VARCHAR(50),
     default_quote_provider VARCHAR(20) NOT NULL DEFAULT 'yahoo',
     recent_transactions_limit SMALLINT NOT NULL DEFAULT 5,
+    last_client_timezone VARCHAR(64), -- Most recently reported X-Client-Timezone, used by cron jobs when timezone='browser'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT user_preferences_default_quote_provider_check

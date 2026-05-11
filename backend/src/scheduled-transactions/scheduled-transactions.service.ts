@@ -114,19 +114,37 @@ export class ScheduledTransactionsService {
       // per-user rather than against container UTC. Without this, an EST user
       // sees transactions auto-post at 21:00 the previous local day (when
       // 02:00 UTC ticks over to the new UTC date).
-      const userRows: { user_id: string; timezone: string | null }[] =
-        await this.dataSource.query(
-          `SELECT u.id as user_id, p.timezone
-             FROM users u
-             LEFT JOIN user_preferences p ON p.user_id = u.id`,
-        );
+      //
+      // Resolution order per user:
+      //   1. user_preferences.timezone, when it is a real IANA name (the user
+      //      explicitly picked one in Settings).
+      //   2. user_preferences.last_client_timezone -- the most recent
+      //      X-Client-Timezone header observed by RequestContextInterceptor.
+      //      Covers the common case where timezone is still the default
+      //      "browser" sentinel.
+      //   3. UTC, only as a last resort.
+      const userRows: {
+        user_id: string;
+        timezone: string | null;
+        last_client_timezone: string | null;
+      }[] = await this.dataSource.query(
+        `SELECT u.id as user_id, p.timezone, p.last_client_timezone
+           FROM users u
+           LEFT JOIN user_preferences p ON p.user_id = u.id`,
+      );
 
       if (userRows.length === 0) return;
 
       const userIdsByTz = new Map<string, string[]>();
-      for (const { user_id, timezone } of userRows) {
-        const normalised = timezone?.trim();
-        const tz = normalised && normalised !== "browser" ? normalised : "UTC";
+      for (const { user_id, timezone, last_client_timezone } of userRows) {
+        const explicit = timezone?.trim();
+        const cached = last_client_timezone?.trim();
+        const tz =
+          explicit && explicit !== "browser"
+            ? explicit
+            : cached && cached !== "browser"
+              ? cached
+              : "UTC";
         const list = userIdsByTz.get(tz) ?? [];
         list.push(user_id);
         userIdsByTz.set(tz, list);
@@ -1093,7 +1111,13 @@ export class ScheduledTransactionsService {
     }
 
     if (scheduled.isInvestment) {
-      await this.postInvestment(userId, scheduled, postDto, postDate);
+      await this.postInvestment(
+        userId,
+        scheduled,
+        postDto,
+        postDate,
+        storedOverride,
+      );
     } else if (scheduled.isTransfer && scheduled.transferAccountId) {
       await this.transactionsService.createTransfer(userId, {
         fromAccountId: scheduled.accountId,
@@ -1201,6 +1225,7 @@ export class ScheduledTransactionsService {
     scheduled: ScheduledTransaction,
     postDto: PostScheduledTransactionDto | undefined,
     postDate: string,
+    storedOverride: ScheduledTransactionOverride | null,
   ): Promise<void> {
     const action = scheduled.investmentAction as InvestmentAction | null;
     if (!action) {
@@ -1209,32 +1234,37 @@ export class ScheduledTransactionsService {
       );
     }
 
-    const quantity =
-      postDto?.investmentQuantity !== undefined &&
-      postDto?.investmentQuantity !== null
-        ? Number(postDto.investmentQuantity)
-        : scheduled.investmentQuantity !== null &&
-            scheduled.investmentQuantity !== undefined
-          ? Number(scheduled.investmentQuantity)
-          : undefined;
+    // Precedence for investment fields at post time: explicit postDto value
+    // (one-time tweak entered in the Post dialog) > stored per-occurrence
+    // override (saved on a future occurrence) > base scheduled transaction.
+    const pickInvestmentValue = (
+      inline: number | null | undefined,
+      override: number | null | undefined,
+      base: number | null | undefined,
+    ): number | undefined => {
+      if (inline !== undefined && inline !== null) return Number(inline);
+      if (override !== undefined && override !== null) return Number(override);
+      if (base !== undefined && base !== null) return Number(base);
+      return undefined;
+    };
 
-    const price =
-      postDto?.investmentPrice !== undefined &&
-      postDto?.investmentPrice !== null
-        ? Number(postDto.investmentPrice)
-        : scheduled.investmentPrice !== null &&
-            scheduled.investmentPrice !== undefined
-          ? Number(scheduled.investmentPrice)
-          : undefined;
+    const quantity = pickInvestmentValue(
+      postDto?.investmentQuantity,
+      storedOverride?.investmentQuantity,
+      scheduled.investmentQuantity,
+    );
 
-    const totalAmount =
-      postDto?.investmentTotalAmount !== undefined &&
-      postDto?.investmentTotalAmount !== null
-        ? Number(postDto.investmentTotalAmount)
-        : scheduled.investmentTotalAmount !== null &&
-            scheduled.investmentTotalAmount !== undefined
-          ? Number(scheduled.investmentTotalAmount)
-          : undefined;
+    const price = pickInvestmentValue(
+      postDto?.investmentPrice,
+      storedOverride?.investmentPrice,
+      scheduled.investmentPrice,
+    );
+
+    const totalAmount = pickInvestmentValue(
+      postDto?.investmentTotalAmount,
+      storedOverride?.investmentTotalAmount,
+      scheduled.investmentTotalAmount,
+    );
 
     const commission =
       scheduled.investmentCommission !== null &&

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@/test/render';
+import { render, screen, fireEvent, waitFor, act } from '@/test/render';
 import { PostTransactionDialog } from './PostTransactionDialog';
 import toast from 'react-hot-toast';
 
@@ -16,6 +16,23 @@ vi.mock('@/lib/scheduled-transactions', () => ({
   scheduledTransactionsApi: {
     post: (...args: any[]) => mockPostApi(...args),
   },
+}));
+
+const mockGetSecurityPrices = vi.fn().mockResolvedValue([]);
+
+vi.mock('@/lib/investments', () => ({
+  investmentsApi: {
+    getSecurityPrices: (...args: any[]) => mockGetSecurityPrices(...args),
+  },
+}));
+
+vi.mock('@/lib/logger', () => ({
+  createLogger: () => ({
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
 }));
 
 vi.mock('@/lib/format', () => ({
@@ -41,6 +58,7 @@ vi.mock('@/hooks/useDateFormat', () => ({
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
     formatCurrency: (n: number, _c?: string) => `$${n.toFixed(2)}`,
+    formatNumber: (n: number, d: number = 2) => n.toFixed(d),
   }),
 }));
 
@@ -1024,5 +1042,360 @@ describe('PostTransactionDialog', () => {
     // The CurrencyInput fires onChange; we verify it doesn't crash and dialog is still rendered
     const elements = screen.getAllByText('Post Transaction');
     expect(elements.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // --- Investment-mode posting (BUY / SELL / REINVEST) ---
+  describe('investment qty+price actions', () => {
+    const investmentTransaction = {
+      id: 'inv1',
+      name: 'Buy VTI',
+      amount: -1000,
+      currencyCode: 'CAD',
+      accountId: 'a1',
+      account: { name: 'Brokerage', currentBalance: 5000 },
+      nextDueDate: '2025-02-15T00:00:00Z',
+      isTransfer: false,
+      isSplit: false,
+      isInvestment: true,
+      investmentAction: 'BUY',
+      investmentSecurityId: 'sec1',
+      investmentSecurity: { id: 'sec1', symbol: 'VTI', name: 'Vanguard Total' },
+      investmentQuantity: 10,
+      investmentPrice: 100,
+      investmentCommission: 0,
+    } as any;
+
+    beforeEach(() => {
+      mockGetSecurityPrices.mockReset();
+      mockGetSecurityPrices.mockResolvedValue([]);
+    });
+
+    it('seeds Total Price from saved quantity * price', () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // 10 * 100 + 0 commission = 1000
+      expect(totalInput.value).toBe('1,000');
+    });
+
+    it('updates Total Price when Quantity is changed', () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      fireEvent.change(qtyInput, { target: { value: '5' } });
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // 5 * 100 = 500
+      expect(totalInput.value).toBe('500');
+    });
+
+    it('updates Quantity when Total Price is changed', () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      fireEvent.change(totalInput, { target: { value: '250' } });
+      // Trigger blur to commit the value
+      fireEvent.blur(totalInput);
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      // 250 / 100 = 2.5
+      expect(Number(qtyInput.value)).toBeCloseTo(2.5, 6);
+    });
+
+    it('updates Quantity when Price changes and Total is already set', async () => {
+      await act(async () => {
+        render(
+          <PostTransactionDialog
+            {...defaultProps}
+            scheduledTransaction={investmentTransaction}
+          />,
+        );
+      });
+      // Initial: qty=10, price=100, total=1000 (seeded)
+      const priceInput = screen.getByLabelText('Price per share') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(priceInput, { target: { value: '200' } });
+      });
+      // Total was 1000, price now 200 → qty should be 5
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      expect(Number(qtyInput.value)).toBeCloseTo(5, 6);
+    });
+
+    it('auto-fills Price from latest market price on open', async () => {
+      mockGetSecurityPrices.mockResolvedValue([{ closePrice: '123.45' }]);
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const priceInput = screen.getByLabelText('Price per share') as HTMLInputElement;
+      await waitFor(() => {
+        expect(Number(priceInput.value)).toBeCloseTo(123.45, 6);
+      });
+      // Total recomputed from saved qty (10) * 123.45 = 1234.5
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      await waitFor(() => {
+        expect(totalInput.value).toBe('1,234.5');
+      });
+    });
+
+    it('fetches latest price for the security', async () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      await waitFor(() => {
+        expect(mockGetSecurityPrices).toHaveBeenCalledWith('sec1', 1);
+      });
+    });
+
+    it('sends qty and price (not totalValue) in the POST payload', async () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      // Change total → qty derived
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      fireEvent.change(totalInput, { target: { value: '500' } });
+      fireEvent.blur(totalInput);
+
+      const buttons = screen.getAllByText('Post Transaction');
+      const postButton = buttons[buttons.length - 1];
+      fireEvent.click(postButton);
+
+      await waitFor(() => {
+        expect(mockPostApi).toHaveBeenCalledWith(
+          'inv1',
+          expect.objectContaining({
+            investmentQuantity: 5, // 500 / 100
+            investmentPrice: 100,
+          }),
+        );
+      });
+      // investmentTotalValue is UI-only -- not in payload
+      const payload = mockPostApi.mock.calls[0][1];
+      expect('investmentTotalValue' in payload).toBe(false);
+    });
+
+    it('accounts for commission in total computation (BUY)', () => {
+      const buyWithCommission = {
+        ...investmentTransaction,
+        investmentCommission: 9.99,
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={buyWithCommission}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // BUY: 10 * 100 + 9.99 = 1009.99
+      expect(totalInput.value).toBe('1,009.99');
+    });
+
+    it('accounts for commission in total computation (SELL subtracts)', () => {
+      const sellWithCommission = {
+        ...investmentTransaction,
+        investmentAction: 'SELL',
+        investmentCommission: 9.99,
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={sellWithCommission}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // SELL: 10 * 100 - 9.99 = 990.01
+      expect(totalInput.value).toBe('990.01');
+    });
+
+    it('prefills Quantity / Price / Total Price from nextOverride when one exists', () => {
+      const txWithOverride = {
+        ...investmentTransaction,
+        nextOverride: {
+          id: 'ov1',
+          scheduledTransactionId: 'inv1',
+          originalDate: '2025-02-15',
+          overrideDate: '2025-02-15',
+          amount: null,
+          categoryId: null,
+          description: null,
+          isSplit: null,
+          splits: null,
+          investmentQuantity: 4,
+          investmentPrice: 250,
+          investmentTotalAmount: null,
+          createdAt: '',
+          updatedAt: '',
+        },
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={txWithOverride}
+        />,
+      );
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      const priceInput = screen.getByLabelText('Price per share') as HTMLInputElement;
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      expect(Number(qtyInput.value)).toBe(4);
+      expect(Number(priceInput.value)).toBe(250);
+      // 4 * 250 = 1000, commission 0
+      expect(totalInput.value).toBe('1,000');
+    });
+
+    it('prefills investmentTotalAmount from nextOverride for DIVIDEND', () => {
+      const dividendTx = {
+        ...investmentTransaction,
+        investmentAction: 'DIVIDEND',
+        investmentQuantity: null,
+        investmentPrice: null,
+        investmentTotalAmount: 50,
+        nextOverride: {
+          id: 'ov2',
+          scheduledTransactionId: 'inv1',
+          originalDate: '2025-02-15',
+          overrideDate: '2025-02-15',
+          amount: null,
+          categoryId: null,
+          description: null,
+          isSplit: null,
+          splits: null,
+          investmentQuantity: null,
+          investmentPrice: null,
+          investmentTotalAmount: 125,
+          createdAt: '',
+          updatedAt: '',
+        },
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={dividendTx}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Amount') as HTMLInputElement;
+      // Override value 125, not base value 50
+      expect(totalInput.value).toBe('125');
+    });
+
+    it('falls back to base values when override has null investment fields', () => {
+      const txWithSparseOverride = {
+        ...investmentTransaction,
+        nextOverride: {
+          id: 'ov3',
+          scheduledTransactionId: 'inv1',
+          originalDate: '2025-02-15',
+          overrideDate: '2025-02-15',
+          amount: null,
+          categoryId: null,
+          description: null,
+          isSplit: null,
+          splits: null,
+          investmentQuantity: null,
+          investmentPrice: null,
+          investmentTotalAmount: null,
+          createdAt: '',
+          updatedAt: '',
+        },
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={txWithSparseOverride}
+        />,
+      );
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      const priceInput = screen.getByLabelText('Price per share') as HTMLInputElement;
+      expect(Number(qtyInput.value)).toBe(10); // base
+      expect(Number(priceInput.value)).toBe(100); // base
+    });
+
+    it('updates projected balance header from the current quantity / price (BUY)', () => {
+      // Brokerage currentBalance 5000; BUY 10 * 100 = -1000 → 4000.
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      expect(screen.getByText('$4000.00')).toBeInTheDocument();
+
+      // User edits quantity to 5 → cash impact -500 → 4500.
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      fireEvent.change(qtyInput, { target: { value: '5' } });
+      expect(screen.getByText('$4500.00')).toBeInTheDocument();
+      expect(screen.queryByText('$4000.00')).not.toBeInTheDocument();
+    });
+
+    it('updates projected balance for DIVIDEND when total amount is edited', () => {
+      const dividendTx = {
+        ...investmentTransaction,
+        investmentAction: 'DIVIDEND',
+        investmentQuantity: null,
+        investmentPrice: null,
+        investmentTotalAmount: 50,
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={dividendTx}
+        />,
+      );
+      // 5000 + 50 = 5050
+      expect(screen.getByText('$5050.00')).toBeInTheDocument();
+
+      const totalInput = screen.getByLabelText('Total Amount') as HTMLInputElement;
+      fireEvent.change(totalInput, { target: { value: '125' } });
+      fireEvent.blur(totalInput);
+      // 5000 + 125 = 5125
+      expect(screen.getByText('$5125.00')).toBeInTheDocument();
+    });
+
+    it('reflects override values in the projected balance on open', () => {
+      const txWithOverride = {
+        ...investmentTransaction,
+        nextOverride: {
+          id: 'ov4',
+          scheduledTransactionId: 'inv1',
+          originalDate: '2025-02-15',
+          overrideDate: '2025-02-15',
+          amount: null,
+          categoryId: null,
+          description: null,
+          isSplit: null,
+          splits: null,
+          investmentQuantity: 3,
+          investmentPrice: 100,
+          investmentTotalAmount: null,
+          createdAt: '',
+          updatedAt: '',
+        },
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={txWithOverride}
+        />,
+      );
+      // Override qty 3 * price 100 = -300 → 5000 - 300 = 4700
+      expect(screen.getByText('$4700.00')).toBeInTheDocument();
+    });
   });
 });
