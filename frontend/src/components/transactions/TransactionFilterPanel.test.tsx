@@ -1639,7 +1639,7 @@ describe('TransactionFilterPanel', () => {
   });
 
   describe('Reconciliation status filter', () => {
-    it('renders the Reconciliation MultiSelect when expanded', () => {
+    it('renders the Status MultiSelect when expanded', () => {
       render(
         <TransactionFilterPanel
           {...defaultProps}
@@ -1647,7 +1647,7 @@ describe('TransactionFilterPanel', () => {
         />,
       );
 
-      expect(screen.getByText('Reconciliation')).toBeInTheDocument();
+      expect(screen.getByText('Status')).toBeInTheDocument();
       expect(screen.getByText('All statuses')).toBeInTheDocument();
     });
 

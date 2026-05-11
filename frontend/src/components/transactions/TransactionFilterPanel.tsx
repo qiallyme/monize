@@ -537,7 +537,7 @@ export function TransactionFilterPanel({
                 />
 
                 <MultiSelect
-                  label="Reconciliation"
+                  label="Status"
                   options={STATUS_FILTER_OPTIONS}
                   value={filterStatuses}
                   onChange={(values) => handleArrayFilterChange(setFilterStatuses, values as TransactionStatus[])}
