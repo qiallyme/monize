@@ -19,6 +19,7 @@ import { buildCategoryTree } from '@/lib/categoryUtils';
 import { roundToCents, getCurrencySymbol } from '@/lib/format';
 import { getErrorMessage } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 const logger = createLogger('OverrideEditorDialog');
 interface OverrideEditorDialogProps {
@@ -42,6 +43,7 @@ export function OverrideEditorDialog({
   onClose,
   onSave,
 }: OverrideEditorDialogProps) {
+  const { formatNumber } = useNumberFormat();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(overrideDate);
   const [amount, setAmount] = useState<number>(0);
@@ -437,7 +439,9 @@ export function OverrideEditorDialog({
                   step="0.000001"
                   min={0}
                   placeholder={
-                    marketPrice != null ? `Latest: ${marketPrice}` : undefined
+                    marketPrice != null
+                      ? `Latest: ${formatNumber(marketPrice, 6).replace(/0+$/, '').replace(/\.$/, '')}`
+                      : undefined
                   }
                   value={investmentPrice}
                   onChange={(e) => handleInvestmentPriceChange(e.target.value)}

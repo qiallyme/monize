@@ -58,6 +58,7 @@ vi.mock('@/hooks/useDateFormat', () => ({
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
     formatCurrency: (n: number, _c?: string) => `$${n.toFixed(2)}`,
+    formatNumber: (n: number, d: number = 2) => n.toFixed(d),
   }),
 }));
 

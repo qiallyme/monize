@@ -59,6 +59,13 @@ vi.mock('@/hooks/useDateFormat', () => ({
   useDateFormat: () => ({ formatDate: (d: string) => d, dateFormat: 'browser' }),
 }));
 
+vi.mock('@/hooks/useNumberFormat', () => ({
+  useNumberFormat: () => ({
+    formatCurrency: (n: number, _c?: string) => `$${n.toFixed(2)}`,
+    formatNumber: (n: number, d: number = 2) => n.toFixed(d),
+  }),
+}));
+
 vi.mock('@/lib/categoryUtils', () => ({
   buildCategoryTree: (cats: any[]) => (cats || []).map((c: any) => ({ category: c })),
 }));

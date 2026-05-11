@@ -68,7 +68,7 @@ export function PostTransactionDialog({
   onClose,
   onPosted,
 }: PostTransactionDialogProps) {
-  const { formatCurrency } = useNumberFormat();
+  const { formatCurrency, formatNumber } = useNumberFormat();
   const [isLoading, setIsLoading] = useState(false);
   const [amount, setAmount] = useState<number>(0);
   const [categoryId, setCategoryId] = useState<string>('');
@@ -559,7 +559,9 @@ export function PostTransactionDialog({
                   step="0.000001"
                   min={0}
                   placeholder={
-                    marketPrice != null ? `Latest: ${marketPrice}` : undefined
+                    marketPrice != null
+                      ? `Latest: ${formatNumber(marketPrice, 6).replace(/0+$/, '').replace(/\.$/, '')}`
+                      : undefined
                   }
                   value={investmentPrice}
                   onChange={(e) => handleInvestmentPriceChange(e.target.value)}
