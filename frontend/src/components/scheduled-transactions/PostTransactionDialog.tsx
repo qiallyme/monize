@@ -22,6 +22,8 @@ import { getErrorMessage } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { getProjectedBalanceAtDate, FutureTransaction } from '@/lib/forecast';
+import { computeInvestmentCashImpact } from '@/lib/investmentCashImpact';
+import { InvestmentAction } from '@/types/investment';
 
 const logger = createLogger('PostTransactionDialog');
 
@@ -141,6 +143,41 @@ export function PostTransactionDialog({
     ? accounts.find(a => a.id === scheduledTransaction.transferAccountId) ?? scheduledTransaction.transferAccount
     : null;
 
+  // The cash impact that will actually post -- reflects per-occurrence edits
+  // the user makes here, not just the base scheduled transaction's amount.
+  // For investments we re-derive from the current quantity / price / total so
+  // the projected-balance header updates as the user types.
+  const effectivePostAmount = useMemo(() => {
+    if (!isInvestmentKind) return amount;
+    if (!investmentAction) return 0;
+    if (isInvestmentAmountOnly) {
+      return investmentTotalAmount === '' ? 0 : Number(investmentTotalAmount);
+    }
+    if (isInvestmentQuantityPrice) {
+      const qty = investmentQuantity === '' ? 0 : Number(investmentQuantity);
+      const price = investmentPrice === '' ? 0 : Number(investmentPrice);
+      const commission = Number(scheduledTransaction.investmentCommission ?? 0);
+      return computeInvestmentCashImpact(
+        investmentAction as InvestmentAction,
+        qty,
+        price,
+        commission,
+      );
+    }
+    // ADD_SHARES / REMOVE_SHARES / SPLIT -- shares move, no cash impact.
+    return 0;
+  }, [
+    isInvestmentKind,
+    isInvestmentAmountOnly,
+    isInvestmentQuantityPrice,
+    investmentAction,
+    investmentQuantity,
+    investmentPrice,
+    investmentTotalAmount,
+    scheduledTransaction.investmentCommission,
+    amount,
+  ]);
+
   const projectedBalances = useMemo(() => {
     if (!transactionDate) return null;
     const sourceBefore = sourceAccount
@@ -151,11 +188,11 @@ export function PostTransactionDialog({
       : null;
     return {
       sourceBefore,
-      sourceAfter: sourceBefore != null ? roundToCents(sourceBefore + amount) : null,
+      sourceAfter: sourceBefore != null ? roundToCents(sourceBefore + effectivePostAmount) : null,
       transferBefore,
-      transferAfter: transferBefore != null ? roundToCents(transferBefore - amount) : null,
+      transferAfter: transferBefore != null ? roundToCents(transferBefore - effectivePostAmount) : null,
     };
-  }, [sourceAccount, transferAccount, transactionDate, amount, scheduledTransactions, futureTransactions, scheduledTransaction.id]);
+  }, [sourceAccount, transferAccount, transactionDate, effectivePostAmount, scheduledTransactions, futureTransactions, scheduledTransaction.id]);
 
   // Initialize form with transaction values (including override if exists)
   useEffect(() => {

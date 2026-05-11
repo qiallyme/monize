@@ -1326,5 +1326,76 @@ describe('PostTransactionDialog', () => {
       expect(Number(qtyInput.value)).toBe(10); // base
       expect(Number(priceInput.value)).toBe(100); // base
     });
+
+    it('updates projected balance header from the current quantity / price (BUY)', () => {
+      // Brokerage currentBalance 5000; BUY 10 * 100 = -1000 → 4000.
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      expect(screen.getByText('$4000.00')).toBeInTheDocument();
+
+      // User edits quantity to 5 → cash impact -500 → 4500.
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      fireEvent.change(qtyInput, { target: { value: '5' } });
+      expect(screen.getByText('$4500.00')).toBeInTheDocument();
+      expect(screen.queryByText('$4000.00')).not.toBeInTheDocument();
+    });
+
+    it('updates projected balance for DIVIDEND when total amount is edited', () => {
+      const dividendTx = {
+        ...investmentTransaction,
+        investmentAction: 'DIVIDEND',
+        investmentQuantity: null,
+        investmentPrice: null,
+        investmentTotalAmount: 50,
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={dividendTx}
+        />,
+      );
+      // 5000 + 50 = 5050
+      expect(screen.getByText('$5050.00')).toBeInTheDocument();
+
+      const totalInput = screen.getByLabelText('Total Amount') as HTMLInputElement;
+      fireEvent.change(totalInput, { target: { value: '125' } });
+      fireEvent.blur(totalInput);
+      // 5000 + 125 = 5125
+      expect(screen.getByText('$5125.00')).toBeInTheDocument();
+    });
+
+    it('reflects override values in the projected balance on open', () => {
+      const txWithOverride = {
+        ...investmentTransaction,
+        nextOverride: {
+          id: 'ov4',
+          scheduledTransactionId: 'inv1',
+          originalDate: '2025-02-15',
+          overrideDate: '2025-02-15',
+          amount: null,
+          categoryId: null,
+          description: null,
+          isSplit: null,
+          splits: null,
+          investmentQuantity: 3,
+          investmentPrice: 100,
+          investmentTotalAmount: null,
+          createdAt: '',
+          updatedAt: '',
+        },
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={txWithOverride}
+        />,
+      );
+      // Override qty 3 * price 100 = -300 → 5000 - 300 = 4700
+      expect(screen.getByText('$4700.00')).toBeInTheDocument();
+    });
   });
 });
