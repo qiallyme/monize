@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@/test/render';
+import { render, screen, fireEvent, waitFor, act } from '@/test/render';
 import { PostTransactionDialog } from './PostTransactionDialog';
 import toast from 'react-hot-toast';
 
@@ -16,6 +16,23 @@ vi.mock('@/lib/scheduled-transactions', () => ({
   scheduledTransactionsApi: {
     post: (...args: any[]) => mockPostApi(...args),
   },
+}));
+
+const mockGetSecurityPrices = vi.fn().mockResolvedValue([]);
+
+vi.mock('@/lib/investments', () => ({
+  investmentsApi: {
+    getSecurityPrices: (...args: any[]) => mockGetSecurityPrices(...args),
+  },
+}));
+
+vi.mock('@/lib/logger', () => ({
+  createLogger: () => ({
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
 }));
 
 vi.mock('@/lib/format', () => ({
@@ -1024,5 +1041,187 @@ describe('PostTransactionDialog', () => {
     // The CurrencyInput fires onChange; we verify it doesn't crash and dialog is still rendered
     const elements = screen.getAllByText('Post Transaction');
     expect(elements.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // --- Investment-mode posting (BUY / SELL / REINVEST) ---
+  describe('investment qty+price actions', () => {
+    const investmentTransaction = {
+      id: 'inv1',
+      name: 'Buy VTI',
+      amount: -1000,
+      currencyCode: 'CAD',
+      accountId: 'a1',
+      account: { name: 'Brokerage', currentBalance: 5000 },
+      nextDueDate: '2025-02-15T00:00:00Z',
+      isTransfer: false,
+      isSplit: false,
+      isInvestment: true,
+      investmentAction: 'BUY',
+      investmentSecurityId: 'sec1',
+      investmentSecurity: { id: 'sec1', symbol: 'VTI', name: 'Vanguard Total' },
+      investmentQuantity: 10,
+      investmentPrice: 100,
+      investmentCommission: 0,
+    } as any;
+
+    beforeEach(() => {
+      mockGetSecurityPrices.mockReset();
+      mockGetSecurityPrices.mockResolvedValue([]);
+    });
+
+    it('seeds Total Price from saved quantity * price', () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // 10 * 100 + 0 commission = 1000
+      expect(totalInput.value).toBe('1,000');
+    });
+
+    it('updates Total Price when Quantity is changed', () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      fireEvent.change(qtyInput, { target: { value: '5' } });
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // 5 * 100 = 500
+      expect(totalInput.value).toBe('500');
+    });
+
+    it('updates Quantity when Total Price is changed', () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      fireEvent.change(totalInput, { target: { value: '250' } });
+      // Trigger blur to commit the value
+      fireEvent.blur(totalInput);
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      // 250 / 100 = 2.5
+      expect(Number(qtyInput.value)).toBeCloseTo(2.5, 6);
+    });
+
+    it('updates Quantity when Price changes and Total is already set', async () => {
+      await act(async () => {
+        render(
+          <PostTransactionDialog
+            {...defaultProps}
+            scheduledTransaction={investmentTransaction}
+          />,
+        );
+      });
+      // Initial: qty=10, price=100, total=1000 (seeded)
+      const priceInput = screen.getByLabelText('Price per share') as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(priceInput, { target: { value: '200' } });
+      });
+      // Total was 1000, price now 200 → qty should be 5
+      const qtyInput = screen.getByLabelText('Quantity (shares)') as HTMLInputElement;
+      expect(Number(qtyInput.value)).toBeCloseTo(5, 6);
+    });
+
+    it('auto-fills Price from latest market price on open', async () => {
+      mockGetSecurityPrices.mockResolvedValue([{ closePrice: '123.45' }]);
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      const priceInput = screen.getByLabelText('Price per share') as HTMLInputElement;
+      await waitFor(() => {
+        expect(Number(priceInput.value)).toBeCloseTo(123.45, 6);
+      });
+      // Total recomputed from saved qty (10) * 123.45 = 1234.5
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      await waitFor(() => {
+        expect(totalInput.value).toBe('1,234.5');
+      });
+    });
+
+    it('fetches latest price for the security', async () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      await waitFor(() => {
+        expect(mockGetSecurityPrices).toHaveBeenCalledWith('sec1', 1);
+      });
+    });
+
+    it('sends qty and price (not totalValue) in the POST payload', async () => {
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={investmentTransaction}
+        />,
+      );
+      // Change total → qty derived
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      fireEvent.change(totalInput, { target: { value: '500' } });
+      fireEvent.blur(totalInput);
+
+      const buttons = screen.getAllByText('Post Transaction');
+      const postButton = buttons[buttons.length - 1];
+      fireEvent.click(postButton);
+
+      await waitFor(() => {
+        expect(mockPostApi).toHaveBeenCalledWith(
+          'inv1',
+          expect.objectContaining({
+            investmentQuantity: 5, // 500 / 100
+            investmentPrice: 100,
+          }),
+        );
+      });
+      // investmentTotalValue is UI-only -- not in payload
+      const payload = mockPostApi.mock.calls[0][1];
+      expect('investmentTotalValue' in payload).toBe(false);
+    });
+
+    it('accounts for commission in total computation (BUY)', () => {
+      const buyWithCommission = {
+        ...investmentTransaction,
+        investmentCommission: 9.99,
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={buyWithCommission}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // BUY: 10 * 100 + 9.99 = 1009.99
+      expect(totalInput.value).toBe('1,009.99');
+    });
+
+    it('accounts for commission in total computation (SELL subtracts)', () => {
+      const sellWithCommission = {
+        ...investmentTransaction,
+        investmentAction: 'SELL',
+        investmentCommission: 9.99,
+      };
+      render(
+        <PostTransactionDialog
+          {...defaultProps}
+          scheduledTransaction={sellWithCommission}
+        />,
+      );
+      const totalInput = screen.getByLabelText('Total Price') as HTMLInputElement;
+      // SELL: 10 * 100 - 9.99 = 990.01
+      expect(totalInput.value).toBe('990.01');
+    });
   });
 });

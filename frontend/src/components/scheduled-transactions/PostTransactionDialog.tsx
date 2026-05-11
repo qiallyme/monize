@@ -14,12 +14,16 @@ import { ScheduledTransaction, PostScheduledTransactionData } from '@/types/sche
 import { Category } from '@/types/category';
 import { Account } from '@/types/account';
 import { scheduledTransactionsApi } from '@/lib/scheduled-transactions';
+import { investmentsApi } from '@/lib/investments';
 import { getLocalDateString } from '@/lib/utils';
 import { buildCategoryTree } from '@/lib/categoryUtils';
 import { roundToCents, getCurrencySymbol } from '@/lib/format';
 import { getErrorMessage } from '@/lib/errors';
+import { createLogger } from '@/lib/logger';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { getProjectedBalanceAtDate, FutureTransaction } from '@/lib/forecast';
+
+const logger = createLogger('PostTransactionDialog');
 
 // Liability accounts normally carry negative balances — only warn if over credit limit
 const LIABILITY_TYPES = new Set(['CREDIT_CARD', 'LOAN', 'MORTGAGE', 'LINE_OF_CREDIT']);
@@ -78,6 +82,10 @@ export function PostTransactionDialog({
   const [investmentQuantity, setInvestmentQuantity] = useState<number | ''>('');
   const [investmentPrice, setInvestmentPrice] = useState<number | ''>('');
   const [investmentTotalAmount, setInvestmentTotalAmount] = useState<number | ''>('');
+  // UI-only computed total for qty+price actions (qty * price + commission).
+  // Not sent to the backend -- the API derives the total from qty/price/commission.
+  const [investmentTotalValue, setInvestmentTotalValue] = useState<number | ''>('');
+  const [marketPrice, setMarketPrice] = useState<number | null>(null);
 
   const isInvestmentKind = scheduledTransaction.isInvestment;
   const investmentAction = scheduledTransaction.investmentAction;
@@ -186,23 +194,127 @@ export function PostTransactionDialog({
       }
 
       // Investment-kind: prefill overrides from the stored values
-      setInvestmentQuantity(
+      const initialQty =
         scheduledTransaction.investmentQuantity != null
           ? Number(scheduledTransaction.investmentQuantity)
-          : '',
-      );
-      setInvestmentPrice(
+          : '';
+      const initialPrice =
         scheduledTransaction.investmentPrice != null
           ? Number(scheduledTransaction.investmentPrice)
-          : '',
-      );
+          : '';
+      setInvestmentQuantity(initialQty);
+      setInvestmentPrice(initialPrice);
       setInvestmentTotalAmount(
         scheduledTransaction.investmentTotalAmount != null
           ? Number(scheduledTransaction.investmentTotalAmount)
           : '',
       );
+      // Seed the UI-only total from qty * price (+ signed commission) so the
+      // user sees a meaningful starting value for BUY/SELL/REINVEST.
+      if (
+        typeof initialQty === 'number' &&
+        initialQty > 0 &&
+        typeof initialPrice === 'number' &&
+        initialPrice > 0
+      ) {
+        const commission = Number(scheduledTransaction.investmentCommission ?? 0);
+        const sign = scheduledTransaction.investmentAction === 'SELL' ? -1 : 1;
+        const total = initialQty * initialPrice + sign * commission;
+        setInvestmentTotalValue(Math.round(total * 10_000) / 10_000);
+      } else {
+        setInvestmentTotalValue('');
+      }
+      setMarketPrice(null);
     }
   }, [isOpen, scheduledTransaction]);
+
+  // Fetch the most recent close price for the security so we can auto-fill
+  // the Price field (matching the new-scheduled-transaction form's behaviour).
+  useEffect(() => {
+    if (!isOpen || !isInvestmentKind || !isInvestmentQuantityPrice) return;
+    const securityId = scheduledTransaction.investmentSecurityId;
+    if (!securityId) return;
+    let cancelled = false;
+    investmentsApi
+      .getSecurityPrices(securityId, 1)
+      .then((prices) => {
+        if (cancelled) return;
+        const latest = prices[0];
+        setMarketPrice(latest ? Number(latest.closePrice) : null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setMarketPrice(null);
+        logger.warn?.('Failed to fetch latest price', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isOpen,
+    isInvestmentKind,
+    isInvestmentQuantityPrice,
+    scheduledTransaction.investmentSecurityId,
+  ]);
+
+  // When the market price arrives, overwrite the Price with the latest value
+  // and recompute the total from the existing quantity. Uses the "info from
+  // previous render" pattern to avoid violating react-hooks/set-state-in-effect.
+  const [lastSeenMarketPrice, setLastSeenMarketPrice] = useState<number | null>(null);
+  if (isOpen && marketPrice !== lastSeenMarketPrice) {
+    setLastSeenMarketPrice(marketPrice);
+    if (isInvestmentQuantityPrice && marketPrice != null && marketPrice > 0) {
+      const rounded = Math.round(marketPrice * 1_000_000) / 1_000_000;
+      setInvestmentPrice(rounded);
+      if (investmentQuantity !== '' && Number(investmentQuantity) > 0) {
+        const commission = Number(scheduledTransaction.investmentCommission ?? 0);
+        const sign = scheduledTransaction.investmentAction === 'SELL' ? -1 : 1;
+        const total = Number(investmentQuantity) * rounded + sign * commission;
+        setInvestmentTotalValue(Math.round(total * 10_000) / 10_000);
+      }
+    }
+  }
+
+  const investmentSign = scheduledTransaction.investmentAction === 'SELL' ? -1 : 1;
+  const investmentCommission = Number(scheduledTransaction.investmentCommission ?? 0);
+
+  const handleInvestmentQuantityChange = (raw: string) => {
+    const qty = raw === '' ? '' : Number(raw);
+    setInvestmentQuantity(qty);
+    if (qty !== '' && investmentPrice !== '' && Number(investmentPrice) > 0) {
+      const total = Number(qty) * Number(investmentPrice) + investmentSign * investmentCommission;
+      setInvestmentTotalValue(Math.round(total * 10_000) / 10_000);
+    }
+  };
+
+  const handleInvestmentPriceChange = (raw: string) => {
+    const price = raw === '' ? '' : Number(raw);
+    setInvestmentPrice(price);
+    if (price !== '' && Number(price) > 0) {
+      if (investmentTotalValue !== '') {
+        // User has a target total -- keep it and derive quantity.
+        const cost = Number(investmentTotalValue) - investmentSign * investmentCommission;
+        const qty = Math.max(0, cost / Number(price));
+        setInvestmentQuantity(Math.round(qty * 100_000_000) / 100_000_000);
+      } else if (investmentQuantity !== '') {
+        const total = Number(investmentQuantity) * Number(price) + investmentSign * investmentCommission;
+        setInvestmentTotalValue(Math.round(total * 10_000) / 10_000);
+      }
+    }
+  };
+
+  const handleInvestmentTotalValueChange = (raw: number | undefined) => {
+    if (raw === undefined) {
+      setInvestmentTotalValue('');
+      return;
+    }
+    setInvestmentTotalValue(raw);
+    if (investmentPrice !== '' && Number(investmentPrice) > 0) {
+      const cost = raw - investmentSign * investmentCommission;
+      const qty = Math.max(0, cost / Number(investmentPrice));
+      setInvestmentQuantity(Math.round(qty * 100_000_000) / 100_000_000);
+    }
+  };
 
   const categoryOptions = useMemo(() => {
     return buildCategoryTree(categories).map(({ category }) => {
@@ -431,21 +543,43 @@ export function PostTransactionDialog({
                 min={0}
                 value={investmentQuantity}
                 onChange={(e) =>
-                  setInvestmentQuantity(e.target.value === '' ? '' : Number(e.target.value))
+                  isInvestmentQuantityPrice
+                    ? handleInvestmentQuantityChange(e.target.value)
+                    : setInvestmentQuantity(
+                        e.target.value === '' ? '' : Number(e.target.value),
+                      )
                 }
               />
             )}
             {isInvestmentQuantityPrice && (
-              <Input
-                label="Price per share"
-                type="number"
-                step="0.000001"
-                min={0}
-                value={investmentPrice}
-                onChange={(e) =>
-                  setInvestmentPrice(e.target.value === '' ? '' : Number(e.target.value))
-                }
-              />
+              <>
+                <Input
+                  label="Price per share"
+                  type="number"
+                  step="0.000001"
+                  min={0}
+                  placeholder={
+                    marketPrice != null ? `Latest: ${marketPrice}` : undefined
+                  }
+                  value={investmentPrice}
+                  onChange={(e) => handleInvestmentPriceChange(e.target.value)}
+                />
+                <CurrencyInput
+                  label="Total Price"
+                  prefix={getCurrencySymbol(scheduledTransaction.currencyCode)}
+                  value={
+                    typeof investmentTotalValue === 'number'
+                      ? investmentTotalValue
+                      : undefined
+                  }
+                  onChange={handleInvestmentTotalValueChange}
+                />
+                {scheduledTransaction.investmentSecurityId && marketPrice == null && (
+                  <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    No price history yet for this security. Enter the price manually.
+                  </p>
+                )}
+              </>
             )}
             {isInvestmentAmountOnly && (
               <CurrencyInput
