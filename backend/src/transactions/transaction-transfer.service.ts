@@ -104,7 +104,7 @@ export class TransactionTransferService {
         amount: -amount,
         currencyCode: fromCurrencyCode,
         exchangeRate: 1,
-        description: description || `Transfer to ${toAccount.name}`,
+        description: description || null,
         referenceNumber,
         status,
         isTransfer: true,
@@ -119,7 +119,7 @@ export class TransactionTransferService {
         amount: toAmount,
         currencyCode: destinationCurrency,
         exchangeRate: exchangeRate,
-        description: description || `Transfer from ${fromAccount.name}`,
+        description: description || null,
         referenceNumber,
         status,
         isTransfer: true,
@@ -652,9 +652,6 @@ export class TransactionTransferService {
 
     if (shouldRegenerateDefault) {
       data.payeeName = `Transfer to ${newToAccount.name}`;
-      if (updateDto.description === undefined && toAccountChanged) {
-        data.description = `Transfer to ${newToAccount.name}`;
-      }
     }
 
     return data;
@@ -715,9 +712,6 @@ export class TransactionTransferService {
 
     if (shouldRegenerateDefault) {
       data.payeeName = `Transfer from ${newFromAccount.name}`;
-      if (updateDto.description === undefined && fromAccountChanged) {
-        data.description = `Transfer from ${newFromAccount.name}`;
-      }
     }
 
     return data;
