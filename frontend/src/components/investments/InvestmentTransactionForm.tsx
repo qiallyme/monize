@@ -161,11 +161,12 @@ export function InvestmentTransactionForm({
   );
 
   // All accounts that can be used as funding source/destination (sorted)
-  // Excludes investment cash accounts, cash accounts, and asset accounts
+  // Excludes investment accounts (brokerage + cash), cash accounts, and asset accounts
   const fundingAccounts = useMemo(
     () => [...(allAccounts || accounts)]
       .filter((a) =>
         a.accountSubType !== 'INVESTMENT_CASH' &&
+        a.accountSubType !== 'INVESTMENT_BROKERAGE' &&
         a.accountType !== 'CASH' &&
         a.accountType !== 'ASSET'
       )

@@ -296,14 +296,15 @@ describe('InvestmentTransactionForm', () => {
     });
   });
 
-  it('filters out CASH and ASSET accounts from funding accounts', async () => {
+  it('filters out CASH, ASSET, and brokerage accounts from funding accounts', async () => {
     render(<InvestmentTransactionForm accounts={accounts} />);
     await waitFor(() => {
       const fundingSelect = screen.getByLabelText('Funds From (optional)');
       const options = fundingSelect.querySelectorAll('option');
-      // "Default cash account" + chequing + brokerage (not cash account or asset)
       const optionTexts = Array.from(options).map(o => o.textContent);
       expect(optionTexts).not.toContain('Cash Account');
+      expect(optionTexts).not.toContain('RRSP Brokerage');
+      expect(optionTexts).toContain('Main Chequing');
     });
   });
 
