@@ -10,6 +10,7 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ label, error, options, className, id, ...props }, ref) => {
     const selectId = id || `select-${label?.toLowerCase().replace(/\s+/g, '-')}`;
+    const isPlaceholder = props.value === '' || props.value === undefined;
 
     return (
       <div className="w-full">
@@ -27,13 +28,19 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           className={cn(
             inputBaseClasses,
             'border px-3 py-2 font-sans focus:ring-1 focus:outline-none',
+            isPlaceholder && 'select-placeholder',
             error && inputErrorClasses,
             className
           )}
           {...props}
         >
           {options.map((option) => (
-            <option key={option.value} value={option.value} disabled={option.disabled}>
+            <option
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+              className="text-gray-900 dark:text-gray-100"
+            >
               {option.label}
             </option>
           ))}
