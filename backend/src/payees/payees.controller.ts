@@ -32,6 +32,7 @@ import { ApplyCategorySuggestionsDto } from "./dto/apply-category-suggestions.dt
 import { DeactivatePayeesDto } from "./dto/deactivate-payees.dto";
 import { Payee } from "./entities/payee.entity";
 import { PayeeAlias } from "./entities/payee-alias.entity";
+import { AllowDelegate } from "../delegation/decorators/delegate-access.decorator";
 
 @ApiTags("Payees")
 @ApiBearerAuth()
@@ -64,6 +65,7 @@ export class PayeesController {
     description: "Filter by active status (default: all)",
   })
   @ApiResponse({ status: 200, description: "List of payees", type: [Payee] })
+  @AllowDelegate()
   findAll(
     @Request() req,
     @Query("status") status?: "active" | "inactive" | "all",

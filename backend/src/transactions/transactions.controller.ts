@@ -34,6 +34,7 @@ import {
   DelegateRequires,
 } from "../delegation/decorators/delegate-access.decorator";
 import { DelegateTransferMaskInterceptor } from "../delegation/interceptors/delegate-transfer-mask.interceptor";
+import { DelegationService } from "../delegation/delegation.service";
 import { TransactionStatus } from "./entities/transaction.entity";
 import { CreateTransactionDto } from "./dto/create-transaction.dto";
 import { UpdateTransactionDto } from "./dto/update-transaction.dto";
@@ -82,7 +83,10 @@ function parseTransactionStatuses(
 @UseInterceptors(DelegateTransferMaskInterceptor)
 @ApiBearerAuth()
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(
+    private readonly transactionsService: TransactionsService,
+    private readonly delegationService: DelegationService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: "Create a new transaction" })
@@ -195,7 +199,8 @@ export class TransactionsController {
     description: "List of transactions retrieved successfully",
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
-  findAll(
+  @AllowDelegate()
+  async findAll(
     @Request() req,
     @Query("accountId") accountId?: string,
     @Query("accountIds") accountIds?: string,
@@ -257,9 +262,39 @@ export class TransactionsController {
       throw new BadRequestException("amountTo must be a number");
     }
 
+    let effectiveAccountIds = parseIds(accountIds, accountId);
+    if (req.user.isActing) {
+      // A delegate only ever sees transactions for the accounts they were
+      // granted READ on. Intersect any requested ids with the readable set;
+      // an empty result means "no visible accounts" -> empty page (NOT an
+      // unfiltered query, which would leak the whole owner ledger).
+      const readable = await this.delegationService.readableAccountIds(
+        req.user.delegationId,
+      );
+      const readableSet = new Set(readable);
+      effectiveAccountIds =
+        effectiveAccountIds && effectiveAccountIds.length > 0
+          ? effectiveAccountIds.filter((id) => readableSet.has(id))
+          : readable;
+      if (effectiveAccountIds.length === 0) {
+        const safeLimit = limit ? parseInt(limit, 10) : 50;
+        const safePage = page ? parseInt(page, 10) : 1;
+        return {
+          data: [],
+          pagination: {
+            page: safePage,
+            limit: safeLimit,
+            total: 0,
+            totalPages: 0,
+            hasMore: false,
+          },
+        };
+      }
+    }
+
     return this.transactionsService.findAll(
       req.user.id,
-      parseIds(accountIds, accountId),
+      effectiveAccountIds,
       startDate,
       endDate,
       parseCategoryIds(categoryIds ?? categoryId),
@@ -633,6 +668,8 @@ export class TransactionsController {
     description: "Forbidden - transaction does not belong to user",
   })
   @ApiResponse({ status: 404, description: "Transaction not found" })
+  @AllowDelegate()
+  @DelegatedTransactionParam("id")
   findOne(@Request() req, @Param("id", ParseUUIDPipe) id: string) {
     return this.transactionsService.findOne(req.user.id, id);
   }
@@ -822,6 +859,8 @@ export class TransactionsController {
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
   @ApiResponse({ status: 404, description: "Transaction not found" })
+  @AllowDelegate()
+  @DelegatedTransactionParam("id")
   getLinkedTransaction(@Request() req, @Param("id", ParseUUIDPipe) id: string) {
     return this.transactionsService.getLinkedTransaction(req.user.id, id);
   }

@@ -25,6 +25,7 @@ import { CategoriesService } from "./categories.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
 import { ReassignTransactionsDto } from "./dto/reassign-transactions.dto";
+import { AllowDelegate } from "../delegation/decorators/delegate-access.decorator";
 
 @ApiTags("Categories")
 @Controller("categories")
@@ -55,6 +56,7 @@ export class CategoriesController {
     description: "List of categories retrieved successfully",
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
+  @AllowDelegate()
   findAll(
     @Request() req,
     @Query("includeSystem", new ParseBoolPipe({ optional: true }))

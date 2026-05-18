@@ -328,8 +328,8 @@ describe("TransactionsController", () => {
 
     // ── Validation tests ────────────────────────────────────────
 
-    it("rejects negative page number", () => {
-      expect(() =>
+    it("rejects negative page number", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -342,11 +342,11 @@ describe("TransactionsController", () => {
           undefined,
           "-1",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects page=0", () => {
-      expect(() =>
+    it("rejects page=0", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -359,11 +359,11 @@ describe("TransactionsController", () => {
           undefined,
           "0",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects non-numeric page", () => {
-      expect(() =>
+    it("rejects non-numeric page", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -376,11 +376,11 @@ describe("TransactionsController", () => {
           undefined,
           "abc",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects limit=0", () => {
-      expect(() =>
+    it("rejects limit=0", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -394,11 +394,11 @@ describe("TransactionsController", () => {
           undefined,
           "0",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects negative limit", () => {
-      expect(() =>
+    it("rejects negative limit", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -412,11 +412,11 @@ describe("TransactionsController", () => {
           undefined,
           "-5",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects limit exceeding 200", () => {
-      expect(() =>
+    it("rejects limit exceeding 200", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -430,17 +430,17 @@ describe("TransactionsController", () => {
           undefined,
           "201",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects invalid startDate format", () => {
-      expect(() =>
+    it("rejects invalid startDate format", async () => {
+      await expect(
         controller.findAll(mockReq, undefined, undefined, "notadate"),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects invalid endDate format", () => {
-      expect(() =>
+    it("rejects invalid endDate format", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -448,17 +448,17 @@ describe("TransactionsController", () => {
           undefined,
           "2024/01/01",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects invalid UUID in accountIds", () => {
-      expect(() =>
+    it("rejects invalid UUID in accountIds", async () => {
+      await expect(
         controller.findAll(mockReq, undefined, "not-a-uuid"),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects invalid UUID in singular accountId", () => {
-      expect(() => controller.findAll(mockReq, "not-a-uuid")).toThrow(
+    it("rejects invalid UUID in singular accountId", async () => {
+      await expect(controller.findAll(mockReq, "not-a-uuid")).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -506,8 +506,8 @@ describe("TransactionsController", () => {
       );
     });
 
-    it("rejects an unknown reconciliation status", () => {
-      expect(() =>
+    it("rejects an unknown reconciliation status", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -528,11 +528,11 @@ describe("TransactionsController", () => {
           undefined,
           "BOGUS",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects invalid targetTransactionId", () => {
-      expect(() =>
+    it("rejects invalid targetTransactionId", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -549,7 +549,7 @@ describe("TransactionsController", () => {
           undefined,
           "not-a-uuid",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -1008,8 +1008,8 @@ describe("TransactionsController", () => {
       expect(call[12]).toBeUndefined(); // amountTo
     });
 
-    it("rejects non-numeric amountFrom", () => {
-      expect(() =>
+    it("rejects non-numeric amountFrom", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -1027,11 +1027,11 @@ describe("TransactionsController", () => {
           undefined,
           "not-a-number",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects non-numeric amountTo", () => {
-      expect(() =>
+    it("rejects non-numeric amountTo", async () => {
+      await expect(
         controller.findAll(
           mockReq,
           undefined,
@@ -1050,7 +1050,7 @@ describe("TransactionsController", () => {
           undefined,
           "not-a-number",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
     it("allows only amountFrom without amountTo", async () => {

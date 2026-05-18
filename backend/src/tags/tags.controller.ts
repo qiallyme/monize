@@ -20,6 +20,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { TagsService } from "./tags.service";
 import { CreateTagDto } from "./dto/create-tag.dto";
 import { UpdateTagDto } from "./dto/update-tag.dto";
+import { AllowDelegate } from "../delegation/decorators/delegate-access.decorator";
 
 @ApiTags("Tags")
 @Controller("tags")
@@ -31,6 +32,7 @@ export class TagsController {
   @Get()
   @ApiOperation({ summary: "Get all tags for the authenticated user" })
   @ApiResponse({ status: 200, description: "Tags retrieved successfully" })
+  @AllowDelegate()
   findAll(@Request() req) {
     return this.tagsService.findAll(req.user.id);
   }
