@@ -2,9 +2,11 @@ import { Reflector } from "@nestjs/core";
 import {
   AllowDelegate,
   DelegatedAccountParam,
+  DelegatedTransactionParam,
   DelegateRequires,
   ALLOW_DELEGATE_KEY,
   DELEGATED_ACCOUNT_PARAM_KEY,
+  DELEGATED_TRANSACTION_PARAM_KEY,
   DELEGATE_OPERATION_KEY,
 } from "./delegate-access.decorator";
 
@@ -47,5 +49,15 @@ describe("delegate-access decorators", () => {
     expect(reflector.get(DELEGATE_OPERATION_KEY, C.prototype.handler)).toBe(
       "create",
     );
+  });
+
+  it("DelegatedTransactionParam sets the transaction-id key", () => {
+    class C {
+      @DelegatedTransactionParam()
+      handler() {}
+    }
+    expect(
+      reflector.get(DELEGATED_TRANSACTION_PARAM_KEY, C.prototype.handler),
+    ).toBe("id");
   });
 });

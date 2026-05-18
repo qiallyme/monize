@@ -21,6 +21,7 @@ import { User } from "../users/entities/user.entity";
 import { UserPreference } from "../users/entities/user-preference.entity";
 import { RefreshToken } from "../auth/entities/refresh-token.entity";
 import { Account } from "../accounts/entities/account.entity";
+import { Transaction } from "../transactions/entities/transaction.entity";
 import { hashToken } from "../auth/crypto.util";
 import { generateReadablePassword } from "../admin/utils/password-generator";
 import { EmailService } from "../notifications/email.service";
@@ -62,6 +63,8 @@ export class DelegationService {
     private refreshTokensRepository: Repository<RefreshToken>,
     @InjectRepository(Account)
     private accountsRepository: Repository<Account>,
+    @InjectRepository(Transaction)
+    private transactionsRepository: Repository<Transaction>,
     private emailService: EmailService,
     private configService: ConfigService,
     private dataSource: DataSource,
@@ -151,6 +154,15 @@ export class DelegationService {
       where: { delegationId, accountId, canRead: true },
     });
     return !!grant;
+  }
+
+  /** The account a transaction belongs to, or null if it does not exist. */
+  async accountIdForTransaction(transactionId: string): Promise<string | null> {
+    const tx = await this.transactionsRepository.findOne({
+      where: { id: transactionId },
+      select: ["accountId"],
+    });
+    return tx?.accountId ?? null;
   }
 
   async readableAccountIds(delegationId: string): Promise<string[]> {

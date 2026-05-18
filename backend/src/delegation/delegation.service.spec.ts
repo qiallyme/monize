@@ -13,6 +13,7 @@ describe("DelegationService", () => {
   let prefsRepo: Record<string, jest.Mock>;
   let refreshRepo: Record<string, jest.Mock>;
   let accountsRepo: Record<string, jest.Mock>;
+  let transactionsRepo: Record<string, jest.Mock>;
   let emailService: Record<string, jest.Mock>;
   let configService: Record<string, jest.Mock>;
   let dataSource: Record<string, jest.Mock>;
@@ -24,6 +25,7 @@ describe("DelegationService", () => {
     prefsRepo = { findOne: jest.fn() };
     refreshRepo = { update: jest.fn() };
     accountsRepo = { find: jest.fn(), exists: jest.fn() };
+    transactionsRepo = { findOne: jest.fn() };
     emailService = { getStatus: jest.fn(), sendMail: jest.fn() };
     configService = { get: jest.fn() };
     dataSource = { transaction: jest.fn() };
@@ -35,6 +37,7 @@ describe("DelegationService", () => {
       prefsRepo as any,
       refreshRepo as any,
       accountsRepo as any,
+      transactionsRepo as any,
       emailService as any,
       configService as any,
       dataSource as any,
@@ -134,6 +137,18 @@ describe("DelegationService", () => {
       await expect(service.validateActingContext(args)).resolves.toBe(
         delegation,
       );
+    });
+  });
+
+  describe("accountIdForTransaction", () => {
+    it("returns the transaction's account id", async () => {
+      transactionsRepo.findOne.mockResolvedValue({ accountId: "a1" });
+      await expect(service.accountIdForTransaction("t1")).resolves.toBe("a1");
+    });
+
+    it("returns null when the transaction does not exist", async () => {
+      transactionsRepo.findOne.mockResolvedValue(null);
+      await expect(service.accountIdForTransaction("t1")).resolves.toBeNull();
     });
   });
 

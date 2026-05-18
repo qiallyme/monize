@@ -10,6 +10,7 @@ import { User } from "../users/entities/user.entity";
 import { UserPreference } from "../users/entities/user-preference.entity";
 import { RefreshToken } from "../auth/entities/refresh-token.entity";
 import { Account } from "../accounts/entities/account.entity";
+import { Transaction } from "../transactions/entities/transaction.entity";
 import { DelegationService } from "./delegation.service";
 import { DelegationController } from "./delegation.controller";
 import { AccountDelegateGuard } from "./guards/account-delegate.guard";
@@ -29,6 +30,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
       UserPreference,
       RefreshToken,
       Account,
+      Transaction,
     ]),
     NotificationsModule,
     JwtModule.registerAsync({

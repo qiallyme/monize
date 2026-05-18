@@ -3,6 +3,7 @@ import { AccountDelegateGuard } from "./account-delegate.guard";
 import {
   ALLOW_DELEGATE_KEY,
   DELEGATED_ACCOUNT_PARAM_KEY,
+  DELEGATED_TRANSACTION_PARAM_KEY,
   DELEGATE_OPERATION_KEY,
 } from "../decorators/delegate-access.decorator";
 
@@ -23,7 +24,10 @@ describe("AccountDelegateGuard", () => {
   beforeEach(() => {
     reflector = { getAllAndOverride: jest.fn() };
     jwtService = { verify: jest.fn() };
-    delegationService = { hasAccountPermission: jest.fn() };
+    delegationService = {
+      hasAccountPermission: jest.fn(),
+      accountIdForTransaction: jest.fn(),
+    };
     guard = new AccountDelegateGuard(
       reflector as any,
       jwtService as any,
@@ -124,6 +128,57 @@ describe("AccountDelegateGuard", () => {
       params: { id: "acc-1" },
     });
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  it("resolves a transaction's account and enforces the edit grant", async () => {
+    jwtService.verify.mockReturnValue({
+      sub: "d1",
+      actingAsUserId: "o1",
+      delegationId: "g1",
+    });
+    reflector.getAllAndOverride.mockImplementation((key: string) => {
+      if (key === ALLOW_DELEGATE_KEY) return true;
+      if (key === DELEGATED_TRANSACTION_PARAM_KEY) return "id";
+      if (key === DELEGATE_OPERATION_KEY) return "edit";
+      return undefined;
+    });
+    delegationService.accountIdForTransaction.mockResolvedValue("acc-9");
+    delegationService.hasAccountPermission.mockResolvedValue(false);
+    const ctx = makeContext({
+      headers: { authorization: "Bearer x" },
+      params: { id: "tx-1" },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(delegationService.accountIdForTransaction).toHaveBeenCalledWith(
+      "tx-1",
+    );
+    expect(delegationService.hasAccountPermission).toHaveBeenCalledWith(
+      "g1",
+      "acc-9",
+      "edit",
+    );
+  });
+
+  it("lets an unknown transaction fall through to the service (404)", async () => {
+    jwtService.verify.mockReturnValue({
+      sub: "d1",
+      actingAsUserId: "o1",
+      delegationId: "g1",
+    });
+    reflector.getAllAndOverride.mockImplementation((key: string) => {
+      if (key === ALLOW_DELEGATE_KEY) return true;
+      if (key === DELEGATED_TRANSACTION_PARAM_KEY) return "id";
+      return undefined;
+    });
+    delegationService.accountIdForTransaction.mockResolvedValue(null);
+    const ctx = makeContext({
+      headers: { authorization: "Bearer x" },
+      params: { id: "tx-missing" },
+    });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(delegationService.hasAccountPermission).not.toHaveBeenCalled();
   });
 
   it("ignores 2fa_pending tokens", async () => {

@@ -27,6 +27,7 @@ import { TransactionsService } from "./transactions.service";
 import {
   AllowDelegate,
   DelegatedAccountParam,
+  DelegatedTransactionParam,
   DelegateRequires,
 } from "../delegation/decorators/delegate-access.decorator";
 import { TransactionStatus } from "./entities/transaction.entity";
@@ -642,6 +643,9 @@ export class TransactionsController {
     description: "Forbidden - transaction does not belong to user",
   })
   @ApiResponse({ status: 404, description: "Transaction not found" })
+  @AllowDelegate()
+  @DelegatedTransactionParam("id")
+  @DelegateRequires("edit")
   update(
     @Request() req,
     @Param("id", ParseUUIDPipe) id: string,
@@ -664,6 +668,9 @@ export class TransactionsController {
     description: "Forbidden - transaction does not belong to user",
   })
   @ApiResponse({ status: 404, description: "Transaction not found" })
+  @AllowDelegate()
+  @DelegatedTransactionParam("id")
+  @DelegateRequires("delete")
   remove(@Request() req, @Param("id", ParseUUIDPipe) id: string) {
     return this.transactionsService.remove(req.user.id, id);
   }

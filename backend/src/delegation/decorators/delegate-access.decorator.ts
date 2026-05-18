@@ -27,3 +27,12 @@ export type DelegateOperation = "read" | "create" | "edit" | "delete";
 export const DELEGATE_OPERATION_KEY = "delegateOperation";
 export const DelegateRequires = (operation: DelegateOperation) =>
   SetMetadata(DELEGATE_OPERATION_KEY, operation);
+
+/**
+ * Like @DelegatedAccountParam but the request key holds a TRANSACTION id; the
+ * guard resolves that transaction's account and checks the grant against it.
+ * Used for edit/delete-by-id where the account is not in the request.
+ */
+export const DELEGATED_TRANSACTION_PARAM_KEY = "delegatedTransactionParam";
+export const DelegatedTransactionParam = (key = "id") =>
+  SetMetadata(DELEGATED_TRANSACTION_PARAM_KEY, key);

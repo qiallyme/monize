@@ -10,6 +10,7 @@ import { Request } from "express";
 import {
   ALLOW_DELEGATE_KEY,
   DELEGATED_ACCOUNT_PARAM_KEY,
+  DELEGATED_TRANSACTION_PARAM_KEY,
   DELEGATE_OPERATION_KEY,
   DelegateOperation,
 } from "../decorators/delegate-access.decorator";
@@ -68,6 +69,12 @@ export class AccountDelegateGuard implements CanActivate {
       );
     }
 
+    const operation =
+      this.reflector.getAllAndOverride<DelegateOperation>(
+        DELEGATE_OPERATION_KEY,
+        [context.getHandler(), context.getClass()],
+      ) ?? "read";
+
     const accountParamKey = this.reflector.getAllAndOverride<string>(
       DELEGATED_ACCOUNT_PARAM_KEY,
       [context.getHandler(), context.getClass()],
@@ -75,25 +82,46 @@ export class AccountDelegateGuard implements CanActivate {
     if (accountParamKey) {
       const accountId = this.resolveAccountId(req, accountParamKey);
       if (accountId) {
-        const operation =
-          this.reflector.getAllAndOverride<DelegateOperation>(
-            DELEGATE_OPERATION_KEY,
-            [context.getHandler(), context.getClass()],
-          ) ?? "read";
-        const ok = await this.delegationService.hasAccountPermission(
-          payload.delegationId,
-          accountId,
-          operation,
-        );
-        if (!ok) {
-          throw new ForbiddenException(
-            "You do not have access to this account",
+        await this.assertPermission(payload.delegationId, accountId, operation);
+      }
+    }
+
+    const txParamKey = this.reflector.getAllAndOverride<string>(
+      DELEGATED_TRANSACTION_PARAM_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (txParamKey) {
+      const txId = this.resolveAccountId(req, txParamKey);
+      if (txId) {
+        const accountId =
+          await this.delegationService.accountIdForTransaction(txId);
+        // Unknown transaction: let the owner-scoped service return 404.
+        if (accountId) {
+          await this.assertPermission(
+            payload.delegationId,
+            accountId,
+            operation,
           );
         }
       }
     }
 
     return true;
+  }
+
+  private async assertPermission(
+    delegationId: string,
+    accountId: string,
+    operation: DelegateOperation,
+  ): Promise<void> {
+    const ok = await this.delegationService.hasAccountPermission(
+      delegationId,
+      accountId,
+      operation,
+    );
+    if (!ok) {
+      throw new ForbiddenException("You do not have access to this account");
+    }
   }
 
   private extractToken(req: Request): string | null {
