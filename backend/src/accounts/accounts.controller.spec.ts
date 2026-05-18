@@ -315,10 +315,10 @@ describe("AccountsController", () => {
   });
 
   describe("getDailyBalances()", () => {
-    it("delegates to accountsService.getDailyBalances with parsed accountIds", () => {
+    it("delegates to accountsService.getDailyBalances with parsed accountIds", async () => {
       mockAccountsService.getDailyBalances!.mockReturnValue("balances");
 
-      const result = controller.getDailyBalances(
+      const result = await controller.getDailyBalances(
         mockReq,
         "2025-01-01",
         "2025-12-31",
@@ -334,10 +334,10 @@ describe("AccountsController", () => {
       );
     });
 
-    it("passes undefined accountIds when not provided", () => {
+    it("passes undefined accountIds when not provided", async () => {
       mockAccountsService.getDailyBalances!.mockReturnValue("balances");
 
-      controller.getDailyBalances(
+      await controller.getDailyBalances(
         mockReq,
         "2025-01-01",
         "2025-12-31",

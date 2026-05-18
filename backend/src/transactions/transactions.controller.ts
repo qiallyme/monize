@@ -465,7 +465,8 @@ export class TransactionsController {
     description: "Monthly totals retrieved successfully",
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
-  getMonthlyTotals(
+  @AllowDelegate()
+  async getMonthlyTotals(
     @Request() req,
     @Query("accountIds") accountIds?: string,
     @Query("startDate") startDate?: string,
@@ -492,9 +493,22 @@ export class TransactionsController {
       throw new BadRequestException("amountTo must be a number");
     }
 
+    let effectiveAccountIds = parseUuids(accountIds);
+    if (req.user.isActing) {
+      const readable = await this.delegationService.readableAccountIds(
+        req.user.delegationId,
+      );
+      const readableSet = new Set(readable);
+      effectiveAccountIds =
+        effectiveAccountIds && effectiveAccountIds.length > 0
+          ? effectiveAccountIds.filter((id) => readableSet.has(id))
+          : readable;
+      if (effectiveAccountIds.length === 0) return [];
+    }
+
     return this.transactionsService.getMonthlyTotals(
       req.user.id,
-      parseUuids(accountIds),
+      effectiveAccountIds,
       startDate,
       endDate,
       parseCategoryIds(categoryIds),

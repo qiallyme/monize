@@ -179,7 +179,8 @@ export class AccountsController {
     description: "Daily balance data retrieved successfully",
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
-  getDailyBalances(
+  @AllowDelegate()
+  async getDailyBalances(
     @Request() req,
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
@@ -193,7 +194,20 @@ export class AccountsController {
       throw new BadRequestException("startDate must be YYYY-MM-DD");
     if (ed && !dateRegex.test(ed))
       throw new BadRequestException("endDate must be YYYY-MM-DD");
-    const ids = aIds ? aIds.split(",").filter(Boolean) : undefined;
+    let ids = aIds ? aIds.split(",").filter(Boolean) : undefined;
+    if (req.user.isActing) {
+      // Restrict to the delegate's READ-granted accounts (never an
+      // unfiltered owner-wide query).
+      const readable = await this.delegationService.readableAccountIds(
+        req.user.delegationId,
+      );
+      const readableSet = new Set(readable);
+      ids =
+        ids && ids.length > 0
+          ? ids.filter((id) => readableSet.has(id))
+          : readable;
+      if (ids.length === 0) return [];
+    }
     return this.accountsService.getDailyBalances(req.user.id, sd, ed, ids);
   }
 

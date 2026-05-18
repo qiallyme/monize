@@ -1137,8 +1137,8 @@ describe("TransactionsController", () => {
       );
     });
 
-    it("rejects non-numeric amountFrom in monthly totals", () => {
-      expect(() =>
+    it("rejects non-numeric amountFrom in monthly totals", async () => {
+      await expect(
         controller.getMonthlyTotals(
           mockReq,
           undefined,
@@ -1149,11 +1149,11 @@ describe("TransactionsController", () => {
           undefined,
           "abc",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("rejects non-numeric amountTo in monthly totals", () => {
-      expect(() =>
+    it("rejects non-numeric amountTo in monthly totals", async () => {
+      await expect(
         controller.getMonthlyTotals(
           mockReq,
           undefined,
@@ -1165,7 +1165,7 @@ describe("TransactionsController", () => {
           undefined,
           "xyz",
         ),
-      ).toThrow(BadRequestException);
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });
