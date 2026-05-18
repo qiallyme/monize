@@ -361,16 +361,117 @@ describe("DelegationService", () => {
       );
     });
 
-    it("revokes the delegation and kills live sessions", async () => {
-      const delegation = { id: "g1", ownerUserId: "o1", status: "active" };
-      delegatesRepo.findOne.mockResolvedValue(delegation);
-      delegatesRepo.save.mockResolvedValue(delegation);
+    function managerFor(counts: {
+      otherDelegations: number;
+      ownsAccounts: number;
+      ownsDelegations: number;
+      role?: string;
+    }) {
+      const manager: any = {
+        delete: jest.fn(),
+        count: jest
+          .fn()
+          .mockResolvedValueOnce(counts.otherDelegations)
+          .mockResolvedValueOnce(counts.ownsAccounts)
+          .mockResolvedValueOnce(counts.ownsDelegations),
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ id: "d1", role: counts.role ?? "user" }),
+      };
+      return manager;
+    }
+
+    it("fully deletes a pure delegate with no other ties", async () => {
+      delegatesRepo.findOne.mockResolvedValue({
+        id: "g1",
+        ownerUserId: "o1",
+        delegateUserId: "d1",
+      });
+      const manager = managerFor({
+        otherDelegations: 0,
+        ownsAccounts: 0,
+        ownsDelegations: 0,
+      });
+      dataSource.transaction.mockImplementation(async (cb: any) => cb(manager));
+
       await service.revokeDelegate("o1", "g1");
-      expect(delegation.status).toBe("revoked");
-      expect(refreshRepo.update).toHaveBeenCalledWith(
-        { delegationId: "g1", isRevoked: false },
-        { isRevoked: true },
-      );
+
+      expect(manager.delete).toHaveBeenCalledWith(expect.anything(), {
+        id: "g1",
+      });
+      expect(manager.delete).toHaveBeenCalledWith(expect.anything(), {
+        id: "d1",
+      });
+    });
+
+    it("keeps the user when they delegate for someone else", async () => {
+      delegatesRepo.findOne.mockResolvedValue({
+        id: "g1",
+        ownerUserId: "o1",
+        delegateUserId: "d1",
+      });
+      const manager = managerFor({
+        otherDelegations: 1,
+        ownsAccounts: 0,
+        ownsDelegations: 0,
+      });
+      dataSource.transaction.mockImplementation(async (cb: any) => cb(manager));
+
+      await service.revokeDelegate("o1", "g1");
+
+      expect(manager.delete).toHaveBeenCalledTimes(1); // delegation only
+      expect(manager.delete).toHaveBeenCalledWith(expect.anything(), {
+        id: "g1",
+      });
+    });
+
+    it("keeps the user when they own data of their own", async () => {
+      delegatesRepo.findOne.mockResolvedValue({
+        id: "g1",
+        ownerUserId: "o1",
+        delegateUserId: "d1",
+      });
+      const manager = managerFor({
+        otherDelegations: 0,
+        ownsAccounts: 3,
+        ownsDelegations: 0,
+      });
+      dataSource.transaction.mockImplementation(async (cb: any) => cb(manager));
+
+      await service.revokeDelegate("o1", "g1");
+
+      expect(manager.delete).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an admin delegate", async () => {
+      delegatesRepo.findOne.mockResolvedValue({
+        id: "g1",
+        ownerUserId: "o1",
+        delegateUserId: "d1",
+      });
+      const manager = managerFor({
+        otherDelegations: 0,
+        ownsAccounts: 0,
+        ownsDelegations: 0,
+        role: "admin",
+      });
+      dataSource.transaction.mockImplementation(async (cb: any) => cb(manager));
+
+      await service.revokeDelegate("o1", "g1");
+
+      expect(manager.delete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("isDelegateUser", () => {
+    it("is true when the user has at least one delegation", async () => {
+      delegatesRepo.count = jest.fn().mockResolvedValue(2);
+      await expect(service.isDelegateUser("d1")).resolves.toBe(true);
+    });
+
+    it("is false when the user has no delegations", async () => {
+      delegatesRepo.count = jest.fn().mockResolvedValue(0);
+      await expect(service.isDelegateUser("d1")).resolves.toBe(false);
     });
   });
 

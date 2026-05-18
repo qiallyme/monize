@@ -17,6 +17,7 @@ import { AuthService } from "./auth.service";
 import { TokenService } from "./token.service";
 import { TwoFactorService } from "./two-factor.service";
 import { AuthEmailService } from "./auth-email.service";
+import { DelegationService } from "../delegation/delegation.service";
 import { User } from "../users/entities/user.entity";
 import { UserPreference } from "../users/entities/user-preference.entity";
 import { TrustedDevice } from "../users/entities/trusted-device.entity";
@@ -50,6 +51,7 @@ describe("AuthService", () => {
   let refreshTokensRepository: Record<string, jest.Mock>;
   let jwtService: Partial<JwtService>;
   let configService: { get: jest.Mock };
+  let delegationService: { isDelegateUser: jest.Mock };
   let dataSource: Record<string, jest.Mock>;
   let passwordBreachService: { isBreached: jest.Mock };
   let emailService: { sendMail: jest.Mock };
@@ -160,11 +162,18 @@ describe("AuthService", () => {
         { provide: DataSource, useValue: dataSource },
         { provide: PasswordBreachService, useValue: passwordBreachService },
         { provide: EmailService, useValue: emailService },
+        {
+          provide: DelegationService,
+          useValue: {
+            isDelegateUser: jest.fn().mockResolvedValue(false),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
     configService = module.get(ConfigService);
+    delegationService = module.get(DelegationService);
 
     // Spy on logger for security event logging tests (C2+C3)
     jest.spyOn((service as any).logger, "warn").mockImplementation();
@@ -244,6 +253,51 @@ describe("AuthService", () => {
       await expect(
         service.register({
           email: "test@example.com",
+          password: "StrongPass123!",
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("claims an invited (passwordless) delegate instead of duplicating", async () => {
+      const invitedDelegate = {
+        id: "deleg-1",
+        email: "shared@example.com",
+        authProvider: "local",
+        passwordHash: null,
+        resetToken: "tok",
+        resetTokenExpiry: new Date(),
+      };
+      usersRepository.findOne.mockResolvedValue(invitedDelegate);
+      delegationService.isDelegateUser.mockResolvedValue(true);
+      passwordBreachService.isBreached.mockResolvedValue(false);
+      usersRepository.save.mockImplementation(async (u: any) => u);
+
+      const result = await service.register({
+        email: "shared@example.com",
+        password: "StrongPass123!",
+        firstName: "Real",
+      });
+
+      expect(delegationService.isDelegateUser).toHaveBeenCalledWith("deleg-1");
+      expect(invitedDelegate.passwordHash).toBeTruthy();
+      expect(usersRepository.save).toHaveBeenCalledWith(invitedDelegate);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      expect(result.accessToken).toBeDefined();
+      expect(result.user).not.toHaveProperty("passwordHash");
+    });
+
+    it("does not claim an existing delegate that already has a password", async () => {
+      usersRepository.findOne.mockResolvedValue({
+        id: "deleg-2",
+        email: "shared2@example.com",
+        authProvider: "local",
+        passwordHash: "existing-hash",
+      });
+      delegationService.isDelegateUser.mockResolvedValue(true);
+
+      await expect(
+        service.register({
+          email: "shared2@example.com",
           password: "StrongPass123!",
         }),
       ).rejects.toThrow(ConflictException);

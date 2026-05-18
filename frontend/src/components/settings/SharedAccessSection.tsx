@@ -104,12 +104,18 @@ export function SharedAccessSection() {
   };
 
   const handleRevoke = async (id: string) => {
-    if (!window.confirm('Revoke this delegate? They will lose all access.')) {
+    if (
+      !window.confirm(
+        'Remove this delegate? They lose access to your account. If they ' +
+          'have no other shared access and no account of their own, their ' +
+          'login is deleted entirely.',
+      )
+    ) {
       return;
     }
     try {
       await delegationApi.revokeDelegate(id);
-      toast.success('Delegate revoked');
+      toast.success('Delegate removed');
       await load();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to revoke delegate'));
@@ -223,7 +229,7 @@ export function SharedAccessSection() {
                     onClick={() => handleRevoke(d.id)}
                     className="rounded border border-red-300 text-red-600 px-3 py-1 text-xs"
                   >
-                    Revoke
+                    Remove
                   </button>
                 </div>
               </div>

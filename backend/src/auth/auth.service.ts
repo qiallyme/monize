@@ -29,6 +29,7 @@ import {
 import { TokenService } from "./token.service";
 import { TwoFactorService } from "./two-factor.service";
 import { AuthEmailService } from "./auth-email.service";
+import { DelegationService } from "../delegation/delegation.service";
 
 @Injectable()
 export class AuthService {
@@ -56,6 +57,7 @@ export class AuthService {
     private tokenService: TokenService,
     private twoFactorService: TwoFactorService,
     private authEmailService: AuthEmailService,
+    private delegationService: DelegationService,
   ) {
     this.jwtSecret = this.configService.get<string>("JWT_SECRET")!;
     this.csrfKey = derivePurposeKey(this.jwtSecret, "csrf-token");
@@ -78,7 +80,40 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new ConflictException("Unable to complete registration");
+      // An invited delegate is a real `users` row that has no password yet.
+      // Registering with that same email must claim (upgrade) the existing
+      // row -- never create a duplicate, and never overwrite a row that
+      // already has credentials (that would be account takeover).
+      const claimable =
+        existingUser.authProvider === "local" &&
+        !existingUser.passwordHash &&
+        (await this.delegationService.isDelegateUser(existingUser.id));
+      if (!claimable) {
+        throw new ConflictException("Unable to complete registration");
+      }
+
+      const breached = await this.passwordBreachService.isBreached(password);
+      if (breached) {
+        throw new BadRequestException(
+          "This password has been found in a data breach. Please choose a different password.",
+        );
+      }
+
+      existingUser.passwordHash = await bcrypt.hash(password, 12);
+      if (firstName) existingUser.firstName = firstName;
+      if (lastName) existingUser.lastName = lastName;
+      existingUser.mustChangePassword = false;
+      existingUser.resetToken = null;
+      existingUser.resetTokenExpiry = null;
+      const upgraded = await this.usersRepository.save(existingUser);
+
+      const { accessToken, refreshToken } =
+        await this.tokenService.generateTokenPair(upgraded);
+      return {
+        user: this.sanitizeUser(upgraded),
+        accessToken,
+        refreshToken,
+      };
     }
 
     // Check for breached password

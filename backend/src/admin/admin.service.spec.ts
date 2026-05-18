@@ -59,6 +59,7 @@ describe("AdminService", () => {
       save: jest.fn().mockImplementation((data) => data),
       remove: jest.fn(),
       count: jest.fn(),
+      createQueryBuilder: jest.fn(),
     };
 
     preferencesRepository = {
@@ -104,8 +105,19 @@ describe("AdminService", () => {
   });
 
   describe("findAllUsers", () => {
+    let qb: Record<string, jest.Mock>;
+
+    function mockQuery(rows: unknown[]) {
+      qb = {
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(rows),
+      };
+      usersRepository.createQueryBuilder.mockReturnValue(qb);
+    }
+
     it("returns users with sensitive fields stripped", async () => {
-      usersRepository.find.mockResolvedValue([mockAdmin, mockTargetUser]);
+      mockQuery([mockAdmin, mockTargetUser]);
 
       const result = await service.findAllUsers();
 
@@ -120,7 +132,7 @@ describe("AdminService", () => {
     });
 
     it("sets hasPassword false for OIDC users without password", async () => {
-      usersRepository.find.mockResolvedValue([
+      mockQuery([
         { ...mockTargetUser, passwordHash: null, authProvider: "oidc" },
       ]);
 
@@ -129,14 +141,15 @@ describe("AdminService", () => {
       expect(result[0].hasPassword).toBe(false);
     });
 
-    it("orders users by createdAt ASC", async () => {
-      usersRepository.find.mockResolvedValue([]);
+    it("excludes pure delegates and orders by createdAt ASC", async () => {
+      mockQuery([]);
 
       await service.findAllUsers();
 
-      expect(usersRepository.find).toHaveBeenCalledWith({
-        order: { createdAt: "ASC" },
-      });
+      const whereSql = qb.where.mock.calls[0][0] as string;
+      expect(whereSql).toContain("account_delegates");
+      expect(whereSql).toContain("delegate_user_id");
+      expect(qb.orderBy).toHaveBeenCalledWith("u.created_at", "ASC");
     });
   });
 

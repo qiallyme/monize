@@ -29,9 +29,21 @@ export class AdminService {
   ) {}
 
   async findAllUsers() {
-    const users = await this.usersRepository.find({
-      order: { createdAt: "ASC" },
-    });
+    // Pure delegates (users that exist only because an account owner granted
+    // them Shared Access) must not appear here -- they are managed solely from
+    // the owner's Shared Access page. A user is still listed if they own data,
+    // own a delegation, are an admin, or simply are not a delegate at all.
+    const users = await this.usersRepository
+      .createQueryBuilder("u")
+      .where(
+        `(NOT EXISTS (SELECT 1 FROM account_delegates ad WHERE ad.delegate_user_id = u.id)
+          OR EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = u.id)
+          OR EXISTS (SELECT 1 FROM account_delegates o WHERE o.owner_user_id = u.id)
+          OR u.role = :adminRole)`,
+        { adminRole: "admin" },
+      )
+      .orderBy("u.created_at", "ASC")
+      .getMany();
     return users.map((user) => {
       const {
         passwordHash,

@@ -132,6 +132,14 @@ export class DelegationService {
     return !delegateHas2FA;
   }
 
+  /** True if the user is a delegate for at least one owner. */
+  async isDelegateUser(userId: string): Promise<boolean> {
+    const count = await this.delegatesRepository.count({
+      where: { delegateUserId: userId },
+    });
+    return count > 0;
+  }
+
   async hasReadAccess(
     delegationId: string,
     accountId: string,
@@ -381,15 +389,39 @@ export class DelegationService {
     if (!delegation) {
       throw new NotFoundException("Delegate not found");
     }
-    delegation.status = "revoked";
-    delegation.revokedAt = new Date();
-    await this.delegatesRepository.save(delegation);
+    const delegateUserId = delegation.delegateUserId;
 
-    // Kill any live delegate session that was acting via this delegation.
-    await this.refreshTokensRepository.update(
-      { delegationId, isRevoked: false },
-      { isRevoked: true },
-    );
+    await this.dataSource.transaction(async (manager) => {
+      // Hard-delete the delegation. FK cascades remove its grants and any
+      // refresh tokens scoped to it, so live delegate sessions acting via
+      // this delegation are immediately invalidated.
+      await manager.delete(AccountDelegate, { id: delegationId });
+
+      // Entirely remove the delegate's login unless it has another reason to
+      // exist: a delegation elsewhere, its own data, it owns a delegation, or
+      // it is an admin (i.e. it is a full user in its own right).
+      const [otherDelegations, ownsAccounts, ownsDelegations] =
+        await Promise.all([
+          manager.count(AccountDelegate, { where: { delegateUserId } }),
+          manager.count(Account, { where: { userId: delegateUserId } }),
+          manager.count(AccountDelegate, {
+            where: { ownerUserId: delegateUserId },
+          }),
+        ]);
+      const delegateUser = await manager.findOne(User, {
+        where: { id: delegateUserId },
+      });
+
+      if (
+        otherDelegations === 0 &&
+        ownsAccounts === 0 &&
+        ownsDelegations === 0 &&
+        delegateUser?.role !== "admin"
+      ) {
+        // FK ON DELETE CASCADE cleans preferences, tokens, trusted devices.
+        await manager.delete(User, { id: delegateUserId });
+      }
+    });
   }
 
   async setGrants(
