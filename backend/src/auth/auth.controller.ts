@@ -225,6 +225,7 @@ export class AuthController {
   }
 
   @Post("register")
+  @AllowDelegate()
   @SkipCsrf()
   @DemoRestricted()
   @Throttle({ default: { ttl: 900000, limit: 5 } }) // 5 attempts per 15 minutes
@@ -252,6 +253,7 @@ export class AuthController {
   }
 
   @Post("login")
+  @AllowDelegate()
   @SkipCsrf()
   @Throttle({ default: { ttl: 900000, limit: 5 } }) // 5 attempts per 15 minutes
   @ApiOperation({ summary: "Login with local credentials" })
@@ -293,6 +295,7 @@ export class AuthController {
   }
 
   @Get("oidc")
+  @AllowDelegate()
   @ApiOperation({ summary: "Initiate OIDC authentication" })
   @ApiResponse({ status: 302, description: "Redirects to OIDC provider" })
   @ApiResponse({ status: 400, description: "OIDC not configured" })
@@ -320,6 +323,7 @@ export class AuthController {
   }
 
   @Get("oidc/callback")
+  @AllowDelegate()
   @ApiOperation({ summary: "OIDC callback handler" })
   async oidcCallback(
     @Query() query: Record<string, string>,
@@ -418,6 +422,7 @@ export class AuthController {
   }
 
   @Get("oidc/status")
+  @AllowDelegate()
   @ApiOperation({ summary: "Check if OIDC is enabled" })
   @ApiResponse({ status: 200, description: "Returns OIDC enabled status" })
   async oidcStatus() {
@@ -425,6 +430,7 @@ export class AuthController {
   }
 
   @Get("methods")
+  @AllowDelegate()
   @ApiOperation({ summary: "Get available authentication methods" })
   @ApiResponse({
     status: 200,
@@ -524,6 +530,7 @@ export class AuthController {
   }
 
   @Post("forgot-password")
+  @AllowDelegate()
   @SkipCsrf()
   @DemoRestricted()
   @Throttle({ default: { ttl: 900000, limit: 3 } })
@@ -574,6 +581,7 @@ export class AuthController {
   }
 
   @Post("reset-password")
+  @AllowDelegate()
   @SkipCsrf()
   @DemoRestricted()
   @Throttle({ default: { ttl: 900000, limit: 5 } })
@@ -584,6 +592,7 @@ export class AuthController {
   }
 
   @Post("2fa/verify")
+  @AllowDelegate()
   @SkipCsrf()
   @Throttle({ default: { ttl: 900000, limit: 5 } })
   @ApiOperation({ summary: "Verify TOTP code to complete 2FA login" })
@@ -730,6 +739,7 @@ export class AuthController {
   }
 
   @Post("refresh")
+  @AllowDelegate()
   @SkipCsrf()
   @Throttle({ default: { ttl: 60000, limit: 10 } }) // 10 refreshes per minute
   @ApiOperation({ summary: "Refresh access token using refresh token cookie" })
@@ -769,6 +779,7 @@ export class AuthController {
   }
 
   @Get("oidc/confirm-link")
+  @AllowDelegate()
   @SkipCsrf()
   @ApiOperation({ summary: "Confirm OIDC account linking via email token" })
   async confirmOidcLink(@Query("token") token: string, @Res() res: Response) {

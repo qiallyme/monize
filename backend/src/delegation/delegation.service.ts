@@ -325,16 +325,48 @@ export class DelegationService {
 
     return this.dataSource.transaction(async (manager) => {
       let delegateUser = await manager.findOne(User, { where: { email } });
+      const isNew = !delegateUser;
+
+      if (delegateUser && delegateUser.id === ownerUserId) {
+        throw new BadRequestException("You cannot delegate access to yourself");
+      }
+
+      // An existing user that is a full account in its own right (owns data,
+      // owns delegations, is an admin, or is SSO) must NEVER have its
+      // credentials touched here -- that would be account takeover. They log
+      // in with their own credentials; the owner only links the delegation.
+      // New users and pure-delegate identities are owner-managed, so the
+      // owner may set their password / send an invite.
+      let mayManageCredentials = true;
+      if (delegateUser) {
+        if (delegateUser.oidcSubject || delegateUser.role === "admin") {
+          mayManageCredentials = false;
+        } else {
+          const [ownsAccounts, ownsDelegations] = await Promise.all([
+            manager.count(Account, {
+              where: { userId: delegateUser.id },
+            }),
+            manager.count(AccountDelegate, {
+              where: { ownerUserId: delegateUser.id },
+            }),
+          ]);
+          if (ownsAccounts > 0 || ownsDelegations > 0) {
+            mayManageCredentials = false;
+          }
+        }
+      }
 
       if (!delegateUser) {
-        const newUser = manager.create(User, {
+        delegateUser = manager.create(User, {
           email,
           firstName: dto.firstName ?? null,
           lastName: dto.lastName ?? null,
           authProvider: "local",
           role: "user",
         });
+      }
 
+      if (mayManageCredentials) {
         if (dto.sendInvite) {
           if (!this.emailService.getStatus().configured) {
             throw new BadRequestException(
@@ -342,33 +374,34 @@ export class DelegationService {
             );
           }
           const rawToken = crypto.randomBytes(32).toString("hex");
-          newUser.resetToken = hashToken(rawToken);
-          newUser.resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-          // The invitee sets their own password via the reset link, so they
-          // are NOT forced to change it again on first login.
+          delegateUser.resetToken = hashToken(rawToken);
+          delegateUser.resetTokenExpiry = new Date(
+            Date.now() + 24 * 60 * 60 * 1000,
+          );
+          // The invitee sets their own password via the reset link.
           inviteToken = rawToken;
         } else if (dto.password) {
-          newUser.passwordHash = await bcrypt.hash(
+          delegateUser.passwordHash = await bcrypt.hash(
             dto.password,
             this.BCRYPT_ROUNDS,
           );
-        } else {
+          delegateUser.mustChangePassword = false;
+          delegateUser.resetToken = null;
+          delegateUser.resetTokenExpiry = null;
+        } else if (isNew || !delegateUser.passwordHash) {
+          // Guarantee the delegate can actually sign in.
           temporaryPassword = generateReadablePassword();
-          newUser.passwordHash = await bcrypt.hash(
+          delegateUser.passwordHash = await bcrypt.hash(
             temporaryPassword,
             this.BCRYPT_ROUNDS,
           );
-          newUser.mustChangePassword = true;
+          delegateUser.mustChangePassword = true;
+          delegateUser.resetToken = null;
+          delegateUser.resetTokenExpiry = null;
         }
-
-        delegateUser = await manager.save(newUser);
-      } else if (delegateUser.id === ownerUserId) {
-        throw new BadRequestException("You cannot delegate access to yourself");
       }
 
-      if (!delegateUser) {
-        throw new BadRequestException("Unable to create delegate");
-      }
+      delegateUser = await manager.save(delegateUser);
 
       let delegation = await manager.findOne(AccountDelegate, {
         where: { ownerUserId, delegateUserId: delegateUser.id },

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
 import { DelegationService, DELEGATE_2FA_REQUIRED } from "./delegation.service";
 
 describe("DelegationService", () => {
@@ -606,6 +607,7 @@ describe("DelegationService", () => {
     const makeManager = () => {
       const manager: any = {
         findOne: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn((_e: any, v: any) => v),
         save: jest.fn((v: any) => ({ id: "g-new", ...v })),
       };
@@ -715,20 +717,49 @@ describe("DelegationService", () => {
       ).rejects.toThrow(/yourself/);
     });
 
-    it("throws when the new delegate user fails to persist", async () => {
+    it("sets a password on an existing passwordless pure-delegate (re-link)", async () => {
       usersRepo.findOne.mockResolvedValue({ id: "o1", email: "own@x.y" });
-      const manager: any = {
-        findOne: jest.fn().mockResolvedValue(null),
-        create: jest.fn((_e: any, v: any) => v),
-        save: jest.fn().mockResolvedValue(undefined),
-      };
+      const existing = { id: "d1", passwordHash: null };
+      const manager = makeManager();
+      manager.findOne
+        .mockResolvedValueOnce(existing) // existing user
+        .mockResolvedValueOnce(null); // no delegation yet
+      // count(Account)=0, count(AccountDelegate owner)=0 -> pure delegate
       dataSource.transaction.mockImplementation(async (cb: any) => cb(manager));
-      await expect(
-        service.createDelegate("o1", {
-          email: "new@x.y",
-          password: "StrongPass1!xyz",
-        } as any),
-      ).rejects.toThrow(/Unable to create delegate/);
+
+      await service.createDelegate("o1", {
+        email: "shared@x.y",
+        password: "StrongPass1!xyz",
+      } as any);
+
+      expect(existing.passwordHash).toBeTruthy();
+      expect(
+        await bcrypt.compare("StrongPass1!xyz", existing.passwordHash as any),
+      ).toBe(true);
+    });
+
+    it("never touches credentials of an existing full user", async () => {
+      usersRepo.findOne.mockResolvedValue({ id: "o1", email: "own@x.y" });
+      const existing = {
+        id: "d1",
+        passwordHash: "ORIGINAL",
+        oidcSubject: null,
+        role: "user",
+      };
+      const manager = makeManager();
+      manager.findOne
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValueOnce(null);
+      manager.count.mockResolvedValue(2); // owns accounts -> full user
+      dataSource.transaction.mockImplementation(async (cb: any) => cb(manager));
+
+      const res = await service.createDelegate("o1", {
+        email: "full@x.y",
+        password: "StrongPass1!xyz",
+      } as any);
+
+      expect(existing.passwordHash).toBe("ORIGINAL");
+      expect(res.temporaryPassword).toBeUndefined();
     });
 
     it("logs (does not throw) when the invite email fails to send", async () => {
