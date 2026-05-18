@@ -3,6 +3,7 @@ import { AccountDelegateGuard } from "./account-delegate.guard";
 import {
   ALLOW_DELEGATE_KEY,
   DELEGATED_ACCOUNT_PARAM_KEY,
+  DELEGATE_OPERATION_KEY,
 } from "../decorators/delegate-access.decorator";
 
 describe("AccountDelegateGuard", () => {
@@ -22,7 +23,7 @@ describe("AccountDelegateGuard", () => {
   beforeEach(() => {
     reflector = { getAllAndOverride: jest.fn() };
     jwtService = { verify: jest.fn() };
-    delegationService = { hasReadAccess: jest.fn() };
+    delegationService = { hasAccountPermission: jest.fn() };
     guard = new AccountDelegateGuard(
       reflector as any,
       jwtService as any,
@@ -90,7 +91,7 @@ describe("AccountDelegateGuard", () => {
       if (key === DELEGATED_ACCOUNT_PARAM_KEY) return "id";
       return undefined;
     });
-    delegationService.hasReadAccess.mockResolvedValue(false);
+    delegationService.hasAccountPermission.mockResolvedValue(false);
     const ctx = makeContext({
       headers: { authorization: "Bearer x" },
       params: { id: "acc-1" },
@@ -98,7 +99,11 @@ describe("AccountDelegateGuard", () => {
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
-    expect(delegationService.hasReadAccess).toHaveBeenCalledWith("g1", "acc-1");
+    expect(delegationService.hasAccountPermission).toHaveBeenCalledWith(
+      "g1",
+      "acc-1",
+      "read",
+    );
   });
 
   it("allows a delegate with READ access to the account", async () => {
@@ -112,7 +117,7 @@ describe("AccountDelegateGuard", () => {
       if (key === DELEGATED_ACCOUNT_PARAM_KEY) return "id";
       return undefined;
     });
-    delegationService.hasReadAccess.mockResolvedValue(true);
+    delegationService.hasAccountPermission.mockResolvedValue(true);
     const ctx = makeContext({
       headers: {},
       cookies: { auth_token: "ck" },
@@ -155,15 +160,16 @@ describe("AccountDelegateGuard", () => {
       if (key === DELEGATED_ACCOUNT_PARAM_KEY) return "accountId";
       return undefined;
     });
-    delegationService.hasReadAccess.mockResolvedValue(true);
+    delegationService.hasAccountPermission.mockResolvedValue(true);
     const ctx = makeContext({
       headers: { authorization: "Bearer x" },
       body: { accountId: "acc-body" },
     });
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(delegationService.hasReadAccess).toHaveBeenCalledWith(
+    expect(delegationService.hasAccountPermission).toHaveBeenCalledWith(
       "g1",
       "acc-body",
+      "read",
     );
   });
 
@@ -178,15 +184,43 @@ describe("AccountDelegateGuard", () => {
       if (key === DELEGATED_ACCOUNT_PARAM_KEY) return "accountId";
       return undefined;
     });
-    delegationService.hasReadAccess.mockResolvedValue(true);
+    delegationService.hasAccountPermission.mockResolvedValue(true);
     const ctx = makeContext({
       headers: { authorization: "Bearer x" },
       query: { accountId: "acc-query" },
     });
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(delegationService.hasReadAccess).toHaveBeenCalledWith(
+    expect(delegationService.hasAccountPermission).toHaveBeenCalledWith(
       "g1",
       "acc-query",
+      "read",
+    );
+  });
+
+  it("enforces the required write operation (create)", async () => {
+    jwtService.verify.mockReturnValue({
+      sub: "d1",
+      actingAsUserId: "o1",
+      delegationId: "g1",
+    });
+    reflector.getAllAndOverride.mockImplementation((key: string) => {
+      if (key === ALLOW_DELEGATE_KEY) return true;
+      if (key === DELEGATED_ACCOUNT_PARAM_KEY) return "accountId";
+      if (key === DELEGATE_OPERATION_KEY) return "create";
+      return undefined;
+    });
+    delegationService.hasAccountPermission.mockResolvedValue(false);
+    const ctx = makeContext({
+      headers: { authorization: "Bearer x" },
+      body: { accountId: "acc-1" },
+    });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(delegationService.hasAccountPermission).toHaveBeenCalledWith(
+      "g1",
+      "acc-1",
+      "create",
     );
   });
 
@@ -203,6 +237,6 @@ describe("AccountDelegateGuard", () => {
     });
     const ctx = makeContext({ headers: { authorization: "Bearer x" } });
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
-    expect(delegationService.hasReadAccess).not.toHaveBeenCalled();
+    expect(delegationService.hasAccountPermission).not.toHaveBeenCalled();
   });
 });

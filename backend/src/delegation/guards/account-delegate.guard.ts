@@ -10,6 +10,8 @@ import { Request } from "express";
 import {
   ALLOW_DELEGATE_KEY,
   DELEGATED_ACCOUNT_PARAM_KEY,
+  DELEGATE_OPERATION_KEY,
+  DelegateOperation,
 } from "../decorators/delegate-access.decorator";
 import { DelegationService } from "../delegation.service";
 
@@ -73,9 +75,15 @@ export class AccountDelegateGuard implements CanActivate {
     if (accountParamKey) {
       const accountId = this.resolveAccountId(req, accountParamKey);
       if (accountId) {
-        const ok = await this.delegationService.hasReadAccess(
+        const operation =
+          this.reflector.getAllAndOverride<DelegateOperation>(
+            DELEGATE_OPERATION_KEY,
+            [context.getHandler(), context.getClass()],
+          ) ?? "read";
+        const ok = await this.delegationService.hasAccountPermission(
           payload.delegationId,
           accountId,
+          operation,
         );
         if (!ok) {
           throw new ForbiddenException(

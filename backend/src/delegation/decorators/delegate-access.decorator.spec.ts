@@ -2,8 +2,10 @@ import { Reflector } from "@nestjs/core";
 import {
   AllowDelegate,
   DelegatedAccountParam,
+  DelegateRequires,
   ALLOW_DELEGATE_KEY,
   DELEGATED_ACCOUNT_PARAM_KEY,
+  DELEGATE_OPERATION_KEY,
 } from "./delegate-access.decorator";
 
 describe("delegate-access decorators", () => {
@@ -35,5 +37,15 @@ describe("delegate-access decorators", () => {
     expect(
       reflector.get(DELEGATED_ACCOUNT_PARAM_KEY, C.prototype.handler),
     ).toBe("accountId");
+  });
+
+  it("DelegateRequires sets the required operation", () => {
+    class C {
+      @DelegateRequires("create")
+      handler() {}
+    }
+    expect(reflector.get(DELEGATE_OPERATION_KEY, C.prototype.handler)).toBe(
+      "create",
+    );
   });
 });

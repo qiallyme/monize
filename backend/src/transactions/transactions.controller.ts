@@ -24,6 +24,11 @@ import {
 } from "@nestjs/swagger";
 import { AuthGuard } from "@nestjs/passport";
 import { TransactionsService } from "./transactions.service";
+import {
+  AllowDelegate,
+  DelegatedAccountParam,
+  DelegateRequires,
+} from "../delegation/decorators/delegate-access.decorator";
 import { TransactionStatus } from "./entities/transaction.entity";
 import { CreateTransactionDto } from "./dto/create-transaction.dto";
 import { UpdateTransactionDto } from "./dto/update-transaction.dto";
@@ -78,6 +83,9 @@ export class TransactionsController {
   @ApiResponse({ status: 201, description: "Transaction created successfully" })
   @ApiResponse({ status: 400, description: "Bad request" })
   @ApiResponse({ status: 401, description: "Unauthorized" })
+  @AllowDelegate()
+  @DelegatedAccountParam("accountId")
+  @DelegateRequires("create")
   create(@Request() req, @Body() createTransactionDto: CreateTransactionDto) {
     return this.transactionsService.create(req.user.id, createTransactionDto);
   }

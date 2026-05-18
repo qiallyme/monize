@@ -18,3 +18,12 @@ export const AllowDelegate = () => SetMetadata(ALLOW_DELEGATE_KEY, true);
 export const DELEGATED_ACCOUNT_PARAM_KEY = "delegatedAccountParam";
 export const DelegatedAccountParam = (key = "id") =>
   SetMetadata(DELEGATED_ACCOUNT_PARAM_KEY, key);
+
+/**
+ * The per-account operation a delegate route requires on the resolved
+ * account. Defaults to "read" when absent. Pair with @DelegatedAccountParam.
+ */
+export type DelegateOperation = "read" | "create" | "edit" | "delete";
+export const DELEGATE_OPERATION_KEY = "delegateOperation";
+export const DelegateRequires = (operation: DelegateOperation) =>
+  SetMetadata(DELEGATE_OPERATION_KEY, operation);
