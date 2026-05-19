@@ -7,6 +7,11 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace }),
 }));
 
+const mockToastError = vi.fn();
+vi.mock('react-hot-toast', () => ({
+  default: { error: (...a: unknown[]) => mockToastError(...a) },
+}));
+
 let state: {
   actingAsUserId: string | null;
   delegateSections: Record<string, boolean> | null;
@@ -71,5 +76,21 @@ describe('DelegateSectionGuard', () => {
     await waitFor(() =>
       expect(mockReplace).toHaveBeenCalledWith('/dashboard'),
     );
+    expect(mockToastError).toHaveBeenCalledWith(
+      "You don't have access to that section.",
+    );
+  });
+
+  it('does not render content or skeleton flash when blocked', () => {
+    state = {
+      actingAsUserId: 'o1',
+      delegateSections: { reports: false },
+    };
+    render(
+      <DelegateSectionGuard section="reports">
+        <p>reports-screen</p>
+      </DelegateSectionGuard>,
+    );
+    expect(screen.queryByText('reports-screen')).not.toBeInTheDocument();
   });
 });
