@@ -23,6 +23,20 @@ import {
 } from "../decorators/delegate-access.decorator";
 import { DelegationService } from "../delegation.service";
 
+const SECTION_LABELS: Record<DelegateSection, string> = {
+  bills: "Bills & Deposits",
+  investments: "Investments",
+  budgets: "Budgets",
+  reports: "Reports",
+  ai: "AI Assistant",
+};
+
+const RESOURCE_LABELS: Record<DelegateCapabilityReq["resource"], string> = {
+  payees: "payees",
+  categories: "categories",
+  tags: "tags",
+};
+
 /**
  * Fail-closed enforcement for delegate ("acting as owner") requests.
  *
@@ -72,7 +86,8 @@ export class AccountDelegateGuard implements CanActivate {
     );
     if (!allowed) {
       throw new ForbiddenException(
-        "Delegated access is not permitted for this resource",
+        "This action isn't available while you're acting on behalf of " +
+          "another user. Only the account owner can do this.",
       );
     }
 
@@ -189,7 +204,9 @@ export class AccountDelegateGuard implements CanActivate {
       );
       if (!ok) {
         throw new ForbiddenException(
-          `You are not permitted to ${capability.operation} ${capability.resource}`,
+          `The account owner has not granted you permission to ` +
+            `${capability.operation} ${RESOURCE_LABELS[capability.resource]}. ` +
+            `Ask them to enable this in your delegated-access settings.`,
         );
       }
     }
@@ -204,7 +221,10 @@ export class AccountDelegateGuard implements CanActivate {
         section,
       );
       if (!ok) {
-        throw new ForbiddenException("You do not have access to this section");
+        throw new ForbiddenException(
+          `The account owner has not shared the ${SECTION_LABELS[section]} ` +
+            `section with you.`,
+        );
       }
     }
 
@@ -222,7 +242,12 @@ export class AccountDelegateGuard implements CanActivate {
       operation,
     );
     if (!ok) {
-      throw new ForbiddenException("You do not have access to this account");
+      throw new ForbiddenException(
+        operation === "read"
+          ? "The account owner has not shared this account with you."
+          : `The account owner has not granted you permission to ` +
+              `${operation} transactions in this account.`,
+      );
     }
   }
 

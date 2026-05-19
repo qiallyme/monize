@@ -222,6 +222,12 @@ describe('SharedAccessSection', () => {
     expect(
       screen.queryByPlaceholderText('Set a password'),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('First name (optional)'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText('Last name (optional)'),
+    ).not.toBeInTheDocument();
 
     await act(async () => {
       submitCreate();
