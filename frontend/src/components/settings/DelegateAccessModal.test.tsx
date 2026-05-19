@@ -28,6 +28,7 @@ const baseDelegate: DelegateSummary = {
     firstName: null,
     lastName: null,
     hasPassword: true,
+    canResetPassword: true,
   },
   grants: [],
   capabilities: {
