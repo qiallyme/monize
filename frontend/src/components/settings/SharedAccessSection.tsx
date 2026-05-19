@@ -9,7 +9,9 @@ import { createLogger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/errors';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { Button } from '@/components/ui/Button';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { useFormModal } from '@/hooks/useFormModal';
 import { passwordSchema, PASSWORD_REQUIREMENTS_TEXT } from '@/lib/zod-helpers';
@@ -37,15 +39,29 @@ function sharedDataCount(d: DelegateSummary): number {
   );
 }
 
+const inputClass =
+  'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm';
+
 export function SharedAccessSection() {
   const [delegates, setDelegates] = useState<DelegateSummary[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [showCreate, setShowCreate] = useState(false);
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
   const [sendInvite, setSendInvite] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const [revokeTarget, setRevokeTarget] = useState<DelegateSummary | null>(
+    null,
+  );
+  const [revoking, setRevoking] = useState(false);
+
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const {
     showForm,
@@ -79,6 +95,19 @@ export function SharedAccessSection() {
     void load();
   }, [load]);
 
+  const resetCreateForm = () => {
+    setEmail('');
+    setFirstName('');
+    setLastName('');
+    setPassword('');
+    setSendInvite(false);
+  };
+
+  const openCreate = () => {
+    resetCreateForm();
+    setShowCreate(true);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -95,6 +124,7 @@ export function SharedAccessSection() {
       const res = await delegationApi.createDelegate({
         email: email.trim(),
         firstName: firstName.trim() || undefined,
+        lastName: lastName.trim() || undefined,
         password: sendInvite ? undefined : password || undefined,
         sendInvite,
       });
@@ -108,10 +138,8 @@ export function SharedAccessSection() {
       } else {
         toast.success('Delegate created');
       }
-      setEmail('');
-      setFirstName('');
-      setPassword('');
-      setSendInvite(false);
+      setShowCreate(false);
+      resetCreateForm();
       await load();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to create delegate'));
@@ -121,102 +149,55 @@ export function SharedAccessSection() {
     }
   };
 
-  const handleRevoke = async (id: string) => {
-    if (
-      !window.confirm(
-        'Remove this delegate? They lose access to your account. If they ' +
-          'have no other shared access and no account of their own, their ' +
-          'login is deleted entirely.',
-      )
-    ) {
-      return;
-    }
+  const handleRevoke = async () => {
+    if (!revokeTarget) return;
+    setRevoking(true);
     try {
-      await delegationApi.revokeDelegate(id);
+      await delegationApi.revokeDelegate(revokeTarget.id);
       toast.success('Delegate removed');
+      setRevokeTarget(null);
       await load();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to revoke delegate'));
       logger.error(err);
+    } finally {
+      setRevoking(false);
     }
   };
 
   const handleResetPassword = async (id: string) => {
     try {
       const res = await delegationApi.resetPassword(id);
-      toast.success(`Temporary password: ${res.temporaryPassword}`, {
-        duration: 12000,
-      });
+      setCopied(false);
+      setTempPassword(res.temporaryPassword);
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to reset password'));
       logger.error(err);
     }
   };
 
+  const copyTempPassword = async () => {
+    if (!tempPassword) return;
+    try {
+      await navigator.clipboard.writeText(tempPassword);
+      setCopied(true);
+    } catch (err) {
+      toast.error('Could not copy to clipboard');
+      logger.error(err);
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 rounded-lg p-6 mb-6">
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Delegates sign in with their own credentials and never see your
-        password. They only see the accounts and sections you grant them.
-      </p>
-
-      <form
-        onSubmit={handleCreate}
-        className="grid gap-3 sm:grid-cols-2 mb-6 border-b border-gray-200 dark:border-gray-700 pb-6"
-      >
-        <input
-          type="email"
-          required
-          placeholder="Delegate email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
-        />
-        <input
-          type="text"
-          placeholder="First name (optional)"
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
-        />
-
-        <div className="sm:col-span-2 flex items-center gap-3">
-          <ToggleSwitch
-            checked={sendInvite}
-            onChange={setSendInvite}
-            label="Send an email invite instead of setting a password"
-          />
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            Send an email invite instead of setting a password
-          </span>
-        </div>
-
-        {!sendInvite && (
-          <div className="sm:col-span-2">
-            <input
-              type="password"
-              placeholder="Set a password (optional)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
-            />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {PASSWORD_REQUIREMENTS_TEXT} Leave blank to auto-generate a
-              temporary password.
-            </p>
-          </div>
-        )}
-
-        <div className="sm:col-span-2">
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 text-sm font-medium"
-          >
-            {submitting ? 'Adding...' : 'Add delegate'}
-          </button>
-        </div>
-      </form>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
+          Delegates sign in with their own credentials and never see your
+          password. They only see the accounts and sections you grant them.
+        </p>
+        <Button size="sm" onClick={openCreate}>
+          Add delegate
+        </Button>
+      </div>
 
       {loading ? (
         <p className="text-sm text-gray-500">Loading...</p>
@@ -253,7 +234,7 @@ export function SharedAccessSection() {
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => handleRevoke(d.id)}
+                  onClick={() => setRevokeTarget(d)}
                 >
                   Remove
                 </Button>
@@ -262,6 +243,110 @@ export function SharedAccessSection() {
           ))}
         </ul>
       )}
+
+      <Modal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        maxWidth="lg"
+        pushHistory
+      >
+        <form onSubmit={handleCreate} className="flex flex-col">
+          <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Add delegate
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Grant another person scoped access to your accounts.
+            </p>
+          </div>
+
+          <div className="px-6 py-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                required
+                placeholder="Delegate email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  First name
+                </label>
+                <input
+                  type="text"
+                  placeholder="First name (optional)"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Last name
+                </label>
+                <input
+                  type="text"
+                  placeholder="Last name (optional)"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <ToggleSwitch
+                checked={sendInvite}
+                onChange={setSendInvite}
+                label="Send an email invite instead of setting a password"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                Send an email invite instead of setting a password
+              </span>
+            </div>
+
+            {!sendInvite && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Password
+                </label>
+                <PasswordInput
+                  placeholder="Set a password (optional)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={inputClass}
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {PASSWORD_REQUIREMENTS_TEXT} Leave blank to auto-generate a
+                  temporary password.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowCreate(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={submitting}>
+              Add delegate
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={showForm}
@@ -282,6 +367,51 @@ export function SharedAccessSection() {
             submitRef={formSubmitRef}
           />
         )}
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={revokeTarget !== null}
+        title="Remove delegate"
+        message={
+          'Remove this delegate? They lose access to your account. If they ' +
+          'have no other shared access and no account of their own, their ' +
+          'login is deleted entirely.'
+        }
+        confirmLabel={revoking ? 'Removing...' : 'Remove'}
+        variant="danger"
+        pushHistory
+        onConfirm={handleRevoke}
+        onCancel={() => setRevokeTarget(null)}
+      />
+
+      <Modal
+        isOpen={tempPassword !== null}
+        onClose={() => setTempPassword(null)}
+        maxWidth="md"
+        pushHistory
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Temporary password
+          </h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Share this with the delegate securely. They will be asked to
+            change it on first sign in. It will not be shown again.
+          </p>
+          <div className="mt-4 flex items-stretch gap-2">
+            <code className="flex-1 select-all rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-sm font-mono break-all">
+              {tempPassword}
+            </code>
+            <Button type="button" variant="outline" onClick={copyTempPassword}>
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
+          <div className="mt-6 flex justify-end">
+            <Button type="button" onClick={() => setTempPassword(null)}>
+              Done
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <UnsavedChangesDialog {...unsavedChangesDialog} />

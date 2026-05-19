@@ -59,6 +59,17 @@ async function renderSection() {
   });
 }
 
+// The header trigger and the modal submit are both "Add delegate"; the
+// trigger renders first.
+function openCreateModal() {
+  const triggers = screen.getAllByRole('button', { name: 'Add delegate' });
+  fireEvent.click(triggers[0]);
+}
+function submitCreate() {
+  const buttons = screen.getAllByRole('button', { name: 'Add delegate' });
+  fireEvent.click(buttons[buttons.length - 1]);
+}
+
 describe('SharedAccessSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,9 +105,34 @@ describe('SharedAccessSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('add-delegate is a modal with a last name field', async () => {
+    await renderSection();
+    await screen.findByText('d@e.f');
+
+    expect(
+      screen.queryByPlaceholderText('Delegate email'),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      openCreateModal();
+    });
+
+    expect(
+      await screen.findByPlaceholderText('Delegate email'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Last name (optional)'),
+    ).toBeInTheDocument();
+  });
+
   it('rejects a password that fails the complexity policy', async () => {
     await renderSection();
     await screen.findByText('d@e.f');
+
+    await act(async () => {
+      openCreateModal();
+    });
+    await screen.findByPlaceholderText('Delegate email');
 
     fireEvent.change(screen.getByPlaceholderText('Delegate email'), {
       target: { value: 'new@x.y' },
@@ -106,14 +142,14 @@ describe('SharedAccessSection', () => {
       { target: { value: 'weak' } },
     );
     await act(async () => {
-      fireEvent.click(screen.getByText('Add delegate'));
+      submitCreate();
     });
 
     expect(toast.error).toHaveBeenCalled();
     expect(delegationApi.createDelegate).not.toHaveBeenCalled();
   });
 
-  it('creates a delegate with a policy-compliant password', async () => {
+  it('creates a delegate with a policy-compliant password and last name', async () => {
     vi.mocked(delegationApi.createDelegate).mockResolvedValue({
       id: 'g2',
       delegateUserId: 'd2',
@@ -123,21 +159,30 @@ describe('SharedAccessSection', () => {
     await renderSection();
     await screen.findByText('d@e.f');
 
+    await act(async () => {
+      openCreateModal();
+    });
+    await screen.findByPlaceholderText('Delegate email');
+
     fireEvent.change(screen.getByPlaceholderText('Delegate email'), {
       target: { value: 'new@x.y' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Last name (optional)'), {
+      target: { value: 'Doe' },
     });
     fireEvent.change(
       screen.getByPlaceholderText('Set a password (optional)'),
       { target: { value: 'StrongPass1!xyz' } },
     );
     await act(async () => {
-      fireEvent.click(screen.getByText('Add delegate'));
+      submitCreate();
     });
 
     await waitFor(() =>
       expect(delegationApi.createDelegate).toHaveBeenCalledWith(
         expect.objectContaining({
           email: 'new@x.y',
+          lastName: 'Doe',
           password: 'StrongPass1!xyz',
           sendInvite: false,
         }),
@@ -145,18 +190,48 @@ describe('SharedAccessSection', () => {
     );
   });
 
-  it('revokes a delegate after confirmation', async () => {
+  it('revokes a delegate via the confirm dialog', async () => {
     vi.mocked(delegationApi.revokeDelegate).mockResolvedValue();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     await renderSection();
     await screen.findByText('d@e.f');
 
     await act(async () => {
-      fireEvent.click(screen.getByText('Remove'));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    });
+
+    // The confirm dialog adds a second "Remove" (the confirm action).
+    const removeButtons = await screen.findAllByRole('button', {
+      name: 'Remove',
+    });
+    expect(removeButtons.length).toBeGreaterThan(1);
+    await act(async () => {
+      fireEvent.click(removeButtons[removeButtons.length - 1]);
     });
 
     await waitFor(() =>
       expect(delegationApi.revokeDelegate).toHaveBeenCalledWith('g1'),
     );
+  });
+
+  it('shows the reset temporary password in a modal with a copy option', async () => {
+    vi.mocked(delegationApi.resetPassword).mockResolvedValue({
+      temporaryPassword: 'Tiger!River42',
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    await renderSection();
+    await screen.findByText('d@e.f');
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Reset password'));
+    });
+
+    expect(await screen.findByText('Tiger!River42')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('Tiger!River42');
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
   });
 });

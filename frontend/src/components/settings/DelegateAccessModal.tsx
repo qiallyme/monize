@@ -348,7 +348,7 @@ export function DelegateAccessModal({
         ))}
       </div>
 
-      <div className="overflow-y-auto px-6 py-4 flex-1">
+      <div className="overflow-y-auto px-6 py-4 h-[60vh]">
         {tab === 'sections' && (
           <div className="space-y-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">
