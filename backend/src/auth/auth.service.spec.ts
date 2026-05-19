@@ -51,7 +51,10 @@ describe("AuthService", () => {
   let refreshTokensRepository: Record<string, jest.Mock>;
   let jwtService: Partial<JwtService>;
   let configService: { get: jest.Mock };
-  let delegationService: { isDelegateUser: jest.Mock };
+  let delegationService: {
+    isDelegateUser: jest.Mock;
+    isFullAccount: jest.Mock;
+  };
   let dataSource: Record<string, jest.Mock>;
   let passwordBreachService: { isBreached: jest.Mock };
   let emailService: { sendMail: jest.Mock };
@@ -166,6 +169,7 @@ describe("AuthService", () => {
           provide: DelegationService,
           useValue: {
             isDelegateUser: jest.fn().mockResolvedValue(false),
+            isFullAccount: jest.fn().mockResolvedValue(false),
           },
         },
       ],
@@ -286,19 +290,88 @@ describe("AuthService", () => {
       expect(result.user).not.toHaveProperty("passwordHash");
     });
 
-    it("does not claim an existing delegate that already has a password", async () => {
-      usersRepository.findOne.mockResolvedValue({
-        id: "deleg-2",
-        email: "shared2@example.com",
+    it("claims a delegate with a temp password when the correct currentPassword is supplied", async () => {
+      const tempPwHash = await bcrypt.hash("Temp-Pw-9!aB", 4);
+      const tempDelegate = {
+        id: "deleg-3",
+        email: "shared3@example.com",
         authProvider: "local",
-        passwordHash: "existing-hash",
+        passwordHash: tempPwHash,
+        mustChangePassword: true,
+        failedLoginAttempts: 2,
+        lockedUntil: null,
+        resetToken: null,
+        resetTokenExpiry: null,
+      };
+      usersRepository.findOne.mockResolvedValue(tempDelegate);
+      delegationService.isDelegateUser.mockResolvedValue(true);
+      delegationService.isFullAccount.mockResolvedValue(false);
+      passwordBreachService.isBreached.mockResolvedValue(false);
+      usersRepository.save.mockImplementation(async (u: any) => u);
+
+      const result = await service.register({
+        email: "shared3@example.com",
+        password: "StrongPass123!",
+        currentPassword: "Temp-Pw-9!aB",
+      });
+
+      expect(delegationService.isDelegateUser).toHaveBeenCalledWith("deleg-3");
+      expect(delegationService.isFullAccount).toHaveBeenCalledWith("deleg-3");
+      // The temp password hash is replaced by the new one.
+      expect(tempDelegate.passwordHash).not.toBe(tempPwHash);
+      // Bootstrap markers are cleared so the new owner has a clean state.
+      expect(tempDelegate.mustChangePassword).toBe(false);
+      expect(tempDelegate.failedLoginAttempts).toBe(0);
+      expect(tempDelegate.lockedUntil).toBeNull();
+      expect(result.accessToken).toBeDefined();
+      expect(result.user).not.toHaveProperty("passwordHash");
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects a delegate claim when the currentPassword is wrong or missing", async () => {
+      const tempPwHash = await bcrypt.hash("Temp-Pw-9!aB", 4);
+      usersRepository.findOne.mockResolvedValue({
+        id: "deleg-4",
+        email: "shared4@example.com",
+        authProvider: "local",
+        passwordHash: tempPwHash,
       });
       delegationService.isDelegateUser.mockResolvedValue(true);
+      delegationService.isFullAccount.mockResolvedValue(false);
 
       await expect(
         service.register({
-          email: "shared2@example.com",
+          email: "shared4@example.com",
           password: "StrongPass123!",
+        }),
+      ).rejects.toThrow(/temporary password/i);
+
+      await expect(
+        service.register({
+          email: "shared4@example.com",
+          password: "StrongPass123!",
+          currentPassword: "WrongPassword!",
+        }),
+      ).rejects.toThrow(/temporary password/i);
+    });
+
+    it("never claims a row that already owns data (full account)", async () => {
+      usersRepository.findOne.mockResolvedValue({
+        id: "full-1",
+        email: "owner@example.com",
+        authProvider: "local",
+        passwordHash: "some-hash",
+      });
+      // A delegate row that has since become a full account: isDelegateUser
+      // may still be true, but isFullAccount must veto the claim path.
+      delegationService.isDelegateUser.mockResolvedValue(true);
+      delegationService.isFullAccount.mockResolvedValue(true);
+
+      await expect(
+        service.register({
+          email: "owner@example.com",
+          password: "StrongPass123!",
+          currentPassword: "anything",
         }),
       ).rejects.toThrow(ConflictException);
     });
