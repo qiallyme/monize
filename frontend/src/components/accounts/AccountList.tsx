@@ -497,16 +497,20 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
   const handleToggleFavourite = useCallback(
     async (account: Account) => {
       try {
-        await accountsApi.setDelegateFavourite(
-          account.id,
-          !account.isFavourite,
-        );
+        const next = !account.isFavourite;
+        // Owner favourites live on the account row; a delegate keeps an
+        // independent overlay (the owner-scoped flag is never touched).
+        if (isDelegateView) {
+          await accountsApi.setDelegateFavourite(account.id, next);
+        } else {
+          await accountsApi.update(account.id, { isFavourite: next });
+        }
         onRefresh();
       } catch (error) {
         toast.error(getErrorMessage(error, 'Failed to update favourite'));
       }
     },
-    [onRefresh],
+    [isDelegateView, onRefresh],
   );
 
   const formatCurrency = useCallback((amount: number | string | null | undefined, currency: string) => {
@@ -732,9 +736,7 @@ export function AccountList({ accounts, brokerageMarketValues, defaultCurrency, 
                   onLongPressStartTouch={handleLongPressStart}
                   onLongPressEnd={handleLongPressEnd}
                   onTouchMove={handleTouchMove}
-                  onToggleFavourite={
-                    isDelegateView ? handleToggleFavourite : undefined
-                  }
+                  onToggleFavourite={handleToggleFavourite}
                 />
               ),
             )}
