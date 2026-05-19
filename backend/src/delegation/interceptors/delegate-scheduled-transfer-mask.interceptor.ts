@@ -80,14 +80,30 @@ export class DelegateScheduledTransferMaskInterceptor implements NestInterceptor
   }
 
   private maskLeg(s: Record<string, any>, readable: Set<string>): void {
-    const otherId: string | undefined = s.transferAccountId;
-    if (!s.isTransfer && !otherId) return;
-    if (!otherId || readable.has(otherId)) return;
-    if (s.transferAccount && typeof s.transferAccount === "object") {
-      s.transferAccount = { id: otherId, name: HIDDEN };
+    const srcId: string | undefined = s.accountId;
+    const dstId: string | undefined = s.transferAccountId;
+    // Only transfers (or split transfer legs) have a counterpart to hide.
+    if (!s.isTransfer && !dstId) return;
+
+    // Hide the recipient side when the delegate cannot READ it.
+    if (dstId && !readable.has(dstId)) {
+      if (s.transferAccount && typeof s.transferAccount === "object") {
+        s.transferAccount = { id: dstId, name: HIDDEN };
+      }
+      if (typeof s.transferAccountName === "string") {
+        s.transferAccountName = HIDDEN;
+      }
     }
-    if (typeof s.transferAccountName === "string") {
-      s.transferAccountName = HIDDEN;
+
+    // Hide the source side when the delegate only has the recipient
+    // account (the row surfaced because they hold the transfer target).
+    if (srcId && !readable.has(srcId)) {
+      if (s.account && typeof s.account === "object") {
+        s.account = { id: srcId, name: HIDDEN };
+      }
+      if (typeof s.accountName === "string") {
+        s.accountName = HIDDEN;
+      }
     }
   }
 }

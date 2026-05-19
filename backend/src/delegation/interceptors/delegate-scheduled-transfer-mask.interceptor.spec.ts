@@ -91,6 +91,31 @@ describe("DelegateScheduledTransferMaskInterceptor", () => {
     expect(body[0].transferAccount).toEqual({ id: "a2", name: "Savings" });
   });
 
+  it("masks the source side when the delegate only holds the recipient", async () => {
+    delegationService.readableAccountIds.mockResolvedValue(["a2"]);
+    const body = [
+      {
+        id: "s1",
+        isTransfer: true,
+        accountId: "a1",
+        account: { id: "a1", name: "Chequing" },
+        accountName: "Chequing",
+        transferAccountId: "a2",
+        transferAccount: { id: "a2", name: "Savings" },
+      },
+    ];
+    await lastValueFrom(
+      interceptor.intercept(
+        ctxFor({ isActing: true, delegationId: "g1" }),
+        handlerOf(body),
+      ),
+    );
+    expect(body[0].account).toEqual({ id: "a1", name: "Hidden account" });
+    expect(body[0].accountName).toBe("Hidden account");
+    // The recipient side is readable, so it stays intact.
+    expect(body[0].transferAccount).toEqual({ id: "a2", name: "Savings" });
+  });
+
   it("masks a single (non-array) scheduled object", async () => {
     delegationService.readableAccountIds.mockResolvedValue([]);
     const body = {

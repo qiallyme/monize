@@ -91,6 +91,42 @@ describe("ScheduledTransactionsController", () => {
       expect(result).toEqual([{ id: "st-2", accountId: "a2" }]);
       expect(delegationMock.readableAccountIds).toHaveBeenCalledWith("g1");
     });
+
+    it("keeps a transfer where the delegate holds the recipient side", async () => {
+      const actingReq = {
+        user: { id: "owner-1", isActing: true, delegationId: "g1" },
+      };
+      mockService.findAll.mockResolvedValue([
+        // source unreadable, recipient readable -> visible (masked)
+        {
+          id: "st-1",
+          accountId: "a1",
+          isTransfer: true,
+          transferAccountId: "a2",
+        },
+        // neither side readable -> hidden
+        {
+          id: "st-2",
+          accountId: "a3",
+          isTransfer: true,
+          transferAccountId: "a4",
+        },
+        // non-transfer on an unreadable account -> hidden
+        { id: "st-3", accountId: "a1", isTransfer: false },
+      ]);
+      delegationMock.readableAccountIds.mockResolvedValue(["a2"]);
+
+      const result = await controller.findAll(actingReq);
+
+      expect(result).toEqual([
+        {
+          id: "st-1",
+          accountId: "a1",
+          isTransfer: true,
+          transferAccountId: "a2",
+        },
+      ]);
+    });
   });
 
   describe("findDue()", () => {

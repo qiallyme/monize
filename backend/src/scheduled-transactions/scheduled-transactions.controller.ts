@@ -54,10 +54,19 @@ export class ScheduledTransactionsController {
   ) {}
 
   /**
-   * Restrict a result set to scheduled rows on accounts the delegate was
-   * granted READ on. Non-delegate requests pass through unchanged.
+   * Restrict a result set to scheduled rows the delegate may see: those on
+   * an account they were granted READ on, OR transfers where the granted
+   * account is the source or the recipient (the unreadable counterpart is
+   * masked by DelegateScheduledTransferMaskInterceptor). Non-delegate
+   * requests pass through unchanged.
    */
-  private async filterForDelegate<T extends { accountId: string }>(
+  private async filterForDelegate<
+    T extends {
+      accountId: string;
+      transferAccountId?: string | null;
+      isTransfer?: boolean;
+    },
+  >(
     req: { user: { isActing?: boolean; delegationId?: string } },
     rows: T[],
   ): Promise<T[]> {
@@ -65,7 +74,13 @@ export class ScheduledTransactionsController {
     const readable = new Set(
       await this.delegationService.readableAccountIds(req.user.delegationId),
     );
-    return rows.filter((r) => readable.has(r.accountId));
+    return rows.filter(
+      (r) =>
+        readable.has(r.accountId) ||
+        (!!r.isTransfer &&
+          !!r.transferAccountId &&
+          readable.has(r.transferAccountId)),
+    );
   }
 
   @Post()
