@@ -57,6 +57,8 @@ function DashboardContent() {
   const { user } = useAuthStore();
   const actingAsUserId = useAuthStore((s) => s.actingAsUserId);
   const isDelegateView = !!actingAsUserId;
+  const delegateSections = useAuthStore((s) => s.delegateSections);
+  const delegateBills = !!delegateSections?.bills;
   const weekStartsOn = (usePreferencesStore((s) => s.preferences?.weekStartsOn) ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -105,6 +107,17 @@ function DashboardContent() {
       if (isDelegateView) {
         const delegateAccounts = await accountsApi.getAll();
         setAccounts(delegateAccounts);
+        // 3C: when the owner granted the Bills & Deposits section, the
+        // scheduled endpoint is delegate-reachable (server-filtered to the
+        // delegate's readable accounts) so the widget can render.
+        if (delegateBills) {
+          try {
+            const sched = await scheduledTransactionsApi.getAll();
+            setScheduledTransactions(sched);
+          } catch (error) {
+            logger.error('Failed to load delegate scheduled data:', error);
+          }
+        }
         setIsLoading(false);
         return;
       }
@@ -171,7 +184,7 @@ function DashboardContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [weekStartsOn, isDelegateView]);
+  }, [weekStartsOn, isDelegateView, delegateBills]);
 
   useEffect(() => {
     loadDashboardData();
@@ -218,6 +231,17 @@ function DashboardContent() {
                 isLoading={isLoading}
                 onAccountsChanged={loadDashboardData}
               />
+              {delegateBills && (
+                <UpcomingBills
+                  scheduledTransactions={scheduledTransactions}
+                  accounts={accounts}
+                  isLoading={isLoading}
+                  maxItems={
+                    accounts.filter((a) => a.isFavourite && !a.isClosed)
+                      .length + 2
+                  }
+                />
+              )}
             </div>
           ) : (
             <>
