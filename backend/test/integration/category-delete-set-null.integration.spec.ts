@@ -1,7 +1,6 @@
 import { TestingModule } from "@nestjs/testing";
 import { DataSource } from "typeorm";
 import { TransactionsModule } from "@/transactions/transactions.module";
-import { User } from "@/users/entities/user.entity";
 import { Transaction } from "@/transactions/entities/transaction.entity";
 import { TransactionSplit } from "@/transactions/entities/transaction-split.entity";
 import { SplitKind } from "@/transactions/entities/split-kind.enum";
@@ -24,7 +23,13 @@ import {
 // because the category_id FKs on transactions / transaction_splits /
 // scheduled_transactions / scheduled_transaction_splits were ON DELETE
 // NO ACTION instead of SET NULL like every other category reference.
-describe("User deletion category-FK cascade (integration)", () => {
+//
+// Deleting a user cascades to delete that user's categories (schema.sql
+// declares categories.user_id ON DELETE CASCADE). The fix is that a
+// category deletion must null out the category_id on any referencing
+// transaction/split rather than block it. This asserts that contract
+// directly across all four affected tables.
+describe("Category delete -> SET NULL on referencing rows (integration)", () => {
   let module: TestingModule;
   let dataSource: DataSource;
 
@@ -55,7 +60,7 @@ describe("User deletion category-FK cascade (integration)", () => {
     );
   });
 
-  async function seedUserWithCategorizedSplits(): Promise<{ userId: string }> {
+  it("nulls category_id on transactions, splits and scheduled rows when the category is deleted", async () => {
     const user = await createTestUserDirect(dataSource);
     const account = await createTestAccount(dataSource, user.id, {
       openingBalance: 1000,
@@ -70,10 +75,11 @@ describe("User deletion category-FK cascade (integration)", () => {
         transactionDate: "2026-01-15",
         amount: -50,
         currencyCode: "USD",
+        categoryId: category.id,
         isSplit: true,
       }),
     );
-    await dataSource.manager.save(
+    const split = await dataSource.manager.save(
       dataSource.manager.create(TransactionSplit, {
         transactionId: txn.id,
         kind: SplitKind.CATEGORY,
@@ -95,7 +101,7 @@ describe("User deletion category-FK cascade (integration)", () => {
         startDate: "2026-01-01",
       }),
     );
-    await dataSource.manager.save(
+    const scheduledSplit = await dataSource.manager.save(
       dataSource.manager.create(ScheduledTransactionSplit, {
         scheduledTransactionId: scheduled.id,
         kind: SplitKind.CATEGORY,
@@ -104,64 +110,25 @@ describe("User deletion category-FK cascade (integration)", () => {
       }),
     );
 
-    return { userId: user.id };
-  }
-
-  it("deletes a user that has category-referencing splits without an FK violation", async () => {
-    const { userId } = await seedUserWithCategorizedSplits();
-    const user = await dataSource.manager.findOneByOrFail(User, {
-      id: userId,
-    });
-
+    // Previously ON DELETE NO ACTION -> this threw a FK violation.
     await expect(
-      dataSource.getRepository(User).remove(user),
+      dataSource.getRepository(Category).delete(category.id),
     ).resolves.toBeDefined();
 
-    // Cascades from users(id) removed everything user-owned.
-    await expect(
-      dataSource.manager.count(Category, { where: { userId } }),
-    ).resolves.toBe(0);
-    await expect(
-      dataSource.manager.count(Transaction, { where: { userId } }),
-    ).resolves.toBe(0);
-    await expect(dataSource.manager.count(TransactionSplit)).resolves.toBe(0);
-    await expect(
-      dataSource.manager.count(ScheduledTransactionSplit),
-    ).resolves.toBe(0);
-  });
-
-  it("nulls category_id on referencing rows when a category is deleted directly", async () => {
-    const user = await createTestUserDirect(dataSource);
-    const account = await createTestAccount(dataSource, user.id, {
-      openingBalance: 1000,
-      currentBalance: 1000,
-    });
-    const category = await createTestCategory(dataSource, user.id);
-    const txn = await dataSource.manager.save(
-      dataSource.manager.create(Transaction, {
-        userId: user.id,
-        accountId: account.id,
-        transactionDate: "2026-01-15",
-        amount: -50,
-        currencyCode: "USD",
-        isSplit: true,
+    const [reTxn, reSplit, reSched, reSchedSplit] = await Promise.all([
+      dataSource.manager.findOneByOrFail(Transaction, { id: txn.id }),
+      dataSource.manager.findOneByOrFail(TransactionSplit, { id: split.id }),
+      dataSource.manager.findOneByOrFail(ScheduledTransaction, {
+        id: scheduled.id,
       }),
-    );
-    const split = await dataSource.manager.save(
-      dataSource.manager.create(TransactionSplit, {
-        transactionId: txn.id,
-        kind: SplitKind.CATEGORY,
-        categoryId: category.id,
-        amount: -50,
+      dataSource.manager.findOneByOrFail(ScheduledTransactionSplit, {
+        id: scheduledSplit.id,
       }),
-    );
+    ]);
 
-    await dataSource.getRepository(Category).delete(category.id);
-
-    const reloaded = await dataSource.manager.findOneByOrFail(
-      TransactionSplit,
-      { id: split.id },
-    );
-    expect(reloaded.categoryId).toBeNull();
+    expect(reTxn.categoryId).toBeNull();
+    expect(reSplit.categoryId).toBeNull();
+    expect(reSched.categoryId).toBeNull();
+    expect(reSchedSplit.categoryId).toBeNull();
   });
 });
