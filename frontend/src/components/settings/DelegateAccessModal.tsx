@@ -478,9 +478,9 @@ export function DelegateAccessModal({
             {CAP_RESOURCES.map((res) => (
               <div
                 key={res.key}
-                className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-gray-700/50 pb-2"
+                className="flex items-center gap-x-3 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-gray-700/50 pb-2"
               >
-                <span className="w-40 truncate font-medium">
+                <span className="w-24 shrink-0 truncate font-medium">
                   {res.label}
                 </span>
                 {CAP_OPS.map((o) => (
