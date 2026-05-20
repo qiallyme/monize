@@ -39,9 +39,11 @@ export function DangerZoneSection({ user }: DangerZoneSectionProps) {
   const { logout } = useAuthStore();
   // A delegate of another account sees a tailored warning explaining
   // that Delete Account demotes them to delegate-only rather than
-  // truly removing their login.
+  // truly removing their login. Default to [] so tests that don't
+  // bother to seed the delegation slice of the auth store don't blow
+  // up on .some() -- the production store always initialises this.
   const availableContexts = useAuthStore((s) => s.availableContexts);
-  const isDelegate = availableContexts.some((c) => !c.isSelf);
+  const isDelegate = (availableContexts ?? []).some((c) => !c.isSelf);
 
   // Delete account state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
