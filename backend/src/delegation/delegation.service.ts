@@ -464,10 +464,20 @@ export class DelegationService {
    * delegate is not a full account in their own right AND is not also a
    * delegate for any other owner. Otherwise the password belongs to the
    * person, not the owner, so only they may change it.
+   *
+   * "Full account" includes a delegate that has gone through the
+   * /register claim path (isDelegateOnly=false) but has not yet created
+   * any data of their own -- their login is theirs, not the owner's,
+   * even with zero accounts under their name.
    */
   async canOwnerResetDelegatePassword(
     delegateUserId: string,
   ): Promise<boolean> {
+    const user = await this.usersRepository.findOne({
+      where: { id: delegateUserId },
+      select: ["id", "isDelegateOnly"],
+    });
+    if (!user || !user.isDelegateOnly) return false;
     if (await this.isFullAccount(delegateUserId)) return false;
     const delegationCount = await this.delegatesRepository.count({
       where: { delegateUserId },

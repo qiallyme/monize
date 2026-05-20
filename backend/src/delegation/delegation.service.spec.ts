@@ -500,6 +500,11 @@ describe("DelegationService", () => {
 
   describe("listDelegates", () => {
     it("maps delegations to a safe summary", async () => {
+      usersRepo.findOne.mockResolvedValue({
+        id: "d1",
+        role: "user",
+        isDelegateOnly: true,
+      });
       delegatesRepo.find.mockResolvedValue([
         {
           id: "g1",
@@ -974,6 +979,7 @@ describe("DelegationService", () => {
         oidcSubject: null,
         failedLoginAttempts: 5,
         lockedUntil: new Date(Date.now() + 60000),
+        isDelegateOnly: true,
       };
       usersRepo.findOne.mockResolvedValue(delegate);
       usersRepo.save.mockResolvedValue(delegate);
@@ -1025,7 +1031,11 @@ describe("DelegationService", () => {
     it("is true for an owner-provisioned pure delegate", async () => {
       accountsRepo.count.mockResolvedValue(0);
       delegatesRepo.count = jest.fn().mockResolvedValue(0);
-      usersRepo.findOne.mockResolvedValue({ id: "d1", role: "user" });
+      usersRepo.findOne.mockResolvedValue({
+        id: "d1",
+        role: "user",
+        isDelegateOnly: true,
+      });
       await expect(service.canOwnerResetDelegatePassword("d1")).resolves.toBe(
         true,
       );
@@ -1037,7 +1047,33 @@ describe("DelegationService", () => {
         .fn()
         .mockResolvedValueOnce(0) // ownsDelegations (isFullAccount)
         .mockResolvedValueOnce(2); // delegations as delegate
-      usersRepo.findOne.mockResolvedValue({ id: "d1", role: "user" });
+      usersRepo.findOne.mockResolvedValue({
+        id: "d1",
+        role: "user",
+        isDelegateOnly: true,
+      });
+      await expect(service.canOwnerResetDelegatePassword("d1")).resolves.toBe(
+        false,
+      );
+    });
+
+    it("is false for a claimed / self-registered user even with no own data yet", async () => {
+      // A user who went through /register (either as a fresh signup or
+      // via the claim path) has isDelegateOnly=false from that moment
+      // on; their login is theirs, so the owner can't rotate it even
+      // before they have created any accounts of their own.
+      usersRepo.findOne.mockResolvedValue({
+        id: "d1",
+        role: "user",
+        isDelegateOnly: false,
+      });
+      await expect(service.canOwnerResetDelegatePassword("d1")).resolves.toBe(
+        false,
+      );
+    });
+
+    it("is false when the user record cannot be found", async () => {
+      usersRepo.findOne.mockResolvedValue(null);
       await expect(service.canOwnerResetDelegatePassword("d1")).resolves.toBe(
         false,
       );
