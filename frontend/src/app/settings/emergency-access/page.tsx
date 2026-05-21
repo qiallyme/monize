@@ -425,7 +425,7 @@ function EmergencyAccessSection() {
                 Message to your contacts (encrypted)
               </label>
               <textarea
-                rows={6}
+                rows={8}
                 placeholder="Notes, instructions, locations of important documents..."
                 disabled={!view.emailConfigured}
                 className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono disabled:opacity-50"
