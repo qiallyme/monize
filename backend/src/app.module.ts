@@ -47,6 +47,7 @@ import { ActionHistoryModule } from "./action-history/action-history.module";
 import { UpdatesModule } from "./updates/updates.module";
 import { MonteCarloModule } from "./monte-carlo/monte-carlo.module";
 import { DelegationModule } from "./delegation/delegation.module";
+import { EmergencyAccessModule } from "./emergency-access/emergency-access.module";
 
 @Module({
   imports: [
@@ -128,6 +129,7 @@ import { DelegationModule } from "./delegation/delegation.module";
     UpdatesModule,
     MonteCarloModule,
     DelegationModule,
+    EmergencyAccessModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
