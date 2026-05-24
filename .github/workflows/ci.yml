@@ -326,10 +326,13 @@ jobs:
 
       - name: Run E2E tests (chromium)
         working-directory: e2e
+        timeout-minutes: 20
         env:
           BASE_URL: http://localhost:3001
           CI: 'true'
-        run: npx playwright test --project=chromium
+        run: |
+          set -o pipefail
+          npx playwright test --project=chromium --max-failures=5 2>&1 | tee /tmp/pw-output.txt
 
       - name: Upload Playwright report
         if: always()
@@ -350,6 +353,12 @@ jobs:
           {
             echo '## E2E diagnostics'
             echo
+            if [ -f /tmp/pw-output.txt ]; then
+              echo '### Playwright output (tail)'
+              echo '```'
+              tail -c 12000 /tmp/pw-output.txt
+              echo '```'
+            fi
             echo '### docker compose ps'
             echo '```'
             docker compose -f docker-compose.e2e.yml ps -a 2>&1 || true
