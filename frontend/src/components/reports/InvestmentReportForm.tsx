@@ -49,6 +49,7 @@ const schema = z.object({
   groupBy: z.nativeEnum(InvestmentGroupBy),
   sortColumn: z.string().optional(),
   sortDirection: z.nativeEnum(InvestmentSortDirection),
+  mergeAccounts: z.boolean().optional(),
   isFavourite: z.boolean().optional(),
 });
 
@@ -92,6 +93,7 @@ export function InvestmentReportForm({
           groupBy: report.groupBy,
           sortColumn: report.config.sortColumn || '',
           sortDirection: report.config.sortDirection || InvestmentSortDirection.ASC,
+          mergeAccounts: report.config.mergeAccounts ?? false,
           isFavourite: report.isFavourite,
         }
       : {
@@ -102,6 +104,7 @@ export function InvestmentReportForm({
           groupBy: InvestmentGroupBy.NONE,
           sortColumn: 'marketValue',
           sortDirection: InvestmentSortDirection.DESC,
+          mergeAccounts: false,
           isFavourite: false,
         },
   });
@@ -143,6 +146,7 @@ export function InvestmentReportForm({
         sortColumn,
         sortDirection: data.sortDirection,
         asOfDate: asOfDate || null,
+        mergeAccounts: data.mergeAccounts ?? false,
       },
       isFavourite: data.isFavourite,
     };
@@ -266,6 +270,30 @@ export function InvestmentReportForm({
             Rows are grouped by {GROUP_BY_LABELS[watchGroupBy].toLowerCase()} and sorted
             within each group.
           </p>
+        )}
+        {watchGroupBy !== InvestmentGroupBy.ACCOUNT && (
+          <div className="mt-4 flex items-start gap-3">
+            <Controller
+              name="mergeAccounts"
+              control={control}
+              render={({ field }) => (
+                <ToggleSwitch
+                  checked={!!field.value}
+                  onChange={field.onChange}
+                  label="Combine the same security held in multiple accounts"
+                />
+              )}
+            />
+            <div>
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                Combine the same security held in multiple accounts
+              </span>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                When off, each account&apos;s holding is listed separately with an
+                Account column.
+              </p>
+            </div>
+          </div>
         )}
       </div>
 

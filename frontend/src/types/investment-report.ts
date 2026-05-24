@@ -96,6 +96,7 @@ export interface InvestmentReportConfig {
   sortColumn: string | null;
   sortDirection: InvestmentSortDirection;
   asOfDate: string | null;
+  mergeAccounts?: boolean;
 }
 
 export interface InvestmentReport {
@@ -125,6 +126,7 @@ export interface CreateInvestmentReportData {
     sortColumn?: string | null;
     sortDirection?: InvestmentSortDirection;
     asOfDate?: string | null;
+    mergeAccounts?: boolean;
   };
   isFavourite?: boolean;
   sortOrder?: number;

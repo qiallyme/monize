@@ -51,9 +51,6 @@ export function InvestmentReportViewer({ reportId }: InvestmentReportViewerProps
   // Show monetary values in each holding's own currency, or convert to the
   // user's base currency.
   const [currencyMode, setCurrencyMode] = useState<'native' | 'base'>('native');
-  // For symbol/currency grouping: merge a security held across accounts into one
-  // combined row, or keep each account's holding separate.
-  const [mergeAccounts, setMergeAccounts] = useState(false);
 
   const { sortField, sortDirection, handleSort } = useSortableTable<string>(
     'reports.investment.table.sort',
@@ -75,7 +72,6 @@ export function InvestmentReportViewer({ reportId }: InvestmentReportViewerProps
     try {
       const data = await investmentReportsApi.execute(reportId, {
         ...(asOfOverride ? { asOfDate: asOfOverride } : {}),
-        mergeAccounts,
       });
       setResult(data);
     } catch (error) {
@@ -84,7 +80,7 @@ export function InvestmentReportViewer({ reportId }: InvestmentReportViewerProps
     } finally {
       setIsExecuting(false);
     }
-  }, [reportId, asOfOverride, mergeAccounts]);
+  }, [reportId, asOfOverride]);
 
   useEffect(() => {
     const init = async () => {
@@ -259,37 +255,6 @@ export function InvestmentReportViewer({ reportId }: InvestmentReportViewerProps
                 </button>
               </div>
             </div>
-            {report.groupBy !== InvestmentGroupBy.ACCOUNT && (
-              <div>
-                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Across accounts
-                </span>
-                <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setMergeAccounts(false)}
-                    className={`px-3 py-2 text-sm transition-colors ${
-                      !mergeAccounts
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    Separate
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMergeAccounts(true)}
-                    className={`px-3 py-2 text-sm border-l border-gray-300 dark:border-gray-600 transition-colors ${
-                      mergeAccounts
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    Merge
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
           <div className="flex items-center gap-3">
             {isExecuting && (

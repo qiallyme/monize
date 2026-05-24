@@ -202,4 +202,57 @@ describe('InvestmentReportForm', () => {
     expect(submitted.config.sortColumn).toBeNull();
     expect(submitted.config.asOfDate).toBeNull();
   });
+
+  it('saves the combine-across-accounts toggle into the config', async () => {
+    const onSubmit = await renderForm();
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('e.g., Taxable Holdings Overview'), {
+        target: { value: 'Combined' },
+      });
+    });
+    // Default grouping is None, so the combine toggle is available.
+    const toggle = screen.getByRole('switch', {
+      name: /Combine the same security held in multiple accounts/i,
+    });
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Create Report' }));
+    });
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].config.mergeAccounts).toBe(true);
+  });
+
+  it('hides the combine toggle when grouping by account', async () => {
+    const report = {
+      id: 'r1',
+      userId: 'u1',
+      name: 'Acct',
+      description: null,
+      icon: null,
+      backgroundColor: null,
+      groupBy: 'ACCOUNT',
+      config: {
+        columns: ['symbol'],
+        accountIds: [],
+        sortColumn: null,
+        sortDirection: 'ASC',
+        asOfDate: null,
+      },
+      isFavourite: false,
+      sortOrder: 0,
+      createdAt: '',
+      updatedAt: '',
+    } as never;
+    await act(async () => {
+      render(<InvestmentReportForm report={report} onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    });
+    await screen.findByText('Columns');
+    expect(
+      screen.queryByRole('switch', {
+        name: /Combine the same security held in multiple accounts/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
 });

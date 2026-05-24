@@ -94,6 +94,14 @@ export class InvestmentReportConfigDto {
     message: "asOfDate must be in YYYY-MM-DD format",
   })
   asOfDate?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Combine a security held across accounts into one row (non-account grouping only)",
+  })
+  @IsOptional()
+  @IsBoolean()
+  mergeAccounts?: boolean;
 }
 
 export class CreateInvestmentReportDto {

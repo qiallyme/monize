@@ -41,6 +41,11 @@ export interface InvestmentReportConfig {
    * latest day the markets were open at run time.
    */
   asOfDate: string | null;
+  /**
+   * When grouping by something other than account, combine a security held in
+   * several accounts into one row instead of listing each account separately.
+   */
+  mergeAccounts?: boolean;
 }
 
 @Entity("investment_reports")

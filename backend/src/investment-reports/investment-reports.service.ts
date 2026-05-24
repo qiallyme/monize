@@ -163,7 +163,7 @@ export class InvestmentReportsService {
       report.groupBy === InvestmentGroupBy.CURRENCY;
     const mergeAccounts =
       report.groupBy !== InvestmentGroupBy.ACCOUNT &&
-      overrides?.mergeAccounts === true;
+      report.config.mergeAccounts === true;
 
     const holdings = await this.dataService.computeHoldings(
       userId,
@@ -215,6 +215,7 @@ export class InvestmentReportsService {
       sortColumn: dto.sortColumn ?? null,
       sortDirection: dto.sortDirection ?? InvestmentSortDirection.ASC,
       asOfDate: dto.asOfDate ?? null,
+      mergeAccounts: dto.mergeAccounts ?? existing?.mergeAccounts ?? false,
     };
   }
 

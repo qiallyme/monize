@@ -80,6 +80,14 @@ describe("InvestmentReportsService", () => {
         }),
       );
     });
+
+    it("persists the mergeAccounts config flag", async () => {
+      const saved = await service.create("u1", {
+        name: "My Report",
+        config: { columns: ["symbol"], mergeAccounts: true } as any,
+      });
+      expect(saved.config.mergeAccounts).toBe(true);
+    });
   });
 
   describe("findAll", () => {
@@ -141,6 +149,29 @@ describe("InvestmentReportsService", () => {
       expect(saved.isFavourite).toBe(true);
       expect(saved.sortOrder).toBe(3);
       expect(saved.config.columns).toEqual(["symbol", "gain"]);
+    });
+
+    it("preserves an existing mergeAccounts flag when the update omits it", async () => {
+      reportsRepository.findOne.mockResolvedValue({
+        id: "r1",
+        userId: "u1",
+        name: "Old",
+        groupBy: InvestmentGroupBy.SYMBOL,
+        isFavourite: false,
+        sortOrder: 0,
+        config: {
+          columns: ["symbol"],
+          accountIds: [],
+          sortColumn: null,
+          sortDirection: InvestmentSortDirection.ASC,
+          asOfDate: null,
+          mergeAccounts: true,
+        },
+      });
+      const saved = await service.update("u1", "r1", {
+        config: { columns: ["symbol", "gain"] } as any,
+      });
+      expect(saved.config.mergeAccounts).toBe(true);
     });
 
     it("merges provided fields and rebuilds config", async () => {
@@ -267,15 +298,16 @@ describe("InvestmentReportsService", () => {
       );
     });
 
-    it("merges across accounts when requested and omits the forced account column", async () => {
+    it("merges across accounts when configured and omits the forced account column", async () => {
       reportsRepository.findOne.mockResolvedValue({
         ...baseReport,
         groupBy: InvestmentGroupBy.SYMBOL,
+        config: { ...baseReport.config, mergeAccounts: true },
       });
       dataService.computeHoldings.mockResolvedValue([
         holding({ symbol: "AAA", values: { symbol: "AAA", marketValue: 100 } }),
       ]);
-      const result = await service.execute("u1", "r1", { mergeAccounts: true });
+      const result = await service.execute("u1", "r1");
       expect(dataService.computeHoldings).toHaveBeenCalledWith(
         "u1",
         expect.any(Array),
@@ -287,8 +319,11 @@ describe("InvestmentReportsService", () => {
     });
 
     it("honours merge for no grouping (combine duplicate securities)", async () => {
-      reportsRepository.findOne.mockResolvedValue(baseReport); // groupBy NONE
-      await service.execute("u1", "r1", { mergeAccounts: true });
+      reportsRepository.findOne.mockResolvedValue({
+        ...baseReport,
+        config: { ...baseReport.config, mergeAccounts: true },
+      }); // groupBy NONE
+      await service.execute("u1", "r1");
       expect(dataService.computeHoldings).toHaveBeenCalledWith(
         "u1",
         expect.any(Array),
@@ -302,8 +337,9 @@ describe("InvestmentReportsService", () => {
       reportsRepository.findOne.mockResolvedValue({
         ...baseReport,
         groupBy: InvestmentGroupBy.ACCOUNT,
+        config: { ...baseReport.config, mergeAccounts: true },
       });
-      await service.execute("u1", "r1", { mergeAccounts: true });
+      await service.execute("u1", "r1");
       expect(dataService.computeHoldings).toHaveBeenCalledWith(
         "u1",
         expect.any(Array),
