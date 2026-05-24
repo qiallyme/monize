@@ -122,6 +122,7 @@ describe("InvestmentReportDataService", () => {
     expect(rows).toHaveLength(1);
     const v = rows[0].values;
     expect(v.symbol).toBe("AAA");
+    expect(v.securityType).toBe("Stock"); // STOCK -> friendly label
     expect(v.quantity).toBe(10);
     expect(v.costBasis).toBe(1000);
     expect(v.averageCost).toBe(100);
@@ -401,6 +402,26 @@ describe("InvestmentReportDataService", () => {
     txRepository.query.mockResolvedValue([]);
     const rows = await service.computeHoldings("u1", ["acc1"], "2024-06-10", "USD");
     expect(rows).toHaveLength(0);
+  });
+
+  it("maps raw security types to friendly labels", async () => {
+    accountsRepository.find.mockResolvedValue([{ id: "acc1", name: "B" }]);
+    securitiesRepository.find.mockResolvedValue([
+      { id: "sec1", symbol: "AAA", name: "A", securityType: "MUTUAL_FUND", currencyCode: "USD" },
+      { id: "sec2", symbol: "BBB", name: "B", securityType: "CUSTOM_TYPE", currencyCode: "USD" },
+    ]);
+    txRepository.find.mockResolvedValue([
+      makeTx({ securityId: "sec1", action: InvestmentAction.BUY, transactionDate: "2024-01-10", quantity: 10, price: 100, totalAmount: 1000 }),
+      makeTx({ securityId: "sec2", action: InvestmentAction.BUY, transactionDate: "2024-01-10", quantity: 5, price: 50, totalAmount: 250 }),
+    ]);
+    txRepository.query.mockResolvedValue([
+      { security_id: "sec1", price_date: "2024-06-10", open_price: "100", high_price: "100", low_price: "100", close_price: "100", volume: "1" },
+      { security_id: "sec2", price_date: "2024-06-10", open_price: "50", high_price: "50", low_price: "50", close_price: "50", volume: "1" },
+    ]);
+    const rows = await service.computeHoldings("u1", ["acc1"], "2024-06-10", "USD");
+    const types = rows.map((r) => r.values.securityType);
+    expect(types).toContain("Mutual Fund"); // known mapping
+    expect(types).toContain("Custom Type"); // unknown -> title-cased
   });
 
   describe("getLatestMarketDay", () => {

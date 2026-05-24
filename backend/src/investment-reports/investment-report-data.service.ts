@@ -76,6 +76,31 @@ function isoAddYears(iso: string, years: number): string {
   return isoAddMonths(iso, years * 12);
 }
 
+const SECURITY_TYPE_LABELS: Record<string, string> = {
+  STOCK: "Stock",
+  EQUITY: "Equity",
+  ETF: "ETF",
+  MUTUAL_FUND: "Mutual Fund",
+  BOND: "Bond",
+  OPTION: "Option",
+  GIC: "GIC",
+  CRYPTO: "Cryptocurrency",
+  CASH: "Cash/Money Market",
+  INDEX: "Index",
+  OTHER: "Other",
+};
+
+/** Friendly display label for a raw security type (e.g. MUTUAL_FUND -> Mutual Fund). */
+function formatSecurityType(raw: string | null): string {
+  if (!raw) return "Stock";
+  const known = SECURITY_TYPE_LABELS[raw.toUpperCase()];
+  if (known) return known;
+  return raw
+    .split("_")
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ");
+}
+
 /** Apply a transaction's quantity effect (used to reconstruct historical shares). */
 function applyQuantity(
   state: { quantity: number },
@@ -248,7 +273,7 @@ export class InvestmentReportDataService {
       const values: Record<string, InvestmentCellValue> = {
         symbol: security.symbol,
         name: security.name,
-        securityType: security.securityType || "STOCK",
+        securityType: formatSecurityType(security.securityType),
         currency: security.currencyCode,
         quantity,
         averageCost,

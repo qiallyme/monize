@@ -110,7 +110,15 @@ export function InvestmentReportViewer({ reportId }: InvestmentReportViewerProps
         if (currencyMode === 'base' && result) {
           return formatCurrency(num * row.baseExchangeRate, result.baseCurrency);
         }
-        return formatCurrency(num, row.currency);
+        // Show the ISO code for non-base currencies so a USD value isn't mistaken
+        // for the base currency (both may render with a "$" narrow symbol).
+        const explicit = !!result && row.currency !== result.baseCurrency;
+        return formatCurrency(
+          num,
+          row.currency,
+          undefined,
+          explicit ? 'code' : 'narrowSymbol',
+        );
       }
       case 'number':
         return formatNumber(Number(value), 4);

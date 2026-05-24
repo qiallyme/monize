@@ -20,7 +20,8 @@ vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
     formatNumber: (n: number) => String(n),
     formatPercent: (n: number) => `${n}%`,
-    formatCurrency: (n: number, code?: string) => `${code ?? 'USD'} ${n}`,
+    formatCurrency: (n: number, code?: string, _fd?: number, display = 'narrowSymbol') =>
+      display === 'code' ? `${code} ${n}` : `$${n}`,
   }),
 }));
 vi.mock('@/hooks/useDateFormat', () => ({
@@ -194,7 +195,8 @@ describe('InvestmentReportViewer', () => {
     });
     await renderViewer();
     await screen.findByText('AAA');
-    expect(screen.getByText('USD 1000.5')).toBeInTheDocument(); // currency -> formatCurrency
+    // USD holding with USD base -> narrow symbol
+    expect(screen.getByText('$1000.5')).toBeInTheDocument();
     expect(screen.getByText('12.34%')).toBeInTheDocument(); // percent
     expect(screen.getByText('5000')).toBeInTheDocument(); // integer
     expect(screen.getByText('10.25')).toBeInTheDocument(); // shares
@@ -222,13 +224,13 @@ describe('InvestmentReportViewer', () => {
     });
     await renderViewer();
     await screen.findByText('AAA');
-    // Native: shown in the holding's own currency (USD)
+    // Native USD holding with CAD base -> shown with its ISO code (USD)
     expect(screen.getByText('USD 100')).toBeInTheDocument();
-    // Switch to base currency (CAD): 100 * 1.25 = 125
+    // Switch to base currency (CAD): 100 * 1.25 = 125, base shows narrow symbol
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'CAD' }));
     });
-    expect(screen.getByText('CAD 125')).toBeInTheDocument();
+    expect(screen.getByText('$125')).toBeInTheDocument();
 
     // CSV export reflects the base-currency conversion.
     await act(async () => {
