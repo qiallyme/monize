@@ -181,9 +181,6 @@ describe('CalendarPopover', () => {
   });
 
   it('flips above the anchor when there is not enough room below', () => {
-    const offsetSpy = vi
-      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
-      .mockReturnValue(340);
     // Anchor near the bottom of the viewport (jsdom innerHeight is 768)
     Element.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
       top: 700,
@@ -199,20 +196,14 @@ describe('CalendarPopover', () => {
     render(<Wrapper value="2025-06-15" onSelect={vi.fn()} onClose={vi.fn()} />);
     const popover = document.querySelector('.z-50') as HTMLElement;
     // spaceBelow (38) < height + gap + 8, spaceAbove (700) is larger, so flip up:
-    // top = 700 - 340 - 4 = 356
+    // top = 700 - POPOVER_HEIGHT (340) - 4 = 356
     expect(popover.style.top).toBe('356px');
-    offsetSpy.mockRestore();
   });
 
   it('opens below the anchor when there is room', () => {
-    const offsetSpy = vi
-      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
-      .mockReturnValue(340);
     render(<Wrapper value="2025-06-15" onSelect={vi.fn()} onClose={vi.fn()} />);
     const popover = document.querySelector('.z-50') as HTMLElement;
     // Default anchor bottom is 130, plenty of room below: top = 130 + 4 = 134
     expect(popover.style.top).toBe('134px');
-    expect(popover.style.visibility).toBe('visible');
-    offsetSpy.mockRestore();
   });
 });

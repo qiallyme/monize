@@ -19,6 +19,10 @@ interface CalendarPopoverProps {
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+// Approximate rendered height of the fixed-size calendar, used only to decide
+// whether to open below the field or flip above it near the page bottom.
+const POPOVER_HEIGHT = 340;
+
 function toIso(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
@@ -46,13 +50,12 @@ export function CalendarPopover({ value, onSelect, onClose, anchorRef }: Calenda
 
   // Position relative to anchor element, flipping above the field when there
   // isn't enough room below (e.g. the field sits near the bottom of the page).
+  // The anchor rect is only known after mount, so the position is measured here.
   useEffect(() => {
     const anchor = anchorRef.current;
-    const popover = popoverRef.current;
-    if (!anchor || !popover) return;
+    if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
     const popoverWidth = 280;
-    const popoverHeight = popover.offsetHeight || 340;
     const gap = 4;
     let left = rect.left;
     // Keep within viewport
@@ -64,9 +67,10 @@ export function CalendarPopover({ value, onSelect, onClose, anchorRef }: Calenda
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     let top = rect.bottom + gap;
-    if (spaceBelow < popoverHeight + gap + 8 && spaceAbove > spaceBelow) {
-      top = Math.max(8, rect.top - popoverHeight - gap);
+    if (spaceBelow < POPOVER_HEIGHT + gap + 8 && spaceAbove > spaceBelow) {
+      top = Math.max(8, rect.top - POPOVER_HEIGHT - gap);
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time position derived from the mounted anchor's DOM rect
     setPosition({ top, left });
   }, [anchorRef]);
 
@@ -108,6 +112,8 @@ export function CalendarPopover({ value, onSelect, onClose, anchorRef }: Calenda
     onClose();
   }, [onSelect, onClose]);
 
+  if (!position) return null;
+
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDay = getFirstDayOfWeek(viewYear, viewMonth);
   const selectedDay = parsed && parsed[0] === viewYear && parsed[1] - 1 === viewMonth ? parsed[2] : null;
@@ -135,11 +141,7 @@ export function CalendarPopover({ value, onSelect, onClose, anchorRef }: Calenda
     <div
       ref={popoverRef}
       className="fixed z-50 w-[280px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl"
-      style={{
-        top: position?.top ?? 0,
-        left: position?.left ?? 0,
-        visibility: position ? 'visible' : 'hidden',
-      }}
+      style={{ top: position.top, left: position.left }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700">
