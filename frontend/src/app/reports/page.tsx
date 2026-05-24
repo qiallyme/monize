@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Button } from '@/components/ui/Button';
+import { NewReportButton } from '@/components/reports/NewReportButton';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { userSettingsApi } from '@/lib/user-settings';
@@ -784,27 +784,10 @@ function ReportsContent() {
           subtitle="Generate insights about your financial health"
           helpUrl="https://github.com/kenlasko/monize/wiki/Reports"
           actions={
-            <>
-              <Button
-                variant="outline"
-                onClick={() => router.push('/reports/investment/new')}
-                className="inline-flex items-center justify-center gap-2"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                New Investment Report
-              </Button>
-              <Button
-                onClick={() => router.push('/reports/custom/new')}
-                className="inline-flex items-center justify-center gap-2"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                New Custom Report
-              </Button>
-            </>
+            <NewReportButton
+              onNewStandard={() => router.push('/reports/custom/new')}
+              onNewInvestment={() => router.push('/reports/investment/new')}
+            />
           }
         />
         {/* Search */}
