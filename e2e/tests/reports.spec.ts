@@ -26,8 +26,30 @@ test.describe('Reports & analytics', () => {
       .first()
       .click();
 
-    // Navigates to the report's own route (/reports/<id>).
-    await page.waitForURL(/\/reports\/.+/);
+    // Lands on the report's own route, whose header echoes the report name.
+    await page.waitForURL(/\/reports\/spending-by-category/);
+    await expect(
+      page.getByRole('heading', { name: 'Spending by Category' }),
+    ).toBeVisible();
+  });
+
+  test('renders the net-worth report', async ({ authedPage: page }) => {
+    await page.goto('/reports/net-worth');
+
+    await expect(
+      page.getByRole('heading', { name: 'Net Worth Over Time' }),
+    ).toBeVisible({ timeout: 15000 });
+  });
+
+  test('renders the Monte-Carlo simulation report', async ({ authedPage: page }) => {
+    // The heavy projection component is lazy-loaded under Suspense; the route's
+    // header renders immediately, so this is a deterministic render smoke.
+    // Driving the projection inputs is deferred (see ROADMAP Phase 2.3).
+    await page.goto('/reports/monte-carlo-simulation');
+
+    await expect(
+      page.getByRole('heading', { name: 'Monte Carlo Simulation' }),
+    ).toBeVisible({ timeout: 15000 });
   });
 
   test('shows a net-worth surface on the dashboard', async ({
