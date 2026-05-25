@@ -107,6 +107,33 @@ High value, builds directly on the existing fixtures. Same pattern per area:
 create via UI → appears + persists after reload; seed N via API → render; edit;
 delete/guards; validation.
 
+### Phase 2 status snapshot (first pass landed)
+
+New factories in `factories.ts`: `createSecurity`, `createInvestmentAccountPair`
+(POSTs `accountType: INVESTMENT` + `createInvestmentPair` and returns the linked
+`{ cashAccount, brokerageAccount }`), `createInvestmentTransaction`,
+`createBudget`, `addBudgetCategory`.
+
+| Area | Spec | Landed | Deferred (follow-up) |
+|------|------|--------|----------------------|
+| Securities | `securities.spec.ts` | Full CRUD + deactivate + validation | — |
+| Investments | `investments.spec.ts` | Page chrome; seeded BUY rolls into holdings; reload persistence | UI-driven trade entry (the combobox transaction modal); price-refresh assertion |
+| Budgets | `budgets.spec.ts` | List; detail actuals-vs-budget (seeded category + txn); delete | Wizard-based create + validation (no UI path that isn't the spending-analysis wizard) |
+| Reports/insights/net-worth | `reports.spec.ts` | Built-in catalogue; open a report; dashboard net-worth surface; insights page | Custom report builder CRUD; Monte-Carlo projection; asserting exact report figures |
+| Settings | `settings.spec.ts` | Sections render; profile-name + default-currency persistence; password change happy + wrong-current + weak-new (incl. re-login) | 2FA (TOTP) enable/login/disable; danger-zone account deletion |
+
+**Infra blocker for forgot/reset (2.4):** the e2e stack configures no SMTP and
+does not expose the Postgres port to the host, so the raw reset token (hashed in
+the DB, only ever emailed) cannot be retrieved by the runner. The forgot→reset
+happy path needs either a mail-capture service (e.g. Mailpit) in
+`docker-compose.e2e.yml` or an exposed DB/test endpoint before it can be tested
+honestly. The forgot-request UI and the invalid-token reset path are testable
+without it.
+
+**Note on holdings:** `GroupedHoldingsList` seeds its expanded-accounts set from
+the first render (empty during load), so account rows render collapsed — expand
+the account header before asserting individual holding rows.
+
 ### 2.1 Investments & securities (`investments.spec.ts`, new `securities.spec.ts`)
 *Current: smoke only.* Routes `/investments`, `/securities`; modules `securities`,
 `transactions` (investment txns), `net-worth`.
