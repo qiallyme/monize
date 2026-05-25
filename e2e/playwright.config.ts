@@ -4,18 +4,20 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
+  // Retry in CI to absorb occasional flakiness (network, animation timing);
+  // keep 0 locally for a fast, honest signal while authoring.
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI
-    ? [['html', { open: 'never' }], ['github']]
+    ? [['list'], ['html', { open: 'never' }], ['github']]
     : [['html', { open: 'on-failure' }]],
   timeout: 60000,
   expect: { timeout: 10000 },
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3001',
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'on-first-retry',
+    video: 'retain-on-failure',
   },
   projects: [
     {
@@ -30,10 +32,11 @@ export default defineConfig({
   webServer: process.env.CI
     ? undefined
     : {
-        command: 'docker compose up -d && sleep 10',
+        command:
+          'docker compose -f docker-compose.e2e.yml up -d --build --wait --wait-timeout 420',
         url: 'http://localhost:3001',
         reuseExistingServer: true,
-        timeout: 120000,
+        timeout: 600000,
         cwd: '..',
       },
 });

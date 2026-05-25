@@ -169,6 +169,8 @@ jobs:
         frontend-lint,
         frontend-unit-tests,
         npm-audit,
+        bearer-scan,
+        e2e-tests,
       ]
     permissions:
       contents: write
@@ -287,54 +289,104 @@ jobs:
             --title "v${{ steps.version.outputs.version }}" \
             --generate-notes
 
-  # E2E tests temporarily disabled - re-enable once tests are stabilized
-  # e2e-tests:
-  #   name: E2E Tests
-  #   runs-on: ubuntu-latest
-  #   needs: [backend-unit-tests, frontend-unit-tests]
-  #   env:
-  #     POSTGRES_DB: monize
-  #     POSTGRES_USER: monize_user
-  #     POSTGRES_PASSWORD: monize_password
-  #     JWT_SECRET: test-jwt-secret-for-ci-minimum-32-characters-long
-  #     NODE_ENV: development
-  #     PUBLIC_APP_URL: http://localhost:3001
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: actions/setup-node@v6
-  #       with:
-  #         node-version: 24
-  #     - name: Create .env for Docker Compose
-  #       run: |
-  #         cat > .env << 'EOF'
-  #         POSTGRES_DB=monize
-  #         POSTGRES_USER=monize_user
-  #         POSTGRES_PASSWORD=monize_password
-  #         JWT_SECRET=test-jwt-secret-for-ci-minimum-32-characters-long
-  #         NODE_ENV=development
-  #         PUBLIC_APP_URL=http://localhost:3001
-  #         EOF
-  #     - name: Start services
-  #       run: |
-  #         docker compose up -d --build
-  #         timeout 120 bash -c 'until curl -sf http://localhost:3001; do sleep 5; done'
-  #     - name: Install Playwright
-  #       working-directory: e2e
-  #       run: |
-  #         npm install
-  #         npx playwright install --with-deps chromium
-  #     - name: Run E2E tests
-  #       working-directory: e2e
-  #       env:
-  #         BASE_URL: http://localhost:3001
-  #         CI: 'true'
-  #       run: npx playwright test --project=chromium
-  #     - name: Upload test report
-  #       if: always()
-  #       uses: actions/upload-artifact@v7
-  #       with:
-  #         name: e2e-report
-  #         path: e2e/playwright-report/
-  #     - name: Stop services
-  #       if: always()
-  #       run: docker compose down -v
+  # Runs the Playwright suite against a full stack (postgres + backend +
+  # frontend) brought up via docker-compose.e2e.yml. Runs chromium + firefox.
+  # Gates releases: build-and-push lists this job in its needs, so a red E2E
+  # run blocks the container build/push. Retries (2 in CI) absorb flakiness.
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [backend-unit-tests, frontend-unit-tests]
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Build application images
+        run: docker compose -f docker-compose.e2e.yml build
+
+      - name: Start application stack
+        run: docker compose -f docker-compose.e2e.yml up -d --wait --wait-timeout 600
+
+      - name: Install E2E dependencies
+        working-directory: e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-firefox-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Run E2E tests
+        working-directory: e2e
+        timeout-minutes: 30
+        env:
+          BASE_URL: http://localhost:3001
+          CI: 'true'
+        run: |
+          set -o pipefail
+          npx playwright test --max-failures=5 2>&1 | tee /tmp/pw-output.txt
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report
+          path: e2e/playwright-report/
+          retention-days: 7
+
+      # The auth-gated raw logs aren't reachable programmatically, so mirror
+      # container status + logs into both the job summary AND a PR comment.
+      - name: Collect diagnostics on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo '## E2E diagnostics'
+            echo
+            if [ -f /tmp/pw-output.txt ]; then
+              echo '### Playwright output (tail)'
+              echo '```'
+              tail -c 12000 /tmp/pw-output.txt
+              echo '```'
+            fi
+            echo '### docker compose ps'
+            echo '```'
+            docker compose -f docker-compose.e2e.yml ps -a 2>&1 || true
+            echo '```'
+            for svc in postgres backend frontend; do
+              echo "<details><summary>$svc (last 150 lines)</summary>"
+              echo
+              echo '```'
+              docker compose -f docker-compose.e2e.yml logs "$svc" --no-color --tail=150 2>&1 | tail -c 16000 || true
+              echo '```'
+              echo
+              echo '</details>'
+            done
+          } > /tmp/e2e-diag.md
+          cat /tmp/e2e-diag.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$PR_NUMBER" ]; then
+            jq -Rs '{body: .}' /tmp/e2e-diag.md > /tmp/e2e-diag.json
+            http=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/$PR_NUMBER/comments" \
+              -d @/tmp/e2e-diag.json)
+            echo "PR comment POST -> HTTP $http"
+            [ "$http" = "201" ] || cat /tmp/resp.json
+          fi
+
+      - name: Stop services
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v
