@@ -92,4 +92,19 @@ test.describe('Reports & analytics', () => {
       timeout: 15000,
     });
   });
+
+  test('creates a custom report through the builder', async ({ authedPage: page }) => {
+    // Only the name is required; every other builder field defaults. On save
+    // the app routes to the new report's viewer, whose header echoes the name.
+    const name = `Built ${uniqueId()}`;
+
+    await page.goto('/reports/custom/new');
+    await page.getByLabel('Report Name').fill(name);
+    await page.getByRole('button', { name: 'Create Report' }).click();
+
+    await page.waitForURL(/\/reports\/custom\/[\w-]+$/);
+    await expect(page.getByRole('heading', { name })).toBeVisible({
+      timeout: 15000,
+    });
+  });
 });
