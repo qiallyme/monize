@@ -169,6 +169,7 @@ jobs:
         frontend-lint,
         frontend-unit-tests,
         npm-audit,
+        bearer-scan,
         e2e-tests,
       ]
     permissions:
