@@ -2,11 +2,28 @@ import { test, expect } from '../fixtures';
 import { createAccount, createTransaction } from '../helpers/factories';
 import { uniqueId } from '../helpers/api';
 
-// Transactions run through a complex tabbed form (normal/split/transfer) with a
-// custom-value payee combobox, so create/edit via that form are a deliberate
-// follow-up. These cover the high-confidence paths: API-seeded list + read,
-// per-row delete (row Delete -> ConfirmDialog), and create-form validation.
+// Transactions run through a tabbed normal/split/transfer form. The payee field
+// is a custom-value combobox that's awkward to drive, so create/edit identify
+// the transaction by a distinctive amount (the CurrencyInput drives cleanly)
+// rather than a payee; the edit target seeds its payee via the API for a stable
+// row handle. Date defaults to today.
 test.describe('Transactions', () => {
+  test('creates a transaction through the UI', async ({ authedPage: page, api }) => {
+    const account = await createAccount(api, { name: `Txn Account ${uniqueId()}` });
+
+    await page.goto('/transactions');
+    await page.getByRole('button', { name: /new transaction/i }).first().click();
+
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel(/^account$/i).selectOption({ value: account.id });
+    await dialog.getByLabel(/amount/i).first().fill('987.65');
+    await dialog.getByRole('button', { name: /create transaction/i }).click();
+
+    await expect(page.locator('tr', { hasText: '987.65' })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('tr', { hasText: '987.65' })).toBeVisible();
+  });
+
   test('lists transactions seeded via the API', async ({ authedPage: page, api }) => {
     const account = await createAccount(api);
     const coffee = await createTransaction(api, {
@@ -22,6 +39,30 @@ test.describe('Transactions', () => {
 
     await expect(page.locator('tr', { hasText: coffee.payeeName! })).toBeVisible();
     await expect(page.locator('tr', { hasText: rent.payeeName! })).toBeVisible();
+  });
+
+  test('edits a transaction through the UI', async ({ authedPage: page, api }) => {
+    const account = await createAccount(api);
+    const payeeName = `Edit Me ${uniqueId()}`;
+    await createTransaction(api, { accountId: account.id, amount: 73.19, payeeName });
+
+    await page.goto('/transactions');
+    // Clicking the row opens the edit modal; the amount cell doesn't stop
+    // propagation (unlike the payee/category/action cells). first() since the
+    // running-balance cell shows the same value for a single transaction.
+    await page
+      .locator('tr', { hasText: payeeName })
+      .getByText(/73\.19/)
+      .first()
+      .click();
+
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel(/amount/i).first().fill('88.88');
+    await dialog.getByRole('button', { name: /update transaction/i }).click();
+
+    await expect(page.locator('tr', { hasText: payeeName })).toContainText('88.88');
+    await page.reload();
+    await expect(page.locator('tr', { hasText: payeeName })).toContainText('88.88');
   });
 
   test('deletes a transaction through the UI', async ({ authedPage: page, api }) => {
