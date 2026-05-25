@@ -118,10 +118,11 @@ generated with `otplib` via `helpers/totp.ts`.
 | Area | Spec | Landed | Deferred (follow-up) |
 |------|------|--------|----------------------|
 | Securities | `securities.spec.ts` | Full CRUD + deactivate + validation | — |
-| Investments | `investments.spec.ts` | Page chrome; seeded BUY rolls into holdings; reload persistence | UI-driven trade entry (the combobox transaction modal); price-refresh assertion |
+| Investments | `investments.spec.ts` | Page chrome; seeded BUY rolls into holdings; reload persistence; UI-driven BUY through the transaction form | Other actions (SELL/DIVIDEND/SPLIT) via UI; price-refresh assertion |
 | Budgets | `budgets.spec.ts` | List; detail actuals-vs-budget (seeded category + txn); delete | Wizard-based create + validation (no UI path that isn't the spending-analysis wizard) |
 | Reports/insights/net-worth | `reports.spec.ts` | Built-in catalogue; open a report; net-worth + Monte-Carlo report render smokes; dashboard net-worth surface; insights page; open a seeded custom report | Custom report builder *form* CRUD; driving the Monte-Carlo projection inputs; asserting exact report figures |
 | Error states | `error-states.spec.ts` | Route-intercepted 500s surface a friendly message (categories, securities) | Broader per-page coverage |
+| Mobile | `mobile.spec.ts` | Phone-viewport dashboard render + create-account flow | Hamburger-nav navigation; per-flow mobile coverage |
 | Settings | `settings.spec.ts` | Sections render; profile-name + default-currency persistence; password change happy + wrong-current + weak-new (incl. re-login) | — |
 | 2FA + reset | `security.spec.ts` | 2FA enable (API) reflected in UI, login-with-2FA, disable; forgot-request message; reset missing/invalid-token guards | forgot→reset happy path (infra-blocked, below) |
 | Authorization | `authorization.spec.ts` | Unauthenticated visits to every protected route redirect to /login | Cross-user denial (needs the Phase 3 multi-user fixture) |

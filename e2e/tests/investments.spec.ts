@@ -86,4 +86,42 @@ test.describe('Investments', () => {
       page.locator('button', { hasText: `${pairName} - Brokerage` }),
     ).toBeVisible({ timeout: 15000 });
   });
+
+  test('records a BUY through the transaction form', async ({
+    authedPage: page,
+    api,
+  }) => {
+    // The account pair and security are seeded; the trade itself is entered in
+    // the UI. The transaction form uses native selects (not comboboxes), so the
+    // dropdowns are driven with selectOption by id.
+    const pairName = `Brokerage ${uniqueId()}`;
+    const pair = await createInvestmentAccountPair(api, { name: pairName });
+    const security = await createSecurity(api, {
+      symbol: `Z${uniqueId().slice(-5).toUpperCase()}`,
+      name: `Traded ${uniqueId()}`,
+    });
+
+    await page.goto('/investments');
+    await page.getByRole('button', { name: /\+ New Transaction/i }).click();
+    await page.getByRole('button', { name: 'Investment Transaction' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(
+      dialog.getByRole('heading', { name: 'New Investment Transaction' }),
+    ).toBeVisible();
+    await dialog.getByLabel('Brokerage Account').selectOption(pair.brokerageAccount.id);
+    await dialog.getByLabel('Transaction Type').selectOption('BUY');
+    await dialog.getByLabel('Security').selectOption(security.id);
+    await dialog.getByLabel('Quantity (Shares)').fill('10');
+    await dialog.getByLabel(/Price per Share/).fill('100');
+    await dialog.getByRole('button', { name: 'Create Transaction' }).click();
+
+    // The new position rolls into the holdings view.
+    const accountHeader = page.locator('button', {
+      hasText: `${pairName} - Brokerage`,
+    });
+    await expect(accountHeader).toBeVisible({ timeout: 15000 });
+    await accountHeader.click();
+    await expect(page.getByText(security.symbol, { exact: true })).toBeVisible();
+  });
 });
