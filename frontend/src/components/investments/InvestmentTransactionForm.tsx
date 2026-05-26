@@ -21,6 +21,7 @@ import {
   InvestmentTransaction,
   Security,
   CreateSecurityData,
+  Holding,
 } from '@/types/investment';
 import { getCurrencySymbol, roundToDecimals } from '@/lib/format';
 import { getErrorMessage } from '@/lib/errors';
@@ -165,12 +166,12 @@ export function InvestmentTransactionForm({
     quantity: number;
     averageCost: number;
   } | null>(null);
-  // Source-account holding for a TRANSFER, replayed as of the transfer date.
-  // Drives the available-quantity check and the cost-per-share prefill.
-  const [transferSourceHolding, setTransferSourceHolding] = useState<{
-    quantity: number;
-    averageCost: number;
-  } | null>(null);
+  // Current holdings in the TRANSFER source account. Drives the security
+  // dropdown (only securities actually held can be transferred) and the
+  // cost-per-share prefill + available-quantity check.
+  const [transferSourceHoldings, setTransferSourceHoldings] = useState<
+    Holding[]
+  >([]);
 
   // Filter to only show brokerage accounts (sorted)
   const brokerageAccounts = useMemo(
@@ -490,41 +491,63 @@ export function InvestmentTransactionForm({
     transaction?.id,
   ]);
 
-  // For a TRANSFER, replay the source account's holding as of the transfer
-  // date and prefill the cost-per-share with its average cost so the original
-  // cost basis carries to the destination (keeping gain/profit reports
-  // correct). Mirrors the SPLIT as-of fetch above.
+  // For a TRANSFER, load the source account's current holdings. Only securities
+  // actually held there can be transferred, and each holding carries the
+  // average cost we use to prefill the cost-per-share.
   useEffect(() => {
-    if (!isTransfer || !watchedAccountId || !watchedSecurityId || !watchedTransactionDate) {
-      setTransferSourceHolding(null);
+    if (!isTransfer || !watchedAccountId) {
+      setTransferSourceHoldings([]);
       return;
     }
     let cancelled = false;
     investmentsApi
-      .getHoldingAt({
-        accountId: watchedAccountId,
-        securityId: watchedSecurityId,
-        asOfDate: watchedTransactionDate,
-      })
+      .getHoldings(watchedAccountId)
       .then((data) => {
-        if (cancelled) return;
-        setTransferSourceHolding(data);
-        // Suggest the source average cost as the carried cost basis. Re-runs
-        // when source/security/date change; manual edits persist until then.
-        setValue('price', roundToDecimals(Number(data.averageCost) || 0, 6), {
-          shouldValidate: true,
-        });
+        if (!cancelled) setTransferSourceHoldings(data);
       })
       .catch((error) => {
         if (!cancelled) {
-          setTransferSourceHolding(null);
+          setTransferSourceHoldings([]);
           logger.error('Failed to load source holdings for transfer:', error);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [isTransfer, watchedAccountId, watchedSecurityId, watchedTransactionDate, setValue]);
+  }, [isTransfer, watchedAccountId]);
+
+  // Prefill the cost-per-share from the selected source holding's average cost
+  // so the original cost basis carries to the destination. Re-runs when the
+  // selected security (or the loaded holdings) change; manual edits persist
+  // until then.
+  const selectedTransferHolding = useMemo(
+    () =>
+      isTransfer && watchedSecurityId
+        ? transferSourceHoldings.find((h) => h.securityId === watchedSecurityId)
+        : undefined,
+    [isTransfer, watchedSecurityId, transferSourceHoldings],
+  );
+  useEffect(() => {
+    if (!selectedTransferHolding) return;
+    setValue(
+      'price',
+      roundToDecimals(Number(selectedTransferHolding.averageCost) || 0, 6),
+      { shouldValidate: true },
+    );
+  }, [selectedTransferHolding, setValue]);
+
+  // Securities available to transfer: only those currently held (qty > 0) in
+  // the source account.
+  const transferSecurityOptions = useMemo(
+    () =>
+      transferSourceHoldings
+        .filter((h) => Number(h.quantity) > 0 && h.security)
+        .map((h) => ({
+          value: h.securityId,
+          label: `${h.security.symbol} - ${h.security.name} (${h.security.currencyCode})`,
+        })),
+    [transferSourceHoldings],
+  );
 
   // Re-sync form values when editing and securities are loaded
   useEffect(() => {
@@ -575,8 +598,8 @@ export function InvestmentTransactionForm({
           setIsLoading(false);
           return;
         }
-        const available = Number(transferSourceHolding?.quantity ?? 0);
-        if (transferSourceHolding && quantity > available) {
+        const available = Number(selectedTransferHolding?.quantity ?? 0);
+        if (selectedTransferHolding && quantity > available) {
           toast.error(`Only ${available} shares available to transfer`);
           setIsLoading(false);
           return;
@@ -681,7 +704,7 @@ export function InvestmentTransactionForm({
         ...Object.entries(actionLabels)
           .filter(([value]) => value !== 'TRANSFER_IN' && value !== 'TRANSFER_OUT')
           .map(([value, label]) => ({ value, label })),
-        { value: 'TRANSFER', label: 'Transfer Between Accounts' },
+        { value: 'TRANSFER', label: 'Transfer' },
       ];
 
   // Brokerage accounts eligible as a transfer destination (exclude the source).
@@ -788,21 +811,36 @@ export function InvestmentTransactionForm({
             label="Security"
             error={errors.securityId?.message}
             options={[
-              { value: '', label: 'Select security...' },
-              ...securities.map((s) => ({
-                value: s.id,
-                label: `${s.symbol} - ${s.name} (${s.currencyCode})`,
-              })),
+              {
+                value: '',
+                label: isTransfer
+                  ? watchedAccountId
+                    ? transferSecurityOptions.length > 0
+                      ? 'Select security...'
+                      : 'No securities held in this account'
+                    : 'Select the From account first'
+                  : 'Select security...',
+              },
+              ...(isTransfer
+                ? transferSecurityOptions
+                : securities.map((s) => ({
+                    value: s.id,
+                    label: `${s.symbol} - ${s.name} (${s.currencyCode})`,
+                  }))),
             ]}
             {...register('securityId')}
           />
-          <button
-            type="button"
-            onClick={() => setShowSecurityModal(true)}
-            className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-          >
-            + Add new security
-          </button>
+          {/* Transfers can only move securities already held, so adding a new
+              one here makes no sense. */}
+          {!isTransfer && (
+            <button
+              type="button"
+              onClick={() => setShowSecurityModal(true)}
+              className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              + Add new security
+            </button>
+          )}
         </div>
       )}
 
@@ -980,20 +1018,21 @@ export function InvestmentTransactionForm({
               error={errors.price?.message}
             />
           </div>
-          {transferSourceHolding && transferSourceHolding.quantity > 0 && (
-            <div className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-              Source holds{' '}
-              <span className="font-mono">
-                {Number(transferSourceHolding.quantity).toFixed(4)}
-              </span>{' '}
-              shares @{' '}
-              <span className="font-mono">
-                {currencySymbol}
-                {Number(transferSourceHolding.averageCost).toFixed(4)}
-              </span>{' '}
-              avg cost as of {formatDate(watchedTransactionDate)}.
-            </div>
-          )}
+          {selectedTransferHolding &&
+            Number(selectedTransferHolding.quantity) > 0 && (
+              <div className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+                Source holds{' '}
+                <span className="font-mono">
+                  {Number(selectedTransferHolding.quantity).toFixed(4)}
+                </span>{' '}
+                shares @{' '}
+                <span className="font-mono">
+                  {currencySymbol}
+                  {Number(selectedTransferHolding.averageCost ?? 0).toFixed(4)}
+                </span>{' '}
+                avg cost.
+              </div>
+            )}
           <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
             The cost per share (prefilled from the source account) is carried to
             the destination so your gain and profit reports stay correct. This

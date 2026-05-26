@@ -480,6 +480,27 @@ describe('InvestmentTransactionForm', () => {
     } as any;
     const transferAccounts = [brokerageAccount, brokerageB, chequingAccount];
 
+    // The source account (a1) holds 100 shares of sec-1 at 1.67 avg cost.
+    const sourceHoldings = [
+      {
+        id: 'h1',
+        accountId: 'a1',
+        securityId: 'sec-1',
+        quantity: 100,
+        averageCost: 1.67,
+        security: {
+          id: 'sec-1',
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          currencyCode: 'USD',
+        },
+      },
+    ] as any;
+
+    beforeEach(() => {
+      vi.mocked(investmentsApi.getHoldings).mockResolvedValue(sourceHoldings);
+    });
+
     async function selectTransfer() {
       render(<InvestmentTransactionForm accounts={transferAccounts} />);
       await waitFor(() => {
@@ -520,11 +541,7 @@ describe('InvestmentTransactionForm', () => {
       });
     });
 
-    it('prefills cost per share from the source holding average cost', async () => {
-      vi.mocked(investmentsApi.getHoldingAt).mockResolvedValue({
-        quantity: 100,
-        averageCost: 1.67,
-      });
+    it('lists only securities held in the source account', async () => {
       await selectTransfer();
       await act(async () => {
         fireEvent.change(screen.getByLabelText('From Account'), {
@@ -532,7 +549,29 @@ describe('InvestmentTransactionForm', () => {
         });
       });
       await waitFor(() => {
-        expect(screen.getByText('Security')).toBeInTheDocument();
+        expect(investmentsApi.getHoldings).toHaveBeenCalledWith('a1');
+      });
+      await waitFor(() => {
+        const select = screen.getByLabelText('Security');
+        const values = Array.from(select.querySelectorAll('option'))
+          .map((o) => o.getAttribute('value'))
+          .filter(Boolean);
+        // Only the held security (sec-1) is offered.
+        expect(values).toEqual(['sec-1']);
+      });
+      // Transfers cannot create new securities.
+      expect(screen.queryByText('+ Add new security')).not.toBeInTheDocument();
+    });
+
+    it('prefills cost per share from the source holding average cost', async () => {
+      await selectTransfer();
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('From Account'), {
+          target: { value: 'a1' },
+        });
+      });
+      await waitFor(() => {
+        expect(investmentsApi.getHoldings).toHaveBeenCalledWith('a1');
       });
       await act(async () => {
         fireEvent.change(screen.getByLabelText('Security'), {
@@ -540,20 +579,11 @@ describe('InvestmentTransactionForm', () => {
         });
       });
       await waitFor(() => {
-        expect(investmentsApi.getHoldingAt).toHaveBeenCalledWith(
-          expect.objectContaining({ accountId: 'a1', securityId: 'sec-1' }),
-        );
-      });
-      await waitFor(() => {
         expect(screen.getByLabelText(/Cost per Share/)).toHaveValue('1.670000');
       });
     });
 
     it('submits a transfer with the correct payload', async () => {
-      vi.mocked(investmentsApi.getHoldingAt).mockResolvedValue({
-        quantity: 100,
-        averageCost: 1.67,
-      });
       await selectTransfer();
       await act(async () => {
         fireEvent.change(screen.getByLabelText('From Account'), {
@@ -566,7 +596,7 @@ describe('InvestmentTransactionForm', () => {
         });
       });
       await waitFor(() => {
-        expect(screen.getByText('Security')).toBeInTheDocument();
+        expect(investmentsApi.getHoldings).toHaveBeenCalledWith('a1');
       });
       await act(async () => {
         fireEvent.change(screen.getByLabelText('Security'), {
@@ -597,10 +627,6 @@ describe('InvestmentTransactionForm', () => {
     });
 
     it('blocks a transfer to the same source and destination account', async () => {
-      vi.mocked(investmentsApi.getHoldingAt).mockResolvedValue({
-        quantity: 100,
-        averageCost: 1.67,
-      });
       await selectTransfer();
       await act(async () => {
         fireEvent.change(screen.getByLabelText('From Account'), {
@@ -608,7 +634,7 @@ describe('InvestmentTransactionForm', () => {
         });
       });
       await waitFor(() => {
-        expect(screen.getByText('Security')).toBeInTheDocument();
+        expect(investmentsApi.getHoldings).toHaveBeenCalledWith('a1');
       });
       await act(async () => {
         fireEvent.change(screen.getByLabelText('Security'), {
