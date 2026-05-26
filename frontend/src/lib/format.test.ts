@@ -231,6 +231,13 @@ describe('formatShareQuantity', () => {
     expect(formatShareQuantity(undefined)).toBe('0');
     expect(formatShareQuantity(NaN)).toBe('0');
   });
+
+  it('normalizes negative zero and tiny negative residues to 0', () => {
+    expect(formatShareQuantity(-0)).toBe('0');
+    // A floating-point residue left after fully zeroing a holding.
+    expect(formatShareQuantity(-4.77e-15)).toBe('0');
+    expect(formatShareQuantity(-0.000000001)).toBe('0');
+  });
 });
 
 describe('formatAmountWithCommas', () => {

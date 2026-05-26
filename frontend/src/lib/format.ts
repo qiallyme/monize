@@ -114,7 +114,13 @@ export function formatShareQuantity(value: number | undefined | null): string {
   }
   const fixed = value.toFixed(8);
   // Trim trailing zeros and a dangling decimal point.
-  return fixed.replace(/\.?0+$/, '') || '0';
+  const trimmed = fixed.replace(/\.?0+$/, '');
+  // Map empty (all zeros) and negative zero (a tiny negative residue that
+  // rounds to zero, e.g. -4e-15) to a clean "0".
+  if (trimmed === '' || trimmed === '-0') {
+    return '0';
+  }
+  return trimmed;
 }
 
 /**
