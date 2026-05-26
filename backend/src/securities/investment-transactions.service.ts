@@ -1571,6 +1571,27 @@ export class InvestmentTransactionsService {
         editedLeg.account = { id: updateDto.accountId } as any;
       }
 
+      // The paired leg can be rerouted to a different destination account.
+      if (updateDto.destinationAccountId !== undefined) {
+        const destAccount = await this.accountsService.findOne(
+          userId,
+          updateDto.destinationAccountId,
+        );
+        if (destAccount.accountType !== "INVESTMENT") {
+          throw new BadRequestException(
+            "Destination account must be of type INVESTMENT",
+          );
+        }
+        linkedLeg.accountId = updateDto.destinationAccountId;
+        linkedLeg.account = { id: updateDto.destinationAccountId } as any;
+      }
+
+      if (editedLeg.accountId === linkedLeg.accountId) {
+        throw new BadRequestException(
+          "Source and destination accounts must be different",
+        );
+      }
+
       // Shared fields applied to both legs.
       const applyShared = (leg: InvestmentTransaction) => {
         if (updateDto.securityId !== undefined) {
@@ -1595,6 +1616,7 @@ export class InvestmentTransactionsService {
       applyShared(linkedLeg);
 
       affectedAccountIds.add(editedLeg.accountId);
+      affectedAccountIds.add(linkedLeg.accountId);
       if (editedLeg.securityId) affectedSecurityIds.add(editedLeg.securityId);
 
       const savedEdited = await queryRunner.manager.save(editedLeg);

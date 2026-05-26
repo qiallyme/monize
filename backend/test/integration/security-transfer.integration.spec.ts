@@ -237,6 +237,46 @@ describe("Security transfer between accounts (integration)", () => {
     expect(Number(bHolding?.averageCost)).toBeCloseTo(1.67, 6);
   });
 
+  it("reroutes the destination account when editing a transfer", async () => {
+    await buy100At167();
+    const { transferOut } = await service.transferSecurity(userId, {
+      fromAccountId: brokerageA,
+      toAccountId: brokerageB,
+      securityId,
+      transactionDate: "2026-02-01",
+      quantity: 100,
+      costPerShare: 1.67,
+    });
+
+    // Add a third brokerage and reroute the destination to it.
+    const c = await createTestAccount(dataSource, userId, {
+      name: "Brokerage C",
+      openingBalance: 0,
+      currentBalance: 0,
+    });
+    await dataSource.manager.update(Account, c.id, {
+      accountType: AccountType.INVESTMENT,
+      accountSubType: AccountSubType.INVESTMENT_BROKERAGE,
+    });
+
+    await service.update(userId, transferOut.id, {
+      destinationAccountId: c.id,
+    });
+
+    // Shares now sit in C, not B; cost basis preserved.
+    const bHolding = await holdingsService.findByAccountAndSecurity(
+      brokerageB,
+      securityId,
+    );
+    const cHolding = await holdingsService.findByAccountAndSecurity(
+      c.id,
+      securityId,
+    );
+    expect(qty(bHolding)).toBe(0);
+    expect(qty(cHolding)).toBe(100);
+    expect(Number(cHolding?.averageCost)).toBeCloseTo(1.67, 6);
+  });
+
   it("rejects transferring more shares than the source holds", async () => {
     await buy100At167();
     await expect(

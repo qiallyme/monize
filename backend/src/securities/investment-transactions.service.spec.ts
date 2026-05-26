@@ -5061,5 +5061,42 @@ describe("InvestmentTransactionsService", () => {
         service.update(userId, "leg-out", { action: InvestmentAction.BUY }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it("update reroutes the destination account onto the linked leg", async () => {
+      const { outLeg, inLeg } = makeLegs();
+      const account3 = "account-3";
+      accountsService.findOne.mockImplementation((uid: string, aid: string) => {
+        if (aid === accountId) return Promise.resolve(mockInvestmentAccount);
+        if (aid === toAccountId) return Promise.resolve(mockToAccount);
+        if (aid === account3)
+          return Promise.resolve({ ...mockToAccount, id: account3 });
+        if (aid === cashAccountId) return Promise.resolve(mockCashAccount);
+        return Promise.reject(new NotFoundException("Account not found"));
+      });
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder(outLeg),
+      );
+      investmentTransactionsRepository.findOne.mockResolvedValue(inLeg);
+
+      await service.update(userId, "leg-out", {
+        destinationAccountId: account3,
+      });
+
+      // The destination (linked) leg moves to the new account.
+      expect(inLeg.accountId).toBe(account3);
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+    });
+
+    it("update rejects rerouting the destination to the source account", async () => {
+      const { outLeg, inLeg } = makeLegs();
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder(outLeg),
+      );
+      investmentTransactionsRepository.findOne.mockResolvedValue(inLeg);
+
+      await expect(
+        service.update(userId, "leg-out", { destinationAccountId: accountId }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 });

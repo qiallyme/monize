@@ -207,7 +207,11 @@ export const investmentsApi = {
   // Update investment transaction
   updateTransaction: async (
     id: string,
-    data: Partial<CreateInvestmentTransactionData>,
+    // destinationAccountId is only used when editing a security-transfer leg,
+    // to reroute the paired leg's account.
+    data: Partial<CreateInvestmentTransactionData> & {
+      destinationAccountId?: string;
+    },
   ): Promise<InvestmentTransaction> => {
     const response = await apiClient.patch<InvestmentTransaction>(
       `/investment-transactions/${id}`,

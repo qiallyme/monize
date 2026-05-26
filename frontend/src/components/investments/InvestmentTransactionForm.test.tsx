@@ -56,6 +56,7 @@ vi.mock('@/lib/investments', () => ({
     createTransaction: vi.fn().mockResolvedValue({}),
     updateTransaction: vi.fn().mockResolvedValue({}),
     transferSecurity: vi.fn().mockResolvedValue({ transferOut: {}, transferIn: {} }),
+    getTransaction: vi.fn().mockResolvedValue({}),
   },
 }));
 
@@ -657,6 +658,16 @@ describe('InvestmentTransactionForm', () => {
   });
 
   describe('Editing a posted transfer leg', () => {
+    const brokerageB = {
+      id: 'b1',
+      name: 'TFSA Brokerage',
+      accountType: 'INVESTMENT',
+      accountSubType: 'INVESTMENT_BROKERAGE',
+      currencyCode: 'CAD',
+    } as any;
+    const editAccounts = [brokerageAccount, brokerageB, chequingAccount];
+
+    // The opened OUT leg (source a1) is linked to the IN leg (dest b1).
     const transferLeg = {
       id: 'leg-out',
       accountId: 'a1',
@@ -668,12 +679,25 @@ describe('InvestmentTransactionForm', () => {
       commission: 0,
       totalAmount: 0,
       description: '',
+      linkedTransactionId: 'leg-in',
     } as any;
+
+    beforeEach(() => {
+      vi.mocked(investmentsApi.getTransaction).mockResolvedValue({
+        id: 'leg-in',
+        accountId: 'b1',
+        action: 'TRANSFER_IN',
+        securityId: 'sec-1',
+        quantity: 100,
+        price: 1.67,
+        linkedTransactionId: 'leg-out',
+      } as any);
+    });
 
     it('locks the transaction type so the direction cannot change', async () => {
       render(
         <InvestmentTransactionForm
-          accounts={accounts}
+          accounts={editAccounts}
           transaction={transferLeg}
         />,
       );
@@ -686,7 +710,7 @@ describe('InvestmentTransactionForm', () => {
     it('does not show the Total Amount for a transfer', async () => {
       render(
         <InvestmentTransactionForm
-          accounts={accounts}
+          accounts={editAccounts}
           transaction={transferLeg}
         />,
       );
@@ -694,6 +718,55 @@ describe('InvestmentTransactionForm', () => {
         expect(screen.getByText('Update Transaction')).toBeInTheDocument();
       });
       expect(screen.queryByText(/Total Amount/)).not.toBeInTheDocument();
+    });
+
+    it('shows both the source and destination accounts', async () => {
+      render(
+        <InvestmentTransactionForm
+          accounts={editAccounts}
+          transaction={transferLeg}
+        />,
+      );
+      await waitFor(() => {
+        expect(investmentsApi.getTransaction).toHaveBeenCalledWith('leg-in');
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('From Account')).toHaveValue('a1');
+        expect(screen.getByLabelText('To Account')).toHaveValue('b1');
+      });
+    });
+
+    it('submits both accounts to the source leg when edited', async () => {
+      render(
+        <InvestmentTransactionForm
+          accounts={editAccounts}
+          transaction={transferLeg}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByLabelText('To Account')).toHaveValue('b1');
+      });
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Quantity (Shares)'), {
+          target: { value: '60' },
+        });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText('Update Transaction'));
+      });
+      await waitFor(() => {
+        expect(investmentsApi.updateTransaction).toHaveBeenCalled();
+      });
+      const [id, payload] = vi.mocked(investmentsApi.updateTransaction).mock
+        .calls[0];
+      // Edits route through the source (OUT) leg and carry both accounts.
+      expect(id).toBe('leg-out');
+      expect(payload).toMatchObject({
+        accountId: 'a1',
+        destinationAccountId: 'b1',
+        securityId: 'sec-1',
+        quantity: 60,
+      });
     });
   });
 

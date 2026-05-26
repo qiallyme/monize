@@ -83,14 +83,13 @@ const actionLabels: Record<InvestmentAction, string> = {
   REMOVE_SHARES: 'Remove Shares',
 };
 
-// Actions that require a security selection. TRANSFER_IN/TRANSFER_OUT are the
-// individual legs of a transfer; they carry a security, quantity and per-share
-// cost basis. Creation goes through the combined "Transfer" action, so these
-// only surface here when editing an existing leg.
-const securityRequiredActions: InvestmentAction[] = ['BUY', 'SELL', 'DIVIDEND', 'CAPITAL_GAIN', 'SPLIT', 'REINVEST', 'ADD_SHARES', 'REMOVE_SHARES', 'TRANSFER_IN', 'TRANSFER_OUT'];
+// Actions that require a security selection. Transfers (the combined create
+// action and the TRANSFER_IN/TRANSFER_OUT edit legs) render their own security
+// + quantity + cost fields via `transferMode`, so they're excluded here.
+const securityRequiredActions: InvestmentAction[] = ['BUY', 'SELL', 'DIVIDEND', 'CAPITAL_GAIN', 'SPLIT', 'REINVEST', 'ADD_SHARES', 'REMOVE_SHARES'];
 
-// Actions that require quantity and price (per-share cost for transfer legs)
-const quantityPriceActions: InvestmentAction[] = ['BUY', 'SELL', 'REINVEST', 'TRANSFER_IN', 'TRANSFER_OUT'];
+// Actions that require quantity and price
+const quantityPriceActions: InvestmentAction[] = ['BUY', 'SELL', 'REINVEST'];
 
 // Actions that only need quantity (no price, no cash effect)
 const quantityOnlyActions: InvestmentAction[] = ['ADD_SHARES', 'REMOVE_SHARES'];
@@ -172,6 +171,10 @@ export function InvestmentTransactionForm({
   const [transferSourceHoldings, setTransferSourceHoldings] = useState<
     Holding[]
   >([]);
+  // When editing a transfer leg, the paired (linked) leg -- so the form can
+  // show and edit both the source and destination accounts.
+  const [transferLinkedLeg, setTransferLinkedLeg] =
+    useState<InvestmentTransaction | null>(null);
 
   // Filter to only show brokerage accounts (sorted)
   const brokerageAccounts = useMemo(
@@ -516,6 +519,44 @@ export function InvestmentTransactionForm({
     };
   }, [isTransfer, watchedAccountId]);
 
+  // When editing a transfer leg, load the paired leg so both the source and
+  // destination accounts can be shown. The form's `accountId` always holds the
+  // source (TRANSFER_OUT) account and `destinationAccountId` the destination
+  // (TRANSFER_IN) account, regardless of which leg was opened.
+  useEffect(() => {
+    const action = transaction?.action;
+    if (
+      !transaction ||
+      (action !== 'TRANSFER_IN' && action !== 'TRANSFER_OUT') ||
+      !transaction.linkedTransactionId
+    ) {
+      setTransferLinkedLeg(null);
+      return;
+    }
+    let cancelled = false;
+    investmentsApi
+      .getTransaction(transaction.linkedTransactionId)
+      .then((linked) => {
+        if (cancelled) return;
+        setTransferLinkedLeg(linked);
+        const sourceId =
+          action === 'TRANSFER_OUT' ? transaction.accountId : linked.accountId;
+        const destId =
+          action === 'TRANSFER_OUT' ? linked.accountId : transaction.accountId;
+        setValue('accountId', sourceId);
+        setValue('destinationAccountId', destId);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setTransferLinkedLeg(null);
+          logger.error('Failed to load linked transfer leg:', error);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [transaction, setValue]);
+
   // Prefill the cost-per-share from the selected source holding's average cost
   // so the original cost basis carries to the destination. Re-runs when the
   // selected security (or the loaded holdings) change; manual edits persist
@@ -618,6 +659,56 @@ export function InvestmentTransactionForm({
         return;
       }
 
+      // Editing an existing transfer: update the pair via the source (OUT) leg.
+      if (
+        transaction &&
+        (data.action === 'TRANSFER_IN' || data.action === 'TRANSFER_OUT')
+      ) {
+        const quantity = Number(data.quantity) || 0;
+        const costPerShare = Number(data.price) || 0;
+        if (!data.securityId) {
+          toast.error('Select a security to transfer');
+          setIsLoading(false);
+          return;
+        }
+        if (!data.destinationAccountId) {
+          toast.error('Select a destination account');
+          setIsLoading(false);
+          return;
+        }
+        if (data.destinationAccountId === data.accountId) {
+          toast.error('Source and destination accounts must be different');
+          setIsLoading(false);
+          return;
+        }
+        if (quantity <= 0) {
+          toast.error('Quantity must be greater than zero');
+          setIsLoading(false);
+          return;
+        }
+        const outLegId =
+          data.action === 'TRANSFER_OUT'
+            ? transaction.id
+            : transferLinkedLeg?.id;
+        if (!outLegId) {
+          toast.error('Could not load the paired transfer leg; reopen and try again');
+          setIsLoading(false);
+          return;
+        }
+        await investmentsApi.updateTransaction(outLegId, {
+          accountId: data.accountId,
+          destinationAccountId: data.destinationAccountId,
+          securityId: data.securityId,
+          quantity,
+          price: costPerShare,
+          transactionDate: data.transactionDate,
+          description: data.description,
+        });
+        toast.success('Transfer updated');
+        onSuccess?.();
+        return;
+      }
+
       const action = data.action as InvestmentAction;
       const postsCash = cashPostingActions.includes(action);
       const isSplit = action === 'SPLIT';
@@ -696,6 +787,9 @@ export function InvestmentTransactionForm({
   // combined 'TRANSFER' action instead.
   const isTransferLeg =
     watchedAction === 'TRANSFER_IN' || watchedAction === 'TRANSFER_OUT';
+  // Either creating a transfer (combined action) or editing an existing leg.
+  // Both render the From/To + security + quantity + cost-per-share UI.
+  const transferMode = isTransfer || isTransferLeg;
   const canHaveFundingAccount = fundingAccountActions.includes(watchedAction);
   const canHaveCashDestination = cashDestinationActions.includes(watchedAction);
 
@@ -735,7 +829,7 @@ export function InvestmentTransactionForm({
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {/* Account Selection */}
       <Select
-        label={isTransfer ? 'From Account' : 'Brokerage Account'}
+        label={transferMode ? 'From Account' : 'Brokerage Account'}
         error={errors.accountId?.message}
         options={[
           { value: '', label: 'Select account...' },
@@ -797,7 +891,7 @@ export function InvestmentTransactionForm({
       )}
 
       {/* Destination account - for a transfer between accounts */}
-      {isTransfer && (
+      {transferMode && (
         <Select
           label="To Account"
           error={errors.destinationAccountId?.message}
@@ -813,7 +907,7 @@ export function InvestmentTransactionForm({
       )}
 
       {/* Security Selection - only for actions that need it */}
-      {(needsSecurity || isTransfer) && (
+      {(needsSecurity || transferMode) && (
         <div className="space-y-2">
           <Select
             label="Security"
@@ -840,7 +934,7 @@ export function InvestmentTransactionForm({
           />
           {/* Transfers can only move securities already held, so adding a new
               one here makes no sense. */}
-          {!isTransfer && (
+          {!transferMode && (
             <button
               type="button"
               onClick={() => setShowSecurityModal(true)}
@@ -1005,7 +1099,7 @@ export function InvestmentTransactionForm({
       )}
 
       {/* Quantity and cost basis - for a transfer between accounts */}
-      {isTransfer && (
+      {transferMode && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-4">
             <NumericInput

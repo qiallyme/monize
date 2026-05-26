@@ -145,6 +145,26 @@ describe('useInvestmentData – handleDeleteTransaction', () => {
     });
   });
 
+  it('removes both legs of a security transfer when one is deleted', async () => {
+    mockDeleteTransaction.mockResolvedValue(undefined);
+    const out = { ...makeTx('t1'), action: 'TRANSFER_OUT', linkedTransactionId: 't2' };
+    const inLeg = { ...makeTx('t2'), action: 'TRANSFER_IN', linkedTransactionId: 't1' };
+    mockGetTransactions.mockResolvedValue({
+      data: [out, inLeg],
+      pagination: { page: 1, limit: 25, total: 2, totalPages: 1, hasMore: false },
+    });
+
+    const { result } = renderHook(() => useInvestmentData());
+    await act(async () => { await new Promise(res => setTimeout(res, 0)); });
+
+    await act(async () => {
+      await result.current.handleDeleteTransaction('t1');
+    });
+
+    // Both the deleted leg and its linked pair are gone from the list.
+    expect(result.current.transactions).toHaveLength(0);
+  });
+
   it('calls deleteTransaction API with the correct id', async () => {
     mockDeleteTransaction.mockResolvedValue(undefined);
 

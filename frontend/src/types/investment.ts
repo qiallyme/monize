@@ -140,6 +140,8 @@ export interface InvestmentTransaction {
   totalAmount: number;
   exchangeRate: number;
   description: string | null;
+  // Set on security-transfer legs; points at the paired TRANSFER_IN/OUT leg.
+  linkedTransactionId: string | null;
   security: Security | null;
   fundingAccount: {
     id: string;
