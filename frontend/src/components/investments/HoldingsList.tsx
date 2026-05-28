@@ -9,11 +9,18 @@ interface HoldingsListProps {
 }
 
 export function HoldingsList({ holdings, isLoading }: HoldingsListProps) {
-  const { formatCurrency: formatCurrencyBase, numberFormat } = useNumberFormat();
+  const { formatCurrency: formatCurrencyBase, formatCurrencyPrecise, numberFormat } = useNumberFormat();
 
   const formatCurrency = (value: number | null) => {
     if (value === null) return '-';
     return formatCurrencyBase(value);
+  };
+
+  // Per-share prices can be sub-penny (e.g. LSE pennies); expand precision so
+  // they don't collapse to the currency's 2dp zero.
+  const formatPrice = (value: number | null) => {
+    if (value === null) return '-';
+    return formatCurrencyPrecise(value);
   };
 
   const formatPercent = (value: number | null) => {
@@ -107,10 +114,10 @@ export function HoldingsList({ holdings, isLoading }: HoldingsListProps) {
                   {formatQuantity(holding.quantity)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-gray-900 dark:text-gray-100">
-                  {formatCurrency(holding.averageCost)}
+                  {formatPrice(holding.averageCost)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-gray-900 dark:text-gray-100">
-                  {formatCurrency(holding.currentPrice)}
+                  {formatPrice(holding.currentPrice)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right font-medium text-gray-900 dark:text-gray-100">
                   {formatCurrency(holding.marketValue)}

@@ -52,7 +52,7 @@ export function SecurityTransactionHistory({
   onChanged,
 }: SecurityTransactionHistoryProps) {
   const { formatDate } = useDateFormat();
-  const { formatCurrency } = useNumberFormat();
+  const { formatCurrency, formatCurrencyPrecise } = useNumberFormat();
   const [history, setHistory] = useState<SecurityTransactionHistoryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
@@ -252,7 +252,7 @@ export function SecurityTransactionHistory({
                       {formatShareQuantity(running)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-sm text-gray-700 dark:text-gray-300">
-                      {tx.price === null ? '-' : formatCurrency(tx.price, security.currencyCode, 4)}
+                      {tx.price === null ? '-' : formatCurrencyPrecise(tx.price, security.currencyCode, 4)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-sm text-gray-700 dark:text-gray-300">
                       {formatCurrency(tx.totalAmount, security.currencyCode)}

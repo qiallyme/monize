@@ -195,7 +195,7 @@ export function IncomeExpensesBarChart({
         </h3>
         <span className="text-sm text-gray-500 dark:text-gray-400">Last 5 weeks</span>
       </div>
-      <div className="h-64">
+      <div className="flex-1 min-h-[16rem]">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart
             data={chartData}
@@ -247,7 +247,7 @@ export function IncomeExpensesBarChart({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-4 text-center">
+      <div className="pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-4 text-center">
         <div>
           <div className="text-sm text-gray-500 dark:text-gray-400">Income</div>
           <div className="font-semibold text-green-600 dark:text-green-400">

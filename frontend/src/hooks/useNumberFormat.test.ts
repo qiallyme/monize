@@ -31,6 +31,31 @@ describe('useNumberFormat', () => {
     expect(formatted).toContain('1,000.00');
   });
 
+  it('formatCurrencyPrecise matches formatCurrency for normal values', () => {
+    const { result } = renderHook(() => useNumberFormat());
+    expect(result.current.formatCurrencyPrecise(1234.56)).toBe(
+      result.current.formatCurrency(1234.56),
+    );
+  });
+
+  it('formatCurrencyPrecise expands precision for sub-penny values', () => {
+    const { result } = renderHook(() => useNumberFormat());
+    // Would render as $0.00 with the default 2dp formatter.
+    expect(result.current.formatCurrency(0.000318)).toContain('0.00');
+    const precise = result.current.formatCurrencyPrecise(0.000318);
+    expect(precise).toContain('0.000318');
+    expect(precise).not.toMatch(/0\.00($|[^0])/);
+  });
+
+  it('formatCurrencyPrecise honours a higher base precision via minFractionDigits', () => {
+    const { result } = renderHook(() => useNumberFormat());
+    // A 4dp price column keeps 4 decimals for a normal value...
+    expect(result.current.formatCurrencyPrecise(12.3456, 'USD', 4)).toContain('12.3456');
+    // ...and only expands when even 4dp would read as zero.
+    const tiny = result.current.formatCurrencyPrecise(0.00001, 'USD', 4);
+    expect(tiny).toContain('0.00001');
+  });
+
   it('formatCurrencyCompact omits decimals', () => {
     const { result } = renderHook(() => useNumberFormat());
     const formatted = result.current.formatCurrencyCompact(1234);
