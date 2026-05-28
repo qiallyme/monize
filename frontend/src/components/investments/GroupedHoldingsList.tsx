@@ -21,7 +21,7 @@ export function GroupedHoldingsList({
   onSymbolClick,
   onCashClick,
 }: GroupedHoldingsListProps) {
-  const { formatCurrency: formatCurrencyBase, numberFormat } = useNumberFormat();
+  const { formatCurrency: formatCurrencyBase, formatCurrencyPrecise, numberFormat } = useNumberFormat();
   const { convert, convertToDefault, defaultCurrency } = useExchangeRates();
 
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(
@@ -47,7 +47,9 @@ export function GroupedHoldingsList({
 
   const formatPrice = (value: number | null, currencyCode?: string) => {
     if (value === null) return '-';
-    return formatCurrencyBase(value, currencyCode, 4);
+    // Per-share prices display at 4dp, expanding further only when a sub-penny
+    // value would otherwise read as 0.0000.
+    return formatCurrencyPrecise(value, currencyCode, 4);
   };
 
   const formatPercent = (value: number | null, showSign = true) => {

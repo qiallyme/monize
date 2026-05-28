@@ -41,6 +41,14 @@ vi.mock('@/hooks/useDateFormat', () => ({
 vi.mock('@/hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
     formatCurrency: (n: number) => `$${n.toFixed(2)}`,
+    formatCurrencyPrecise: (n: number) => {
+      const abs = Math.abs(n);
+      let digits = 2;
+      if (n !== 0 && abs < 0.005) {
+        digits = Math.min(6, Math.max(2, -Math.floor(Math.log10(abs)) + 2));
+      }
+      return `$${n.toFixed(digits)}`;
+    },
   }),
 }));
 

@@ -49,19 +49,25 @@ export function useNumberFormat() {
   /**
    * Currency format that expands precision for tiny values so a sub-penny
    * amount (e.g. a 0.000342 GBP price or daily change) doesn't render as
-   * "0.00". Values that already show a figure at the currency's natural
-   * precision are formatted identically to formatCurrency.
+   * "0.00". Values that already show a figure at the base precision are
+   * formatted identically to formatCurrency.
+   *
+   * `minFractionDigits` raises the base precision for columns that already
+   * display more than the currency's natural decimals (e.g. per-share price
+   * columns shown at 4dp); expansion then only kicks in when even that would
+   * round to zero.
    */
   const formatCurrencyPrecise = useCallback(
-    (amount: number, currencyCode?: string): string => {
+    (amount: number, currencyCode?: string, minFractionDigits?: number): string => {
       const currency = currencyCode || defaultCurrency;
       const locale = getEffectiveLocale(numberFormat);
-      const baseDigits =
+      const currencyDigits =
         new Intl.NumberFormat(locale, {
           style: 'currency',
           currency,
           currencyDisplay: 'narrowSymbol',
         }).resolvedOptions().minimumFractionDigits ?? 2;
+      const baseDigits = Math.max(currencyDigits, minFractionDigits ?? 0);
       return formatCurrency(amount, currency, adaptiveFractionDigits(amount, baseDigits));
     },
     [numberFormat, defaultCurrency, formatCurrency]
