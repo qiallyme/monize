@@ -22,11 +22,19 @@ biggest single dedup win.
 
 ## P0 / P1 — Highest impact (correctness + biggest dedup)
 
-> Status (2026-05-30): Items #2, #3, and #4 below have been implemented on
-> branch `claude/code-audit-efficiency-Ifpnl` with full unit-test coverage.
-> Item #1 (money helper) is intentionally deferred.
+> Status (2026-05-30): Items #2, #3, and #4 have been implemented on branch
+> `claude/code-audit-efficiency-Ifpnl` (PR #585) with full unit-test coverage.
+> Item #1 (money rounding/summation consolidation) has been implemented on its
+> own branch `claude/money-rounding-consolidation` (PR #586).
+>
+> Verification: the full backend test suite passes on PR #585 — 6966 unit tests
+> and, against a real PostgreSQL, all 19 integration tests (transactions,
+> transfers, securities, category-delete cascade, etc.). PR #586 passes all 6976
+> unit tests. (An initial CI "backend-tests" failure on PR #585 was traced to a
+> test-runner DB-env misconfiguration, not a code defect — the same tests fail
+> identically on `main` without a database and pass once a database is provided.)
 
-### 1. Money rounding & summation: standardize on one shared helper (HIGH) — DEFERRED
+### 1. Money rounding & summation: standardize on one shared helper (HIGH) — DONE (PR #586)
 Three distinct conventions are in active use, and the helper is redefined ~7 times.
 - Core write/balance path correctly uses 4dp (`accounts.service.ts:269,275,464,781,818`;
   `transaction-split.service.ts:77,80`).
@@ -189,3 +197,37 @@ wrapper into the service and update MCP. Update the corresponding specs.
 5. Frontend: unify currency formatting + route percent/number/date through hooks; memoize
    Intl formatters.
 6. DB fixes (`month` transformer, holdings `user_id`, stale migration doc) + the one missing test.
+
+---
+
+## Implementation log (2026-05-30)
+
+### PR #585 — branch `claude/code-audit-efficiency-Ifpnl` (items #2, #3, #4)
+- **#2 QueryRunner transactions:** wrapped the remaining multi-table read-modify-write
+  operations in transactions — `payees.update` (name cascade to transactions +
+  scheduled transactions), `categories.update`/`remove` (descendant `isIncome` cascade,
+  payee default-category clear), `budgets.bulkUpdateCategories` (also removed an N+1),
+  `accounts.reopen`/`delete` (linked-account pair), and `scheduled-transactions.update`
+  (split rewrite + mode-switch clearing + row update). `createSplits` and
+  `updateDescendantTypes` now accept an `EntityManager` so they enlist in the caller's
+  transaction.
+- **#3 AI/MCP shape parity:** `get_net_worth_history` in the AI tool executor now returns
+  the bare history array, matching the MCP server payload exactly.
+- **#4 Recurring-charge dedup:** extracted the duplicated detection logic into
+  `TransactionAnalyticsService.getRecurringCharges` + a shared `recurring-charges.util`
+  (`RecurringCharge` type, `detectFrequency`); the insights and forecast aggregators now
+  delegate instead of each re-implementing the query, classifier, and interface.
+- Verified: 6966 unit tests pass; all 19 integration tests pass against a real PostgreSQL.
+
+### PR #586 — branch `claude/money-rounding-consolidation` (item #1)
+- Added shared `roundMoney` (4dp, IEEE-754-safe) and `sumMoney` (integer-cents) to
+  `common/round.util.ts`; standardized all monetary aggregation on 4dp across budgets,
+  built-in-reports/reports, securities, monte-carlo, transactions, accounts, and
+  investment-reports — removing ~9 divergent ad-hoc rounding helpers and naive float
+  `reduce` money sums. Display still rounds to currency precision at the formatting layer.
+- Fixed the transaction-analytics 2dp-vs-4dp `roundMoney` self-contradiction.
+- Bonus fix: `roundToDecimals` previously returned `NaN` for magnitudes below `1e-6`
+  (exponential `toString()` like `"1e-7e4"`); it now decomposes via `toExponential()`.
+- Behavioral note: report/budget/LLM JSON responses may now carry up to 4 decimals where
+  they previously carried 2 (on-screen formatting unchanged). Affected unit specs were
+  re-baselined. Verified: 6976 unit tests pass.
