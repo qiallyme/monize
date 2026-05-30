@@ -872,38 +872,29 @@ export class AccountsService {
   }> {
     const accounts = await this.findAll(userId, false);
 
-    const assetTypes = ["CHEQUING", "SAVINGS", "INVESTMENT", "CASH", "ASSET"];
-    const liabilityTypes = [
-      "CREDIT_CARD",
-      "LOAN",
-      "MORTGAGE",
-      "LINE_OF_CREDIT",
-    ];
+    // totalBalance is the raw book-balance sum across accounts. Assets,
+    // liabilities and net worth are derived from the same canonical source as
+    // the dashboard Net Worth widget and the `get_account_balances` tool
+    // (getMonthlyNetWorth) so every surface reports an identical net worth.
+    // The previous naive currentBalance classification here ignored brokerage
+    // market value and futureTransactionsSum, producing a different number than
+    // the rest of the app.
+    const totalBalanceCents = accounts.reduce(
+      (sum, account) =>
+        sum + Math.round(Number(account.currentBalance) * 10000),
+      0,
+    );
+    const totalBalance = totalBalanceCents / 10000;
 
-    let totalBalance = 0;
-    let totalAssets = 0;
-    let totalLiabilities = 0;
-
-    accounts.forEach((account) => {
-      const balance = Number(account.currentBalance);
-      totalBalance += balance;
-
-      if (account.excludeFromNetWorth) return;
-
-      if (assetTypes.includes(account.accountType)) {
-        totalAssets += balance;
-      } else if (liabilityTypes.includes(account.accountType)) {
-        // Liabilities are typically negative or stored as positive but represent debt
-        totalLiabilities += Math.abs(balance);
-      }
-    });
+    const monthly = await this.netWorthService.getMonthlyNetWorth(userId);
+    const latest = monthly[monthly.length - 1];
 
     return {
       totalAccounts: accounts.length,
       totalBalance,
-      totalAssets,
-      totalLiabilities,
-      netWorth: totalAssets - totalLiabilities,
+      totalAssets: roundMoney(latest?.assets ?? 0),
+      totalLiabilities: roundMoney(latest?.liabilities ?? 0),
+      netWorth: roundMoney(latest?.netWorth ?? 0),
     };
   }
 

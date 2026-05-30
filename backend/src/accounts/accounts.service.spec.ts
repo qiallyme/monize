@@ -102,6 +102,7 @@ describe("AccountsService", () => {
 
     netWorthService = {
       recalculateAccount: jest.fn().mockResolvedValue(undefined),
+      getMonthlyNetWorth: jest.fn().mockResolvedValue([]),
     };
 
     mockQrRepo = {
@@ -2249,204 +2250,69 @@ describe("AccountsService", () => {
     });
   });
 
-  describe("getSummary - asset vs liability categorization", () => {
-    it("categorizes chequing, savings, investment, cash, asset as assets", async () => {
-      const assetAccounts = [
-        {
-          ...mockAccount,
-          id: "a1",
-          accountType: AccountType.CHEQUING,
-          currentBalance: 1000,
-        },
-        {
-          ...mockAccount,
-          id: "a2",
-          accountType: AccountType.SAVINGS,
-          currentBalance: 2000,
-        },
-        {
-          ...mockAccount,
-          id: "a3",
-          accountType: AccountType.INVESTMENT,
-          currentBalance: 5000,
-        },
-        {
-          ...mockAccount,
-          id: "a4",
-          accountType: AccountType.CASH,
-          currentBalance: 500,
-        },
-        {
-          ...mockAccount,
-          id: "a5",
-          accountType: AccountType.ASSET,
-          currentBalance: 10000,
-        },
-      ];
-
-      const getMany = jest.fn().mockResolvedValue(assetAccounts);
+  describe("getSummary - net worth derivation", () => {
+    const stubAccounts = (accounts: unknown[]) => {
+      const getMany = jest.fn().mockResolvedValue(accounts);
       accountsRepository.createQueryBuilder.mockReturnValue({
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         getMany,
       });
+    };
+
+    it("sums currentBalance into totalBalance and counts accounts", async () => {
+      stubAccounts([
+        { ...mockAccount, id: "a1", currentBalance: 5000 },
+        { ...mockAccount, id: "a2", currentBalance: 10000 },
+        { ...mockAccount, id: "l1", currentBalance: -2000 },
+        { ...mockAccount, id: "l2", currentBalance: -300000 },
+      ]);
 
       const result = await service.getSummary("user-1");
 
-      expect(result.totalAssets).toBe(18500);
-      expect(result.totalLiabilities).toBe(0);
-      expect(result.netWorth).toBe(18500);
-      expect(result.totalAccounts).toBe(5);
-    });
-
-    it("categorizes credit card, loan, mortgage, line of credit as liabilities", async () => {
-      const liabilityAccounts = [
-        {
-          ...mockAccount,
-          id: "l1",
-          accountType: AccountType.CREDIT_CARD,
-          currentBalance: -500,
-        },
-        {
-          ...mockAccount,
-          id: "l2",
-          accountType: AccountType.LOAN,
-          currentBalance: -10000,
-        },
-        {
-          ...mockAccount,
-          id: "l3",
-          accountType: AccountType.MORTGAGE,
-          currentBalance: -200000,
-        },
-        {
-          ...mockAccount,
-          id: "l4",
-          accountType: AccountType.LINE_OF_CREDIT,
-          currentBalance: -3000,
-        },
-      ];
-
-      const getMany = jest.fn().mockResolvedValue(liabilityAccounts);
-      accountsRepository.createQueryBuilder.mockReturnValue({
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getMany,
-      });
-
-      const result = await service.getSummary("user-1");
-
-      expect(result.totalAssets).toBe(0);
-      expect(result.totalLiabilities).toBe(213500);
-      expect(result.netWorth).toBe(-213500);
-      expect(result.totalAccounts).toBe(4);
-    });
-
-    it("correctly computes net worth from mixed assets and liabilities", async () => {
-      const mixedAccounts = [
-        {
-          ...mockAccount,
-          id: "a1",
-          accountType: AccountType.CHEQUING,
-          currentBalance: 5000,
-        },
-        {
-          ...mockAccount,
-          id: "a2",
-          accountType: AccountType.SAVINGS,
-          currentBalance: 10000,
-        },
-        {
-          ...mockAccount,
-          id: "l1",
-          accountType: AccountType.CREDIT_CARD,
-          currentBalance: -2000,
-        },
-        {
-          ...mockAccount,
-          id: "l2",
-          accountType: AccountType.MORTGAGE,
-          currentBalance: -300000,
-        },
-      ];
-
-      const getMany = jest.fn().mockResolvedValue(mixedAccounts);
-      accountsRepository.createQueryBuilder.mockReturnValue({
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getMany,
-      });
-
-      const result = await service.getSummary("user-1");
-
-      expect(result.totalAssets).toBe(15000);
-      expect(result.totalLiabilities).toBe(302000);
-      expect(result.netWorth).toBe(15000 - 302000);
       expect(result.totalBalance).toBe(5000 + 10000 - 2000 - 300000);
       expect(result.totalAccounts).toBe(4);
     });
 
-    it("returns zeros when no accounts exist", async () => {
-      const getMany = jest.fn().mockResolvedValue([]);
-      accountsRepository.createQueryBuilder.mockReturnValue({
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getMany,
-      });
+    it("derives assets, liabilities and net worth from the latest monthly snapshot", async () => {
+      stubAccounts([{ ...mockAccount, id: "a1", currentBalance: 5000 }]);
+      // getMonthlyNetWorth is the canonical source shared with the dashboard
+      // widget and get_account_balances; getSummary must report its latest month.
+      netWorthService.getMonthlyNetWorth.mockResolvedValue([
+        { assets: 1, liabilities: 1, netWorth: 0 },
+        { assets: 25000, liabilities: 302000, netWorth: 25000 - 302000 },
+      ]);
+
+      const result = await service.getSummary("user-1");
+
+      expect(result.totalAssets).toBe(25000);
+      expect(result.totalLiabilities).toBe(302000);
+      expect(result.netWorth).toBe(25000 - 302000);
+    });
+
+    it("returns zero net worth when no monthly snapshots exist", async () => {
+      stubAccounts([{ ...mockAccount, id: "a1", currentBalance: 5000 }]);
+      netWorthService.getMonthlyNetWorth.mockResolvedValue([]);
+
+      const result = await service.getSummary("user-1");
+
+      expect(result.totalAssets).toBe(0);
+      expect(result.totalLiabilities).toBe(0);
+      expect(result.netWorth).toBe(0);
+      // totalBalance still reflects the raw book balance
+      expect(result.totalBalance).toBe(5000);
+    });
+
+    it("returns zeros across the board when no accounts exist", async () => {
+      stubAccounts([]);
+      netWorthService.getMonthlyNetWorth.mockResolvedValue([]);
 
       const result = await service.getSummary("user-1");
 
       expect(result.totalAccounts).toBe(0);
-      expect(result.totalAssets).toBe(0);
-      expect(result.totalLiabilities).toBe(0);
-      expect(result.netWorth).toBe(0);
       expect(result.totalBalance).toBe(0);
-    });
-
-    it("excludes accounts with excludeFromNetWorth from net worth but includes in totalBalance", async () => {
-      const mixedAccounts = [
-        {
-          ...mockAccount,
-          id: "a1",
-          accountType: AccountType.CHEQUING,
-          currentBalance: 5000,
-          excludeFromNetWorth: false,
-        },
-        {
-          ...mockAccount,
-          id: "a2",
-          accountType: AccountType.SAVINGS,
-          currentBalance: 10000,
-          excludeFromNetWorth: true,
-        },
-        {
-          ...mockAccount,
-          id: "l1",
-          accountType: AccountType.CREDIT_CARD,
-          currentBalance: -2000,
-          excludeFromNetWorth: true,
-        },
-      ];
-
-      const getMany = jest.fn().mockResolvedValue(mixedAccounts);
-      accountsRepository.createQueryBuilder.mockReturnValue({
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getMany,
-      });
-
-      const result = await service.getSummary("user-1");
-
-      expect(result.totalAccounts).toBe(3);
-      expect(result.totalBalance).toBe(5000 + 10000 - 2000);
-      expect(result.totalAssets).toBe(5000);
-      expect(result.totalLiabilities).toBe(0);
-      expect(result.netWorth).toBe(5000);
+      expect(result.netWorth).toBe(0);
     });
   });
 
