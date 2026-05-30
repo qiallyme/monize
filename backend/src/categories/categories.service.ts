@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, IsNull, DataSource } from "typeorm";
+import { Repository, IsNull, DataSource, EntityManager } from "typeorm";
 import { Category } from "./entities/category.entity";
 import { Transaction } from "../transactions/entities/transaction.entity";
 import { TransactionSplit } from "../transactions/entities/transaction-split.entity";
@@ -387,15 +387,38 @@ export class CategoriesService {
       category.isIncome = updateCategoryDto.isIncome;
     }
 
-    const saved = await this.categoriesRepository.save(category);
+    // Save the category and cascade any type change to all descendant
+    // subcategories atomically, so a partial failure cannot leave children
+    // with a type that disagrees with their parent.
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    let saved: Category;
+    try {
+      // Pass the explicit entity target: findOne returns a plain object
+      // (spread with effectiveColor), not a Category instance, so the
+      // single-arg form would throw CannotDetermineEntityError.
+      saved = await queryRunner.manager.save(Category, category);
 
-    // Cascade type change to all descendant subcategories
-    if (
-      !category.parentId &&
-      updateCategoryDto.isIncome !== undefined &&
-      updateCategoryDto.isIncome !== beforeData.isIncome
-    ) {
-      await this.updateDescendantTypes(userId, id, saved.isIncome);
+      if (
+        !category.parentId &&
+        updateCategoryDto.isIncome !== undefined &&
+        updateCategoryDto.isIncome !== beforeData.isIncome
+      ) {
+        await this.updateDescendantTypes(
+          userId,
+          id,
+          saved.isIncome,
+          queryRunner.manager,
+        );
+      }
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
     this.actionHistoryService.record(userId, {
       entityType: "category",
@@ -419,8 +442,9 @@ export class CategoriesService {
     userId: string,
     parentId: string,
     isIncome: boolean,
+    manager: EntityManager,
   ): Promise<void> {
-    const children = await this.categoriesRepository.find({
+    const children = await manager.find(Category, {
       where: { userId, parentId },
       select: ["id"],
     });
@@ -430,11 +454,8 @@ export class CategoriesService {
     }
 
     for (const child of children) {
-      await this.categoriesRepository.update(
-        { id: child.id, userId },
-        { isIncome },
-      );
-      await this.updateDescendantTypes(userId, child.id, isIncome);
+      await manager.update(Category, { id: child.id, userId }, { isIncome });
+      await this.updateDescendantTypes(userId, child.id, isIncome, manager);
     }
   }
 
@@ -463,11 +484,6 @@ export class CategoriesService {
       );
     }
 
-    await this.payeesRepository.update(
-      { userId, defaultCategoryId: id },
-      { defaultCategoryId: null },
-    );
-
     const beforeData = {
       id: category.id,
       name: category.name,
@@ -478,7 +494,30 @@ export class CategoriesService {
       parentId: category.parentId,
       isSystem: category.isSystem,
     };
-    await this.categoriesRepository.remove(category);
+
+    // Clear the default-category reference on any payees and delete the
+    // category atomically, so a failure cannot leave payees pointing at a
+    // category that no longer exists.
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      await queryRunner.manager.update(
+        Payee,
+        { userId, defaultCategoryId: id },
+        { defaultCategoryId: null },
+      );
+      // Explicit entity target: `category` here is a plain object from
+      // findOne (spread with effectiveColor), not a Category instance.
+      await queryRunner.manager.remove(Category, category);
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
     this.actionHistoryService.record(userId, {
       entityType: "category",
       entityId: id,
