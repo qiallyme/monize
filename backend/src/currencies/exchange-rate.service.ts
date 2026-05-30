@@ -19,6 +19,12 @@ import { Currency } from "./entities/currency.entity";
 import { Account } from "../accounts/entities/account.entity";
 import { UserPreference } from "../users/entities/user-preference.entity";
 import { YahooFinanceService } from "../securities/yahoo-finance.service";
+import { mapWithConcurrency } from "../common/concurrency.util";
+
+// Cap concurrent Yahoo FX fetches so the daily refresh does not burst every
+// currency pair at once (this cron also runs alongside the security price
+// refresh, so the combined load on Yahoo needs to stay bounded).
+const FX_FETCH_CONCURRENCY = 6;
 
 export interface RateUpdateResult {
   pair: string;
@@ -270,36 +276,34 @@ export class ExchangeRateService implements OnModuleInit {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Fetch rates in parallel
-    await Promise.all(
-      pairs.map(async ({ from, to }) => {
-        const pairLabel = `${from}/${to}`;
-        const rate = await this.fetchYahooRate(from, to);
+    // Fetch rates with bounded concurrency
+    await mapWithConcurrency(pairs, FX_FETCH_CONCURRENCY, async ({ from, to }) => {
+      const pairLabel = `${from}/${to}`;
+      const rate = await this.fetchYahooRate(from, to);
 
-        if (rate === null) {
-          results.push({
-            pair: pairLabel,
-            success: false,
-            error: "No rate data available",
-          });
-          failed++;
-          return;
-        }
+      if (rate === null) {
+        results.push({
+          pair: pairLabel,
+          success: false,
+          error: "No rate data available",
+        });
+        failed++;
+        return;
+      }
 
-        try {
-          await this.saveRate(from, to, rate, today);
-          results.push({ pair: pairLabel, success: true, rate });
-          updated++;
-        } catch (error) {
-          results.push({
-            pair: pairLabel,
-            success: false,
-            error: error.message,
-          });
-          failed++;
-        }
-      }),
-    );
+      try {
+        await this.saveRate(from, to, rate, today);
+        results.push({ pair: pairLabel, success: true, rate });
+        updated++;
+      } catch (error) {
+        results.push({
+          pair: pairLabel,
+          success: false,
+          error: error.message,
+        });
+        failed++;
+      }
+    });
 
     const duration = Date.now() - startTime;
     this.logger.log(
@@ -603,10 +607,12 @@ export class ExchangeRateService implements OnModuleInit {
   }
 
   /**
-   * Scheduled job to refresh exchange rates daily at 5 PM EST (after market close)
-   * Runs Monday-Friday only
+   * Scheduled job to refresh exchange rates daily at 5:05 PM EST (after market
+   * close). Runs Monday-Friday only. Staggered five minutes after the security
+   * price refresh (5:00 PM) so the two Yahoo-hitting jobs do not burst at the
+   * same instant.
    */
-  @Cron("0 17 * * 1-5", { timeZone: "America/New_York" })
+  @Cron("5 17 * * 1-5", { timeZone: "America/New_York" })
   async scheduledRateRefresh(): Promise<void> {
     this.logger.log("Running scheduled exchange rate refresh");
     try {

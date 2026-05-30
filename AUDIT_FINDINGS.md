@@ -36,12 +36,16 @@ real wins cluster in a few hot paths plus "a helper exists but people reinvent i
   `relationLoadStrategy:'query'`. `transactions.service.ts:297-420`
 - [ ] **4. Custom reports load up to 50,000 transactions and group/sum in Node.** Push
   `GROUP BY`/`SUM` into Postgres. `reports.service.ts:421-424`, aggregation `602-867`
-- [ ] **5. Unbounded `Promise.all` over Yahoo on a live portfolio-chart request** — N holdings
+- [x] **5. Unbounded `Promise.all` over Yahoo on a live portfolio-chart request** — N holdings
   = N concurrent external calls in user latency. Bounded concurrency + 60s intraday cache.
   `portfolio.service.ts:924-941, 1066-1080`
-- [ ] **6. Unbounded `Promise.all` in `refreshAllPrices` across all users' securities** —
+  DONE: both intraday holding and intraday FX fan-outs now use `mapWithConcurrency` (limit 6).
+  (Intraday response caching not yet added — see follow-up note under #7.)
+- [x] **6. Unbounded `Promise.all` in `refreshAllPrices` across all users' securities** —
   hundreds of simultaneous Yahoo/MSN requests; the 429-retry only reacts after the burst.
   Shared concurrency cap. `security-price.service.ts:350-358, 474-481`
+  DONE: both quote fan-outs use `mapWithConcurrency` (limit 6); the FX refresh cron burst in
+  `exchange-rate.service.ts` was capped the same way.
 - [ ] **7. No quote/price caching or in-flight dedup** for Yahoo/MSN/FX. Two users holding
   AAPL = two fetches; chart reloads refetch identical series. Short-TTL quote cache +
   in-flight promise map. `yahoo-finance.service.ts`, `currencies.service.ts:344,476`
@@ -52,6 +56,8 @@ real wins cluster in a few hot paths plus "a helper exists but people reinvent i
 **Recurring root cause for #5/#6:** no shared bounded-concurrency util in `common/` — every
 fetch site reinvents naive `Promise.all` or a hand-rolled `setTimeout(500)` loop (duplicated
 4+ times). One `mapWithConcurrency` util fixes #5, #6, the FX backfill, and the cron collision.
+DONE: added `common/concurrency.util.ts` (`mapWithConcurrency`, order-preserving,
+fail-fast, fully unit-tested). Applied to #5, #6, the FX refresh cron, and #17.
 
 ### N+1 / per-row write loops (collapse each to a single bulk statement)
 
@@ -82,12 +88,15 @@ fetch site reinvents naive `Promise.all` or a hand-rolled `setTimeout(500)` loop
 - [ ] **16. Anthropic provider has no prompt caching** (`cache_control` zero hits repo-wide)
   — resends large financial-context system prompts at full token cost every turn.
   `ai/providers/anthropic.provider.ts:98-107`
-- [ ] **17. "Batched" AI-insights cron is actually fully sequential** (`for ... await` inside
+- [x] **17. "Batched" AI-insights cron is actually fully sequential** (`for ... await` inside
   the batch) — batching is dead code. `ai-insights.service.ts:246-261`
+  DONE: replaced the dead batch loop with `mapWithConcurrency` at a conservative limit of 5
+  (LLM calls per user), preserving the per-user try/catch so one failure does not abort the run.
 - [ ] **18. `refreshAllPrices` re-scans everything** with no staleness filter.
   `security-price.service.ts:312-330`
-- [ ] **19. Two Yahoo crons collide at 17:00 ET** (price + FX refresh) — stagger them.
+- [x] **19. Two Yahoo crons collide at 17:00 ET** (price + FX refresh) — stagger them.
   `security-price.service.ts:947`, `exchange-rate.service.ts:609`
+  DONE: FX refresh moved to 17:05 ET (`5 17 * * 1-5`); `docs/cron-jobs.md` updated.
 - [ ] **20. Report search `LOWER(col) LIKE '%term%'`** on un-indexed `payee_name`/`description`
   -> seq scans. Add `pg_trgm` GIN indexes. `reports.service.ts:402, 545-549`
 
