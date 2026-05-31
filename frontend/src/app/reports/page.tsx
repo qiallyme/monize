@@ -585,7 +585,12 @@ function ReportsContent() {
   const preferences = usePreferencesStore((s) => s.preferences);
   const updateStorePreferences = usePreferencesStore((s) => s.updatePreferences);
   const loadPreferences = usePreferencesStore((s) => s.loadPreferences);
-  const favouriteReportIds = preferences?.favouriteReportIds ?? [];
+  // Memoized so the `??[]` fallback does not create a new array reference each
+  // render, which would otherwise invalidate the filteredReports memo.
+  const favouriteReportIds = useMemo(
+    () => preferences?.favouriteReportIds ?? [],
+    [preferences?.favouriteReportIds],
+  );
 
   // Refresh preferences from server on mount to pick up changes from other devices
   useEffect(() => {
