@@ -16,6 +16,7 @@ import { Security } from "../securities/entities/security.entity";
 import { ExchangeRate } from "../currencies/entities/exchange-rate.entity";
 import { UserPreference } from "../users/entities/user-preference.entity";
 import { convertWithRateLookup } from "../common/currency-conversion.util";
+import { formatDateYMDLocal } from "../common/date-utils";
 
 const LIABILITY_TYPES: AccountType[] = [
   AccountType.CREDIT_CARD,
@@ -1102,8 +1103,7 @@ export class NetWorthService {
     }
 
     // Load investment transactions for holdings replay (exclude future-dated)
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const today = formatDateYMDLocal(new Date());
     const invTxs = await this.invTxRepo.find({
       where: {
         accountId: account.id,
