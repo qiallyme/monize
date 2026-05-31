@@ -31,7 +31,7 @@ interface FavouriteAccountsProps {
 
 export function FavouriteAccounts({ accounts, brokerageMarketValues, isLoading, onAccountsChanged: _onAccountsChanged }: FavouriteAccountsProps) {
   const router = useRouter();
-  const { preferences } = usePreferencesStore();
+  const preferences = usePreferencesStore((s) => s.preferences);
   const { formatCurrency: formatCurrencyBase } = useNumberFormat();
   const defaultCurrency = preferences?.defaultCurrency || 'CAD';
   const [reordering, setReordering] = useState(false);
