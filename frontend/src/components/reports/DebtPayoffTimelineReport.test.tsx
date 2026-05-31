@@ -80,10 +80,13 @@ describe('DebtPayoffTimelineReport', () => {
     mockGetAllTransactions.mockResolvedValue({ data: [], pagination: { hasMore: false } });
   });
 
-  it('shows loading state initially', () => {
+  it('shows loading state initially', async () => {
     mockGetAllAccounts.mockReturnValue(new Promise(() => {}));
     render(<DebtPayoffTimelineReport />);
     expect(document.querySelector('.animate-pulse')).toBeTruthy();
+    // Flush the secondary transactions fetch resolution so its state update is
+    // wrapped in act().
+    await act(async () => {});
   });
 
   it('renders empty state when no debt accounts', async () => {
