@@ -30,7 +30,9 @@ describe("convertWithRateLookup", () => {
       ["CAD->USD", 0.8], // intentionally inconsistent
     ]);
     expect(
-      convertWithRateLookup(100, "USD", "CAD", (f, t) => both.get(`${f}->${t}`)),
+      convertWithRateLookup(100, "USD", "CAD", (f, t) =>
+        both.get(`${f}->${t}`),
+      ),
     ).toBeCloseTo(135);
   });
 
@@ -41,7 +43,9 @@ describe("convertWithRateLookup", () => {
   it("returns null rather than dividing by a zero inverse rate", () => {
     const zero = new Map<string, number>([["USD->CAD", 0]]);
     expect(
-      convertWithRateLookup(100, "CAD", "USD", (f, t) => zero.get(`${f}->${t}`)),
+      convertWithRateLookup(100, "CAD", "USD", (f, t) =>
+        zero.get(`${f}->${t}`),
+      ),
     ).toBeNull();
   });
 });
