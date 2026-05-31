@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart,
@@ -22,11 +22,11 @@ import {
 } from "@/types/built-in-reports";
 import { useNumberFormat } from "@/hooks/useNumberFormat";
 import { useDateRange } from "@/hooks/useDateRange";
+import { useReportData } from "@/hooks/useReportData";
 import { DateRangeSelector } from "@/components/ui/DateRangeSelector";
 import { ExportDropdown } from '@/components/ui/ExportDropdown';
-import { createLogger } from "@/lib/logger";
-
-const logger = createLogger("CashFlowReport");
+import { ChartTooltip } from "@/components/reports/ChartTooltip";
+import { ReportError } from "@/components/reports/ReportError";
 
 interface ChartDataItem {
   name: string;
@@ -43,15 +43,6 @@ export function CashFlowReport() {
   const chartRef = useRef<HTMLDivElement>(null);
   const { formatCurrencyCompact: formatCurrency, formatCurrencyAxis } =
     useNumberFormat();
-  const [monthlyData, setMonthlyData] = useState<ChartDataItem[]>([]);
-  const [incomeItems, setIncomeItems] = useState<IncomeSourceItem[]>([]);
-  const [expenseItems, setExpenseItems] = useState<CategorySpendingItem[]>([]);
-  const [totals, setTotals] = useState({
-    totalIncome: 0,
-    totalExpenses: 0,
-    netCashFlow: 0,
-  });
-  const [isLoading, setIsLoading] = useState(true);
   const {
     dateRange,
     setDateRange,
@@ -63,15 +54,12 @@ export function CashFlowReport() {
     isValid,
   } = useDateRange({ defaultRange: "6m", alignment: "month" });
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const { start, end } = resolvedRange;
-      const params = {
-        startDate: start || undefined,
-        endDate: end,
-      };
+  const { start: rangeStart, end: rangeEnd } = resolvedRange;
 
+  const { data: response, isLoading, error, reload } = useReportData(
+    async () => {
+      if (!isValid) return null;
+      const params = { startDate: rangeStart || undefined, endDate: rangeEnd };
       // Fetch all data in parallel
       const [cashFlowResponse, incomeResponse, spendingResponse] =
         await Promise.all([
@@ -79,44 +67,39 @@ export function CashFlowReport() {
           builtInReportsApi.getIncomeBySource(params),
           builtInReportsApi.getSpendingByCategory(params),
         ]);
+      return { cashFlowResponse, incomeResponse, spendingResponse };
+    },
+    [isValid, rangeStart, rangeEnd],
+  );
 
-      // Map monthly data. `name` must be unique across the dataset (used as
-      // the XAxis category key); a non-unique value like "May" causes
-      // Recharts to resolve the tooltip's payload to the first matching row,
-      // showing data from the wrong year on multi-year ranges.
-      const data: ChartDataItem[] = cashFlowResponse.data.map(
-        (item: MonthlyIncomeExpenseItem) => {
-          const monthDate = parseISO(item.month + "-01");
-          return {
-            name: item.month,
-            fullName: format(monthDate, "MMM yyyy"),
-            Income: Math.round(item.income),
-            Expenses: Math.round(item.expenses),
-            Net: Math.round(item.net),
-            monthStart: format(startOfMonth(monthDate), "yyyy-MM-dd"),
-            monthEnd: format(endOfMonth(monthDate), "yyyy-MM-dd"),
-          };
-        },
-      );
+  // Map monthly data. `name` must be unique across the dataset (used as
+  // the XAxis category key); a non-unique value like "May" causes Recharts
+  // to resolve the tooltip's payload to the first matching row, showing data
+  // from the wrong year on multi-year ranges.
+  const monthlyData = useMemo<ChartDataItem[]>(
+    () =>
+      (response?.cashFlowResponse.data ?? []).map((item: MonthlyIncomeExpenseItem) => {
+        const monthDate = parseISO(item.month + "-01");
+        return {
+          name: item.month,
+          fullName: format(monthDate, "MMM yyyy"),
+          Income: Math.round(item.income),
+          Expenses: Math.round(item.expenses),
+          Net: Math.round(item.net),
+          monthStart: format(startOfMonth(monthDate), "yyyy-MM-dd"),
+          monthEnd: format(endOfMonth(monthDate), "yyyy-MM-dd"),
+        };
+      }),
+    [response],
+  );
 
-      setMonthlyData(data);
-      setIncomeItems(incomeResponse.data);
-      setExpenseItems(spendingResponse.data);
-      setTotals({
-        totalIncome: cashFlowResponse.totals.income,
-        totalExpenses: cashFlowResponse.totals.expenses,
-        netCashFlow: cashFlowResponse.totals.net,
-      });
-    } catch (error) {
-      logger.error("Failed to load data:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [resolvedRange]);
-
-  useEffect(() => {
-    if (isValid) loadData();
-  }, [isValid, loadData]);
+  const incomeItems: IncomeSourceItem[] = response?.incomeResponse.data ?? [];
+  const expenseItems: CategorySpendingItem[] = response?.spendingResponse.data ?? [];
+  const totals = {
+    totalIncome: response?.cashFlowResponse.totals.income ?? 0,
+    totalExpenses: response?.cashFlowResponse.totals.expenses ?? 0,
+    netCashFlow: response?.cashFlowResponse.totals.net ?? 0,
+  };
 
   const handleExportPdf = async () => {
     const { exportToPdf } = await import("@/lib/pdf-export");
@@ -182,24 +165,18 @@ export function CashFlowReport() {
       color: string;
       payload: { fullName: string };
     }>;
-  }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0]?.payload;
-      return (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
-          <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">
-            {data?.fullName}
-          </p>
-          {payload.map((entry, index) => (
-            <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: {formatCurrency(entry.value)}
-            </p>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
+  }) => (
+    <ChartTooltip
+      active={active}
+      label={payload?.[0]?.payload?.fullName}
+      payload={payload}
+      formatValue={(v) => formatCurrency(v)}
+    />
+  );
+
+  if (error) {
+    return <ReportError onRetry={reload} />;
+  }
 
   if (isLoading) {
     // Render the controls block too so focus inside DateInput survives
