@@ -149,12 +149,12 @@ export function AppHeader() {
   const isToolsActive = toolsLinks.some((link) => pathname === link.href);
   const isAiActive = aiLinks.some((link) => pathname === link.href);
 
-  // Slide the header out of view when scrolling down, back in when scrolling up.
-  // Keep it pinned while any menu or the search field is open so the open
-  // surface never scrolls away with it.
-  const scrolledAway = useHideOnScroll();
+  // Slide the header out of view when scrolling down, back in when scrolling up,
+  // moving it in lockstep with the scroll position. Keep it pinned while any
+  // menu or the search field is open so the open surface never scrolls away.
+  const { ref: headerRef, offset: scrollOffset } = useHideOnScroll<HTMLElement>();
   const anyMenuOpen = mobileMenuOpen || searchOpen || toolsOpen || aiOpen;
-  const headerHidden = scrolledAway && !anyMenuOpen;
+  const headerOffset = anyMenuOpen ? 0 : scrollOffset;
 
   const handleLogout = async () => {
     try {
@@ -170,8 +170,12 @@ export function AppHeader() {
 
   return (
     <header
-      className={`sticky top-0 z-40 bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 transition-transform duration-300 ease-in-out ${
-        headerHidden ? '-translate-y-full' : 'translate-y-0'
+      ref={headerRef}
+      style={{ transform: `translateY(-${headerOffset}px)` }}
+      // No transition while scrolling so the header tracks the scroll speed 1:1;
+      // a short transition only when a menu forces it back into view.
+      className={`sticky top-0 z-40 bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 ${
+        anyMenuOpen ? 'transition-transform duration-200 ease-out' : ''
       }`}
     >
       <div className="px-4 sm:px-6 lg:px-12">

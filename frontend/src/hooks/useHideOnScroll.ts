@@ -2,52 +2,50 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-interface UseHideOnScrollOptions {
+interface UseHideOnScroll<T extends HTMLElement> {
+  /** Attach to the sticky element so its height bounds the hide distance. */
+  ref: React.RefObject<T | null>;
   /**
-   * Minimum scroll delta (px) before the direction is acted on. Filters out
-   * jitter and trackpad/overscroll bounce. Default 8.
+   * How far (px) the element is currently slid up: 0 when fully visible,
+   * its full height when fully hidden. Tracks the scroll delta 1:1, so the
+   * header moves at exactly the speed the user scrolls.
    */
-  threshold?: number;
-  /**
-   * The header stays visible while the page is scrolled above this offset (px),
-   * so it never hides near the very top. Default 64 (the header height).
-   */
-  revealOffset?: number;
+  offset: number;
 }
 
 /**
- * Tracks scroll direction and returns whether a sticky header should be hidden.
+ * Slides a sticky header out of view as the user scrolls down and back in as
+ * they scroll up, moving it in lockstep with the scroll position rather than
+ * on a fixed-duration animation.
  *
- * Scrolling down (past `revealOffset`) hides the header; scrolling up reveals
- * it again. Reads are batched through requestAnimationFrame and the scroll
- * listener is passive to keep scrolling smooth.
- *
- * @returns `true` when the header should be slid out of view.
+ * Each scroll frame the offset accumulates the scroll delta, clamped between 0
+ * (fully visible) and the element's height (fully hidden). Reads are batched
+ * through requestAnimationFrame and the listener is passive to keep scrolling
+ * smooth.
  */
-export function useHideOnScroll({
-  threshold = 8,
-  revealOffset = 64,
-}: UseHideOnScrollOptions = {}): boolean {
-  const [hidden, setHidden] = useState(false);
+export function useHideOnScroll<
+  T extends HTMLElement = HTMLElement,
+>(): UseHideOnScroll<T> {
+  const ref = useRef<T>(null);
+  const [offset, setOffset] = useState(0);
   const lastScrollY = useRef(0);
 
   useEffect(() => {
-    lastScrollY.current = window.scrollY;
+    lastScrollY.current = Math.max(0, window.scrollY);
     let ticking = false;
 
     const update = () => {
       ticking = false;
       const currentY = Math.max(0, window.scrollY);
       const delta = currentY - lastScrollY.current;
-
-      if (Math.abs(delta) < threshold) {
-        return;
-      }
-
-      // Hide when scrolling down past the reveal offset; show when scrolling up
-      // or when back near the top.
-      setHidden(delta > 0 && currentY > revealOffset);
       lastScrollY.current = currentY;
+      if (delta === 0) return;
+
+      const max = ref.current?.offsetHeight ?? 0;
+      setOffset((prev) => {
+        const next = Math.min(max, Math.max(0, prev + delta));
+        return next === prev ? prev : next;
+      });
     };
 
     const onScroll = () => {
@@ -59,7 +57,7 @@ export function useHideOnScroll({
 
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [threshold, revealOffset]);
+  }, []);
 
-  return hidden;
+  return { ref, offset };
 }

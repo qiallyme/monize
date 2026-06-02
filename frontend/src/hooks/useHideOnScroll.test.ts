@@ -2,6 +2,25 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useHideOnScroll } from './useHideOnScroll';
 
+const HEADER_HEIGHT = 64;
+
+/**
+ * Renders the hook with a mounted element of HEADER_HEIGHT so the offset has a
+ * real height to clamp against.
+ */
+function renderWithHeader() {
+  const el = document.createElement('header');
+  Object.defineProperty(el, 'offsetHeight', {
+    value: HEADER_HEIGHT,
+    configurable: true,
+  });
+  const hook = renderHook(() => useHideOnScroll<HTMLElement>());
+  act(() => {
+    hook.result.current.ref.current = el;
+  });
+  return hook;
+}
+
 /**
  * Drives the window scroll position and flushes the rAF the hook schedules.
  */
@@ -30,51 +49,48 @@ describe('useHideOnScroll', () => {
     vi.restoreAllMocks();
   });
 
-  it('starts visible', () => {
-    const { result } = renderHook(() => useHideOnScroll());
-    expect(result.current).toBe(false);
+  it('starts fully visible with a zero offset', () => {
+    const { result } = renderWithHeader();
+    expect(result.current.offset).toBe(0);
   });
 
-  it('hides when scrolling down past the reveal offset', () => {
-    const { result } = renderHook(() => useHideOnScroll());
+  it('tracks the scroll delta 1:1 while partially scrolled', () => {
+    const { result } = renderWithHeader();
+    scrollTo(30);
+    expect(result.current.offset).toBe(30);
+  });
+
+  it('clamps the offset at the element height once fully hidden', () => {
+    const { result } = renderWithHeader();
     scrollTo(200);
-    expect(result.current).toBe(true);
+    expect(result.current.offset).toBe(HEADER_HEIGHT);
   });
 
-  it('reveals again when scrolling back up', () => {
-    const { result } = renderHook(() => useHideOnScroll());
+  it('reveals in lockstep when scrolling back up', () => {
+    const { result } = renderWithHeader();
     scrollTo(200);
-    expect(result.current).toBe(true);
-    scrollTo(120);
-    expect(result.current).toBe(false);
+    expect(result.current.offset).toBe(HEADER_HEIGHT);
+    // Scroll up by 40px: the header slides back down by exactly 40px.
+    scrollTo(160);
+    expect(result.current.offset).toBe(HEADER_HEIGHT - 40);
   });
 
-  it('does not hide while still near the top, even scrolling down', () => {
-    const { result } = renderHook(() => useHideOnScroll({ revealOffset: 64 }));
-    scrollTo(40);
-    expect(result.current).toBe(false);
-  });
-
-  it('ignores scroll deltas smaller than the threshold', () => {
-    const { result } = renderHook(() => useHideOnScroll({ threshold: 50 }));
+  it('clamps the offset at zero when scrolled back to the top', () => {
+    const { result } = renderWithHeader();
     scrollTo(200);
-    expect(result.current).toBe(true);
-    // A tiny upward nudge below the threshold must not flip it back.
-    scrollTo(180);
-    expect(result.current).toBe(true);
+    scrollTo(0);
+    expect(result.current.offset).toBe(0);
   });
 
-  it('respects a custom reveal offset', () => {
-    const { result } = renderHook(() => useHideOnScroll({ revealOffset: 300 }));
-    scrollTo(250);
-    expect(result.current).toBe(false);
-    scrollTo(400);
-    expect(result.current).toBe(true);
+  it('stays fully visible when no element height is available', () => {
+    const { result } = renderHook(() => useHideOnScroll<HTMLElement>());
+    scrollTo(200);
+    expect(result.current.offset).toBe(0);
   });
 
   it('removes the scroll listener on unmount', () => {
     const removeSpy = vi.spyOn(window, 'removeEventListener');
-    const { unmount } = renderHook(() => useHideOnScroll());
+    const { unmount } = renderWithHeader();
     unmount();
     expect(removeSpy).toHaveBeenCalledWith('scroll', expect.any(Function));
   });
