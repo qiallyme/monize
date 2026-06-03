@@ -13,7 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { payeesApi } from '@/lib/payees';
 import { categoriesApi } from '@/lib/categories';
-import { buildCategoryColorMap } from '@/lib/categoryUtils';
+import { buildCategoryColorMap, buildCategoryLabelMap } from '@/lib/categoryUtils';
 import { MergePayeeDialog } from '@/components/payees/MergePayeeDialog';
 import { Payee, PayeeStatusFilter } from '@/types/payee';
 import { Category } from '@/types/category';
@@ -126,6 +126,7 @@ function PayeesContent() {
   };
 
   const categoryColorMap = useMemo(() => buildCategoryColorMap(categories), [categories]);
+  const categoryLabelMap = useMemo(() => buildCategoryLabelMap(categories), [categories]);
 
   // Apply status filter
   const statusFilteredPayees = useMemo(() => {
@@ -146,8 +147,8 @@ function PayeesContent() {
       if (sortField === 'name') {
         comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
       } else if (sortField === 'category') {
-        const catA = a.defaultCategory?.name || '';
-        const catB = b.defaultCategory?.name || '';
+        const catA = a.defaultCategory ? (categoryLabelMap.get(a.defaultCategory.id) ?? a.defaultCategory.name) : '';
+        const catB = b.defaultCategory ? (categoryLabelMap.get(b.defaultCategory.id) ?? b.defaultCategory.name) : '';
         comparison = catA.localeCompare(catB, undefined, { sensitivity: 'base' });
       } else if (sortField === 'count') {
         comparison = (a.transactionCount ?? 0) - (b.transactionCount ?? 0);
@@ -160,7 +161,7 @@ function PayeesContent() {
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [filteredPayees, sortField, sortDirection]);
+  }, [filteredPayees, sortField, sortDirection, categoryLabelMap]);
 
   const totalPages = Math.ceil(sortedPayees.length / PAGE_SIZE);
   const paginatedPayees = useMemo(() => {
@@ -309,6 +310,7 @@ function PayeesContent() {
               sortDirection={sortDirection}
               onSort={handleSort}
               categoryColorMap={categoryColorMap}
+              categoryLabelMap={categoryLabelMap}
             />
           )}
         </div>

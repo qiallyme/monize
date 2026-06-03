@@ -506,7 +506,13 @@ describe("PayeesService", () => {
     });
 
     it("should update defaultCategoryId via explicit mapping", async () => {
-      const existingPayee = { ...mockPayee };
+      // Existing payee already has a loaded relation pointing at the old
+      // category -- this is the scenario that exposed the persistence bug.
+      const existingPayee = {
+        ...mockPayee,
+        defaultCategoryId: "cat-1",
+        defaultCategory: { id: "cat-1", name: "Food" },
+      };
       const refreshedPayee = { ...mockPayee, defaultCategoryId: "cat-99" };
       payeesRepository.findOne
         .mockResolvedValueOnce(existingPayee)
@@ -517,9 +523,12 @@ describe("PayeesService", () => {
       });
 
       expect(result.defaultCategoryId).toBe("cat-99");
-      expect(
-        mockDataSource.createQueryRunner().manager.save,
-      ).toHaveBeenCalled();
+      // The stale loaded relation must be cleared so TypeORM save() persists
+      // the new scalar FK instead of re-deriving the old one from the relation.
+      const savedPayee =
+        mockDataSource.createQueryRunner().manager.save.mock.calls[0][0];
+      expect(savedPayee.defaultCategoryId).toBe("cat-99");
+      expect(savedPayee.defaultCategory).toBeNull();
     });
 
     it("should clear defaultCategoryId when set to null", async () => {
