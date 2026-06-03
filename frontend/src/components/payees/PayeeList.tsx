@@ -35,6 +35,7 @@ interface PayeeListProps {
   sortDirection?: SortDirection;
   onSort?: (field: SortField) => void;
   categoryColorMap?: Map<string, string | null>;
+  categoryLabelMap?: Map<string, string>;
 }
 
 interface PayeeRowProps {
@@ -49,6 +50,7 @@ interface PayeeRowProps {
   showStatusColumn: boolean;
   index: number;
   categoryColorMap?: Map<string, string | null>;
+  categoryLabelMap?: Map<string, string>;
   formatDate: (date: string) => string;
 }
 
@@ -64,10 +66,14 @@ const PayeeRow = memo(function PayeeRow({
   showStatusColumn,
   index,
   categoryColorMap,
+  categoryLabelMap,
   formatDate,
 }: PayeeRowProps) {
   const defaultCategoryColor = payee.defaultCategory
     ? (categoryColorMap?.get(payee.defaultCategory.id) ?? payee.defaultCategory.color)
+    : null;
+  const defaultCategoryLabel = payee.defaultCategory
+    ? (categoryLabelMap?.get(payee.defaultCategory.id) ?? payee.defaultCategory.name)
     : null;
   const handleEdit = useCallback(() => {
     onEdit(payee);
@@ -115,7 +121,7 @@ const PayeeRow = memo(function PayeeRow({
                 : 'var(--category-text-base, #6b7280)',
             }}
           >
-            {payee.defaultCategory.name}
+            {defaultCategoryLabel}
           </span>
         ) : (
           <span className="text-sm text-gray-400 dark:text-gray-500">None</span>
@@ -209,6 +215,7 @@ export function PayeeList({
   sortDirection: propSortDirection,
   onSort,
   categoryColorMap,
+  categoryLabelMap,
 }: PayeeListProps) {
   const router = useRouter();
   const { formatDate } = useDateFormat();
@@ -402,6 +409,7 @@ export function PayeeList({
                 showStatusColumn={showStatusColumn}
                 index={index}
                 categoryColorMap={categoryColorMap}
+                categoryLabelMap={categoryLabelMap}
                 formatDate={formatDate}
               />
             ))}

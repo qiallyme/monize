@@ -107,6 +107,77 @@ describe('PayeeList', () => {
     expect(screen.getByText('Groceries')).toBeInTheDocument();
   });
 
+  it('shows full "Parent: Child" label when categoryLabelMap is provided', () => {
+    const payees = [
+      makePayee({
+        id: 'p1',
+        name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1',
+          userId: 'user-1',
+          parentId: 'parent-1',
+          parent: null,
+          children: [],
+          name: 'Groceries',
+          description: null,
+          icon: null,
+          color: '#22c55e',
+          effectiveColor: '#22c55e',
+          isIncome: false,
+          isSystem: false,
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      }),
+    ];
+    const categoryLabelMap = new Map([['cat-1', 'Food: Groceries']]);
+
+    render(
+      <PayeeList
+        payees={payees}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+        categoryLabelMap={categoryLabelMap}
+      />,
+    );
+    expect(screen.getByText('Food: Groceries')).toBeInTheDocument();
+    expect(screen.queryByText('Groceries')).not.toBeInTheDocument();
+  });
+
+  it('falls back to category name when categoryLabelMap has no entry', () => {
+    const payees = [
+      makePayee({
+        id: 'p1',
+        name: 'Walmart',
+        defaultCategory: {
+          id: 'cat-1',
+          userId: 'user-1',
+          parentId: null,
+          parent: null,
+          children: [],
+          name: 'Groceries',
+          description: null,
+          icon: null,
+          color: '#22c55e',
+          effectiveColor: '#22c55e',
+          isIncome: false,
+          isSystem: false,
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      }),
+    ];
+    const categoryLabelMap = new Map([['cat-other', 'Food: Other']]);
+
+    render(
+      <PayeeList
+        payees={payees}
+        onEdit={onEdit}
+        onRefresh={onRefresh}
+        categoryLabelMap={categoryLabelMap}
+      />,
+    );
+    expect(screen.getByText('Groceries')).toBeInTheDocument();
+  });
+
   it('shows "None" when payee has no default category', () => {
     const payees = [
       makePayee({ id: 'p1', name: 'Walmart', defaultCategory: null }),
