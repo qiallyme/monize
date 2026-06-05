@@ -521,7 +521,7 @@ function ReconcileContent() {
                   </span>
                   ?
                 </p>
-                <div className="mt-3">
+                <div className="mt-3 flex justify-center">
                   <Button onClick={handleUpdatePayment}>
                     Update Next Payment
                   </Button>
@@ -537,7 +537,7 @@ function ReconcileContent() {
                   </span>
                   ?
                 </p>
-                <div className="mt-3">
+                <div className="mt-3 flex justify-center">
                   <Button onClick={handleCreatePayment}>
                     Create Scheduled Payment
                   </Button>
