@@ -96,8 +96,9 @@ docker exec -e PGPASSWORD="$PG_PASSWORD" "$CONTAINER" \
 docker exec -e PGPASSWORD="$PG_PASSWORD" "$CONTAINER" \
   pg_dump "${DUMP_OPTS[@]}" -U postgres db_migrations > /tmp/monize-migrations-dump.sql
 
-# Normalize: strip pg_dump headers, SET statements, comments, and blank lines
-# so trivial formatting differences don't cause false positives. Real schema
+# Normalize: strip pg_dump headers, SET statements, comments, blank lines,
+# and the per-run \restrict/\unrestrict tokens pg_dump adds for security
+# (these contain a random nonce that differs every run). Real schema
 # differences (column types, constraints, indexes, defaults) survive.
 normalize() {
   sed -E \
@@ -105,6 +106,8 @@ normalize() {
     -e '/^SET /d' \
     -e '/^SELECT pg_catalog/d' \
     -e '/^\\connect/d' \
+    -e '/^\\restrict /d' \
+    -e '/^\\unrestrict /d' \
     -e '/^$/d' \
     "$1"
 }
