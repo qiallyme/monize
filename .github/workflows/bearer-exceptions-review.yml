@@ -19,8 +19,8 @@ jobs:
     name: Review Bearer exceptions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: 24
       - name: Check exceptions
@@ -40,7 +40,7 @@ jobs:
 
       - name: Open issue if stale
         if: steps.check.outputs.exit_code != '0'
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           REPORT: ${{ steps.check.outputs.output }}
         with:
