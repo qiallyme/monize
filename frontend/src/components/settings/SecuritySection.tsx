@@ -18,19 +18,19 @@ import { authApi } from '@/lib/auth';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { User, UserPreferences, TrustedDevice } from '@/types/auth';
 import { getErrorMessage } from '@/lib/errors';
-import { passwordSchema } from '@/lib/zod-helpers';
+import { buildPasswordSchema } from '@/lib/zod-helpers';
 import { useDateFormat } from '@/hooks/useDateFormat';
 
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, 'Current password is required').max(128, 'Password must be 128 characters or less'),
-  newPassword: passwordSchema,
-  confirmPassword: z.string().min(1, 'Please confirm your new password').max(128, 'Password must be 128 characters or less'),
+const buildChangePasswordSchema = (t: (key: string) => string, tc: (key: string) => string) => z.object({
+  currentPassword: z.string().min(1, t('validation.currentPasswordRequired')).max(128, t('validation.passwordMax')),
+  newPassword: buildPasswordSchema(tc),
+  confirmPassword: z.string().min(1, t('validation.confirmRequired')).max(128, t('validation.passwordMax')),
 }).refine((data) => data.newPassword === data.confirmPassword, {
-  message: 'New passwords do not match',
+  message: t('validation.newPasswordsNoMatch'),
   path: ['confirmPassword'],
 });
 
-type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
+type ChangePasswordFormData = z.infer<ReturnType<typeof buildChangePasswordSchema>>;
 
 interface SecuritySectionProps {
   user: User;
@@ -51,7 +51,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
     reset,
     formState: { errors, isSubmitting },
   } = useForm<ChangePasswordFormData>({
-    resolver: zodResolver(changePasswordSchema),
+    resolver: zodResolver(buildChangePasswordSchema(t, tc)),
     defaultValues: {
       currentPassword: '',
       newPassword: '',

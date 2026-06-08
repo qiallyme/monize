@@ -90,6 +90,12 @@
         "revoked": "Device revoked",
         "revokedAll": "{count} device(s) revoked"
       }
+    },
+    "validation": {
+      "currentPasswordRequired": "Current password is required",
+      "passwordMax": "Password must be 128 characters or less",
+      "confirmRequired": "Please confirm your new password",
+      "newPasswordsNoMatch": "New passwords do not match"
     }
   },
   "preferences": {
