@@ -254,7 +254,27 @@
       "scopesLabel": "Scopes",
       "expirationLabel": "Expiration",
       "creatingButton": "Creating...",
-      "createButton": "Create Token"
+      "createButton": "Create Token",
+      "scopes": {
+        "read": {
+          "label": "Read",
+          "description": "View accounts, transactions, and categories"
+        },
+        "write": {
+          "label": "Write",
+          "description": "Create transactions, payees, and categories"
+        },
+        "reports": {
+          "label": "Reports",
+          "description": "Generate financial reports and analytics"
+        }
+      },
+      "expiry": {
+        "none": "No expiration",
+        "d30": "30 days",
+        "d90": "90 days",
+        "y1": "1 year"
+      }
     },
     "createdModal": {
       "title": "Token Created",
@@ -329,6 +349,12 @@
       "required": "Folder path is required",
       "validationFailed": "Folder validation failed",
       "validationError": "Validation failed"
+    },
+    "frequencyOptions": {
+      "every6hours": "Every 6 Hours",
+      "every12hours": "Every 12 Hours",
+      "daily": "Daily",
+      "weekly": "Weekly"
     }
   },
   "backupRestore": {
@@ -692,6 +718,16 @@
         "modelReady": "Model \"{model}\" is ready.",
         "success": "Connection successful.",
         "testFailed": "Model test failed"
+      },
+      "costCurrencies": {
+        "USD": "USD - US Dollar",
+        "EUR": "EUR - Euro",
+        "GBP": "GBP - British Pound",
+        "CAD": "CAD - Canadian Dollar",
+        "AUD": "AUD - Australian Dollar",
+        "JPY": "JPY - Japanese Yen",
+        "CNY": "CNY - Chinese Yuan",
+        "INR": "INR - Indian Rupee"
       }
     },
     "testButton": {

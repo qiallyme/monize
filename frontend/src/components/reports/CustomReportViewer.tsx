@@ -18,7 +18,6 @@ import {
   TimeframeType,
   GroupByType,
   TIMEFRAME_LABELS,
-  VIEW_TYPE_LABELS,
 } from '@/types/custom-report';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { useDateFormat } from '@/hooks/useDateFormat';
@@ -126,7 +125,7 @@ export function CustomReportViewer({ reportId }: CustomReportViewerProps) {
 
   const timeframeOptions = [
     { value: '', label: t('customReportViewer.useSavedTimeframe') },
-    ...Object.entries(TIMEFRAME_LABELS).map(([value, label]) => ({ value, label })),
+    ...Object.keys(TIMEFRAME_LABELS).map((value) => ({ value, label: t(`customReportLabels.timeframe.${value}`) })),
   ];
 
   // Mirror ReportChart's colour assignment so legend swatches match chart slices/bars.
@@ -238,7 +237,7 @@ export function CustomReportViewer({ reportId }: CustomReportViewerProps) {
               </span>
               <span className="mx-2 text-gray-300 dark:text-gray-600">|</span>
               <span className="text-sm text-gray-500 dark:text-gray-400">
-                {VIEW_TYPE_LABELS[result.viewType as ReportViewType]}
+                {t(`customReportLabels.viewType.${result.viewType}`)}
               </span>
             </div>
             <div className="text-right">

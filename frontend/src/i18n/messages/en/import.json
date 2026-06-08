@@ -92,7 +92,12 @@
     "colWithHeader": "{header} (Col {n})",
     "validationDateRequired": "Date column is required",
     "validationAmountRequired": "Amount column is required",
-    "validationDebitCreditRequired": "Both debit and credit columns are required"
+    "validationDebitCreditRequired": "Both debit and credit columns are required",
+    "delimiters": {
+      "comma": "Comma (,)",
+      "semicolon": "Semicolon (;)",
+      "tab": "Tab"
+    }
   },
   "transferRules": {
     "title": "Transfer Detection Rules",

@@ -222,9 +222,9 @@ export function InsightsList() {
           className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         >
           <option value="">{t('list.allTypes')}</option>
-          {Object.entries(INSIGHT_TYPE_LABELS).map(([value, label]) => (
+          {Object.keys(INSIGHT_TYPE_LABELS).map((value) => (
             <option key={value} value={value}>
-              {label}
+              {t(`insightTypes.${value}`)}
             </option>
           ))}
         </select>
@@ -234,9 +234,9 @@ export function InsightsList() {
           className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         >
           <option value="">{t('list.allSeverities')}</option>
-          {Object.entries(INSIGHT_SEVERITY_LABELS).map(([value, label]) => (
+          {Object.keys(INSIGHT_SEVERITY_LABELS).map((value) => (
             <option key={value} value={value}>
-              {label}
+              {t(`insightSeverities.${value}`)}
             </option>
           ))}
         </select>

@@ -30,9 +30,9 @@ interface CsvColumnMappingStepProps {
 const CUSTOM_FORMAT_VALUE = '__custom__';
 
 const DELIMITER_OPTIONS = [
-  { value: ',', label: 'Comma (,)' },
-  { value: ';', label: 'Semicolon (;)' },
-  { value: '\t', label: 'Tab' },
+  { value: ',', labelKey: 'csvMapping.delimiters.comma' },
+  { value: ';', labelKey: 'csvMapping.delimiters.semicolon' },
+  { value: '\t', labelKey: 'csvMapping.delimiters.tab' },
 ];
 
 type AmountMode = 'single' | 'split';
@@ -166,7 +166,7 @@ export function CsvColumnMappingStep({
               className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             >
               {DELIMITER_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
               ))}
             </select>
           </div>

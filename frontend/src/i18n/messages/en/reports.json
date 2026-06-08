@@ -1503,5 +1503,75 @@
       "deleted": "Report deleted successfully",
       "deleteFailed": "Failed to delete report"
     }
+  },
+  "customReportLabels": {
+    "viewType": {
+      "TABLE": "Table",
+      "LINE_CHART": "Line Chart",
+      "BAR_CHART": "Bar Chart",
+      "PIE_CHART": "Pie Chart"
+    },
+    "timeframe": {
+      "LAST_7_DAYS": "Last 7 Days",
+      "LAST_30_DAYS": "Last 30 Days",
+      "LAST_MONTH": "Last Month",
+      "LAST_3_MONTHS": "Last 3 Months",
+      "LAST_6_MONTHS": "Last 6 Months",
+      "LAST_12_MONTHS": "Last 12 Months",
+      "LAST_YEAR": "Last Year",
+      "YEAR_TO_DATE": "Year to Date",
+      "CUSTOM": "Custom Range"
+    },
+    "groupBy": {
+      "NONE": "No Grouping",
+      "CATEGORY": "Category",
+      "PAYEE": "Payee",
+      "YEAR": "Year",
+      "MONTH": "Month",
+      "WEEK": "Week",
+      "DAY": "Day",
+      "TAG": "Tag"
+    },
+    "metric": {
+      "NONE": "No Aggregation",
+      "TOTAL_AMOUNT": "Total Amount",
+      "COUNT": "Transaction Count",
+      "AVERAGE": "Average Amount",
+      "BUDGET_VARIANCE": "Budget Variance"
+    },
+    "direction": {
+      "INCOME_ONLY": "Income Only",
+      "EXPENSES_ONLY": "Expenses Only",
+      "BOTH": "Both"
+    },
+    "sortDirection": {
+      "ASC": "Ascending",
+      "DESC": "Descending"
+    },
+    "tableColumn": {
+      "LABEL": "Label",
+      "VALUE": "Value",
+      "COUNT": "Count",
+      "PERCENTAGE": "Percentage",
+      "DATE": "Date",
+      "PAYEE": "Payee",
+      "DESCRIPTION": "Description",
+      "MEMO": "Memo",
+      "CATEGORY": "Category",
+      "ACCOUNT": "Account",
+      "TAG": "Tag"
+    }
+  },
+  "investmentReportLabels": {
+    "groupBy": {
+      "NONE": "No Grouping",
+      "ACCOUNT": "Account",
+      "SYMBOL": "Symbol",
+      "CURRENCY": "Currency"
+    },
+    "sortDirection": {
+      "ASC": "Ascending",
+      "DESC": "Descending"
+    }
   }
 }

@@ -1503,5 +1503,75 @@
       "deleted": "[XX-Report deleted successfully-XX]",
       "deleteFailed": "[XX-Failed to delete report-XX]"
     }
+  },
+  "customReportLabels": {
+    "viewType": {
+      "TABLE": "[XX-Table-XX]",
+      "LINE_CHART": "[XX-Line Chart-XX]",
+      "BAR_CHART": "[XX-Bar Chart-XX]",
+      "PIE_CHART": "[XX-Pie Chart-XX]"
+    },
+    "timeframe": {
+      "LAST_7_DAYS": "[XX-Last 7 Days-XX]",
+      "LAST_30_DAYS": "[XX-Last 30 Days-XX]",
+      "LAST_MONTH": "[XX-Last Month-XX]",
+      "LAST_3_MONTHS": "[XX-Last 3 Months-XX]",
+      "LAST_6_MONTHS": "[XX-Last 6 Months-XX]",
+      "LAST_12_MONTHS": "[XX-Last 12 Months-XX]",
+      "LAST_YEAR": "[XX-Last Year-XX]",
+      "YEAR_TO_DATE": "[XX-Year to Date-XX]",
+      "CUSTOM": "[XX-Custom Range-XX]"
+    },
+    "groupBy": {
+      "NONE": "[XX-No Grouping-XX]",
+      "CATEGORY": "[XX-Category-XX]",
+      "PAYEE": "[XX-Payee-XX]",
+      "YEAR": "[XX-Year-XX]",
+      "MONTH": "[XX-Month-XX]",
+      "WEEK": "[XX-Week-XX]",
+      "DAY": "[XX-Day-XX]",
+      "TAG": "[XX-Tag-XX]"
+    },
+    "metric": {
+      "NONE": "[XX-No Aggregation-XX]",
+      "TOTAL_AMOUNT": "[XX-Total Amount-XX]",
+      "COUNT": "[XX-Transaction Count-XX]",
+      "AVERAGE": "[XX-Average Amount-XX]",
+      "BUDGET_VARIANCE": "[XX-Budget Variance-XX]"
+    },
+    "direction": {
+      "INCOME_ONLY": "[XX-Income Only-XX]",
+      "EXPENSES_ONLY": "[XX-Expenses Only-XX]",
+      "BOTH": "[XX-Both-XX]"
+    },
+    "sortDirection": {
+      "ASC": "[XX-Ascending-XX]",
+      "DESC": "[XX-Descending-XX]"
+    },
+    "tableColumn": {
+      "LABEL": "[XX-Label-XX]",
+      "VALUE": "[XX-Value-XX]",
+      "COUNT": "[XX-Count-XX]",
+      "PERCENTAGE": "[XX-Percentage-XX]",
+      "DATE": "[XX-Date-XX]",
+      "PAYEE": "[XX-Payee-XX]",
+      "DESCRIPTION": "[XX-Description-XX]",
+      "MEMO": "[XX-Memo-XX]",
+      "CATEGORY": "[XX-Category-XX]",
+      "ACCOUNT": "[XX-Account-XX]",
+      "TAG": "[XX-Tag-XX]"
+    }
+  },
+  "investmentReportLabels": {
+    "groupBy": {
+      "NONE": "[XX-No Grouping-XX]",
+      "ACCOUNT": "[XX-Account-XX]",
+      "SYMBOL": "[XX-Symbol-XX]",
+      "CURRENCY": "[XX-Currency-XX]"
+    },
+    "sortDirection": {
+      "ASC": "[XX-Ascending-XX]",
+      "DESC": "[XX-Descending-XX]"
+    }
   }
 }

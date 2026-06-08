@@ -92,7 +92,12 @@
     "colWithHeader": "[XX-{header} (Col {n})-XX]",
     "validationDateRequired": "[XX-Date column is required-XX]",
     "validationAmountRequired": "[XX-Amount column is required-XX]",
-    "validationDebitCreditRequired": "[XX-Both debit and credit columns are required-XX]"
+    "validationDebitCreditRequired": "[XX-Both debit and credit columns are required-XX]",
+    "delimiters": {
+      "comma": "[XX-Comma (,)-XX]",
+      "semicolon": "[XX-Semicolon (;)-XX]",
+      "tab": "[XX-Tab-XX]"
+    }
   },
   "transferRules": {
     "title": "[XX-Transfer Detection Rules-XX]",

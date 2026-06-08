@@ -254,7 +254,27 @@
       "scopesLabel": "[XX-Scopes-XX]",
       "expirationLabel": "[XX-Expiration-XX]",
       "creatingButton": "[XX-Creating...-XX]",
-      "createButton": "[XX-Create Token-XX]"
+      "createButton": "[XX-Create Token-XX]",
+      "scopes": {
+        "read": {
+          "label": "[XX-Read-XX]",
+          "description": "[XX-View accounts, transactions, and categories-XX]"
+        },
+        "write": {
+          "label": "[XX-Write-XX]",
+          "description": "[XX-Create transactions, payees, and categories-XX]"
+        },
+        "reports": {
+          "label": "[XX-Reports-XX]",
+          "description": "[XX-Generate financial reports and analytics-XX]"
+        }
+      },
+      "expiry": {
+        "none": "[XX-No expiration-XX]",
+        "d30": "[XX-30 days-XX]",
+        "d90": "[XX-90 days-XX]",
+        "y1": "[XX-1 year-XX]"
+      }
     },
     "createdModal": {
       "title": "[XX-Token Created-XX]",
@@ -329,6 +349,12 @@
       "required": "[XX-Folder path is required-XX]",
       "validationFailed": "[XX-Folder validation failed-XX]",
       "validationError": "[XX-Validation failed-XX]"
+    },
+    "frequencyOptions": {
+      "every6hours": "[XX-Every 6 Hours-XX]",
+      "every12hours": "[XX-Every 12 Hours-XX]",
+      "daily": "[XX-Daily-XX]",
+      "weekly": "[XX-Weekly-XX]"
     }
   },
   "backupRestore": {
@@ -692,6 +718,16 @@
         "modelReady": "[XX-Model \"{model}\" is ready.-XX]",
         "success": "[XX-Connection successful.-XX]",
         "testFailed": "[XX-Model test failed-XX]"
+      },
+      "costCurrencies": {
+        "USD": "[XX-USD - US Dollar-XX]",
+        "EUR": "[XX-EUR - Euro-XX]",
+        "GBP": "[XX-GBP - British Pound-XX]",
+        "CAD": "[XX-CAD - Canadian Dollar-XX]",
+        "AUD": "[XX-AUD - Australian Dollar-XX]",
+        "JPY": "[XX-JPY - Japanese Yen-XX]",
+        "CNY": "[XX-CNY - Chinese Yuan-XX]",
+        "INR": "[XX-INR - Indian Rupee-XX]"
       }
     },
     "testButton": {

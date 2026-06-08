@@ -251,47 +251,47 @@ export function CustomReportForm({ report, onSubmit, onCancel, onDirtyChange, su
 
   useFormSubmitRef(submitRef, handleSubmit, handleFormSubmit);
 
-  const viewTypeOptions = Object.entries(VIEW_TYPE_LABELS).map(([value, label]) => ({
+  const viewTypeOptions = Object.keys(VIEW_TYPE_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`customReportLabels.viewType.${value}`),
   }));
 
-  const timeframeOptions = Object.entries(TIMEFRAME_LABELS).map(([value, label]) => ({
+  const timeframeOptions = Object.keys(TIMEFRAME_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`customReportLabels.timeframe.${value}`),
   }));
 
-  const groupByOptions = Object.entries(GROUP_BY_LABELS).map(([value, label]) => ({
+  const groupByOptions = Object.keys(GROUP_BY_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`customReportLabels.groupBy.${value}`),
   }));
 
-  const metricOptions = Object.entries(METRIC_LABELS).map(([value, label]) => ({
+  const metricOptions = Object.keys(METRIC_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`customReportLabels.metric.${value}`),
   }));
 
-  const directionOptions = Object.entries(DIRECTION_LABELS).map(([value, label]) => ({
+  const directionOptions = Object.keys(DIRECTION_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`customReportLabels.direction.${value}`),
   }));
 
-  const tableColumnOptions = Object.entries(TABLE_COLUMN_LABELS).map(([value, label]) => ({
+  const tableColumnOptions = Object.keys(TABLE_COLUMN_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`customReportLabels.tableColumn.${value}`),
   }));
 
   const sortByOptions = [
     { value: '', label: t('customReport.sortByPlaceholder') },
-    ...Object.entries(TABLE_COLUMN_LABELS).map(([value, label]) => ({
+    ...Object.keys(TABLE_COLUMN_LABELS).map((value) => ({
       value,
-      label,
+      label: t(`customReportLabels.tableColumn.${value}`),
     })),
   ];
 
-  const sortDirectionOptions = Object.entries(SORT_DIRECTION_LABELS).map(([value, label]) => ({
+  const sortDirectionOptions = Object.keys(SORT_DIRECTION_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`customReportLabels.sortDirection.${value}`),
   }));
 
   if (isLoadingData) {

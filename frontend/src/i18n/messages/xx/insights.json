@@ -27,5 +27,18 @@
     "heading": "[XX-AI Not Configured-XX]",
     "message": "[XX-No AI provider is configured. To use Spending Insights, please {link} in your settings.-XX]",
     "linkText": "[XX-configure an AI provider-XX]"
+  },
+  "insightTypes": {
+    "anomaly": "[XX-Anomaly-XX]",
+    "trend": "[XX-Trend-XX]",
+    "subscription": "[XX-Subscription-XX]",
+    "budget_pace": "[XX-Budget Pace-XX]",
+    "seasonal": "[XX-Seasonal-XX]",
+    "new_recurring": "[XX-New Recurring-XX]"
+  },
+  "insightSeverities": {
+    "info": "[XX-Info-XX]",
+    "warning": "[XX-Warning-XX]",
+    "alert": "[XX-Alert-XX]"
   }
 }

@@ -20,16 +20,16 @@ import { useDateFormat } from '@/hooks/useDateFormat';
 const MCP_PATH = '/api/v1/mcp';
 
 const SCOPE_OPTIONS = [
-  { value: 'read', label: 'Read', description: 'View accounts, transactions, and categories' },
-  { value: 'write', label: 'Write', description: 'Create transactions, payees, and categories' },
-  { value: 'reports', label: 'Reports', description: 'Generate financial reports and analytics' },
+  { value: 'read', labelKey: 'createModal.scopes.read.label', descriptionKey: 'createModal.scopes.read.description' },
+  { value: 'write', labelKey: 'createModal.scopes.write.label', descriptionKey: 'createModal.scopes.write.description' },
+  { value: 'reports', labelKey: 'createModal.scopes.reports.label', descriptionKey: 'createModal.scopes.reports.description' },
 ];
 
 const EXPIRY_OPTIONS = [
-  { value: '', label: 'No expiration' },
-  { value: '30', label: '30 days' },
-  { value: '90', label: '90 days' },
-  { value: '365', label: '1 year' },
+  { value: '', labelKey: 'createModal.expiry.none' },
+  { value: '30', labelKey: 'createModal.expiry.d30' },
+  { value: '90', labelKey: 'createModal.expiry.d90' },
+  { value: '365', labelKey: 'createModal.expiry.y1' },
 ];
 
 const createTokenSchema = z.object({
@@ -56,6 +56,7 @@ function relativeOrFormatted(
 
 export function ApiAccessSection() {
   const t = useTranslations('settings.apiAccess');
+  const tc = useTranslations('common');
   const getRelative = (diffDays: number | null): string => {
     if (diffDays === null) return t('relative.never');
     if (diffDays === 0) return t('relative.today');
@@ -375,10 +376,10 @@ export function ApiAccessSection() {
                       />
                       <div>
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {scope.label}
+                          {t(scope.labelKey)}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {scope.description}
+                          {t(scope.descriptionKey)}
                         </p>
                       </div>
                     </label>
@@ -395,14 +396,14 @@ export function ApiAccessSection() {
                 >
                   {EXPIRY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.labelKey)}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="flex gap-2 justify-end pt-2">
                 <Button variant="outline" type="button" onClick={handleCloseCreateModal}>
-                  Cancel
+                  {tc('cancel')}
                 </Button>
                 <Button type="submit" disabled={isCreating}>
                   {isCreating ? t('createModal.creatingButton') : t('createModal.createButton')}

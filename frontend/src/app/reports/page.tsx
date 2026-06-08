@@ -11,7 +11,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { userSettingsApi } from '@/lib/user-settings';
 import { customReportsApi } from '@/lib/custom-reports';
-import { CustomReport, VIEW_TYPE_LABELS, TIMEFRAME_LABELS } from '@/types/custom-report';
+import { CustomReport } from '@/types/custom-report';
 import { investmentReportsApi } from '@/lib/investment-reports';
 import { InvestmentReport } from '@/types/investment-report';
 import { getIconComponent } from '@/components/ui/IconPicker';
@@ -639,7 +639,7 @@ function ReportsContent() {
         return {
           id: `custom/${cr.id}`,
           name: cr.name,
-          description: cr.description || `${VIEW_TYPE_LABELS[cr.viewType]} · ${TIMEFRAME_LABELS[cr.timeframeType]}`,
+          description: cr.description || `${t(`customReportLabels.viewType.${cr.viewType}`)} · ${t(`customReportLabels.timeframe.${cr.timeframeType}`)}`,
           category: 'custom' as ReportCategory,
           color: cr.backgroundColor ? '' : 'bg-purple-500',
           isCustom: true,
@@ -651,7 +651,7 @@ function ReportsContent() {
           ),
         };
       }),
-    [customReports],
+    [customReports, t],
   );
 
   // Convert investment reports to the Report interface (memoized, see above).

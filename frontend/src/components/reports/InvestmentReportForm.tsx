@@ -155,12 +155,12 @@ export function InvestmentReportForm({
     await onSubmit(submitData);
   };
 
-  const groupByOptions = Object.entries(GROUP_BY_LABELS).map(([value, label]) => ({
+  const groupByOptions = Object.keys(GROUP_BY_LABELS).map((value) => ({
     value,
-    label,
+    label: t(`investmentReportLabels.groupBy.${value}`),
   }));
-  const sortDirectionOptions = Object.entries(SORT_DIRECTION_LABELS).map(
-    ([value, label]) => ({ value, label }),
+  const sortDirectionOptions = Object.keys(SORT_DIRECTION_LABELS).map(
+    (value) => ({ value, label: t(`investmentReportLabels.sortDirection.${value}`) }),
   );
   const sortByOptions = [
     { value: '', label: t('investmentReportForm.defaultSortBy') },
@@ -268,7 +268,7 @@ export function InvestmentReportForm({
         </div>
         {watchGroupBy !== InvestmentGroupBy.NONE && (
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            {t('investmentReportForm.groupByNote', { groupByLabel: GROUP_BY_LABELS[watchGroupBy].toLowerCase() })}
+            {t('investmentReportForm.groupByNote', { groupByLabel: t(`investmentReportLabels.groupBy.${watchGroupBy}`).toLowerCase() })}
           </p>
         )}
         {watchGroupBy !== InvestmentGroupBy.ACCOUNT && (

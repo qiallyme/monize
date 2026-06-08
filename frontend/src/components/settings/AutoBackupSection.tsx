@@ -14,10 +14,10 @@ import { usePreferencesStore } from '@/store/preferencesStore';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 
 const FREQUENCY_OPTIONS = [
-  { value: 'every6hours', label: 'Every 6 Hours' },
-  { value: 'every12hours', label: 'Every 12 Hours' },
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
+  { value: 'every6hours', labelKey: 'frequencyOptions.every6hours' },
+  { value: 'every12hours', labelKey: 'frequencyOptions.every12hours' },
+  { value: 'daily', labelKey: 'frequencyOptions.daily' },
+  { value: 'weekly', labelKey: 'frequencyOptions.weekly' },
 ];
 
 function formatDateTime(
@@ -348,7 +348,7 @@ export function AutoBackupSection() {
             setFrequency(e.target.value as AutoBackupSettings['frequency']);
             markDirty();
           }}
-          options={FREQUENCY_OPTIONS}
+          options={FREQUENCY_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
         />
       </div>
 

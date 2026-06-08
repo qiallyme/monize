@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { AiInsight, INSIGHT_TYPE_LABELS } from '@/types/ai';
+import { AiInsight } from '@/types/ai';
 import { useDateFormat } from '@/hooks/useDateFormat';
 
 interface InsightCardProps {
@@ -66,7 +66,7 @@ export function InsightCard({ insight, onDismiss, isDismissing }: InsightCardPro
             <span
               className={`px-1.5 py-0.5 text-xs font-medium rounded ${typeStyle}`}
             >
-              {INSIGHT_TYPE_LABELS[insight.type]}
+              {t(`insightTypes.${insight.type}`)}
             </span>
           </div>
           <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">

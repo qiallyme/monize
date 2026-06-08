@@ -27,14 +27,14 @@ const costField = z
 // Common billing currencies for AI providers. USD covers Anthropic/OpenAI;
 // the others are included to let users align with locally-billed providers.
 const COST_CURRENCY_OPTIONS = [
-  { value: 'USD', label: 'USD - US Dollar' },
-  { value: 'EUR', label: 'EUR - Euro' },
-  { value: 'GBP', label: 'GBP - British Pound' },
-  { value: 'CAD', label: 'CAD - Canadian Dollar' },
-  { value: 'AUD', label: 'AUD - Australian Dollar' },
-  { value: 'JPY', label: 'JPY - Japanese Yen' },
-  { value: 'CNY', label: 'CNY - Chinese Yuan' },
-  { value: 'INR', label: 'INR - Indian Rupee' },
+  { value: 'USD', labelKey: 'costCurrencies.USD' },
+  { value: 'EUR', labelKey: 'costCurrencies.EUR' },
+  { value: 'GBP', labelKey: 'costCurrencies.GBP' },
+  { value: 'CAD', labelKey: 'costCurrencies.CAD' },
+  { value: 'AUD', labelKey: 'costCurrencies.AUD' },
+  { value: 'JPY', labelKey: 'costCurrencies.JPY' },
+  { value: 'CNY', labelKey: 'costCurrencies.CNY' },
+  { value: 'INR', labelKey: 'costCurrencies.INR' },
 ];
 
 const providerConfigSchema = z.object({
@@ -331,7 +331,7 @@ export function ProviderConfigForm({ isOpen, onClose, onSubmit, editConfig }: Pr
               <Select
                 label={t('rateCurrencyLabel')}
                 {...register('costCurrency')}
-                options={COST_CURRENCY_OPTIONS}
+                options={COST_CURRENCY_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
                 error={errors.costCurrency?.message}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
