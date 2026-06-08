@@ -278,5 +278,17 @@
       "source": "Source"
     },
     "selectButton": "Select"
+  },
+  "validation": {
+    "symbolRequired": "Symbol is required",
+    "symbolMax": "Symbol must be 20 characters or less",
+    "nameRequired": "Name is required",
+    "nameMax": "Name must be 255 characters or less",
+    "currencyRequired": "Currency is required"
+  },
+  "priceValidation": {
+    "dateRequired": "Date is required",
+    "priceRequired": "Price is required",
+    "priceNonNegative": "Price must be a non-negative number"
   }
 }

@@ -21,6 +21,14 @@
     "savingButton": "[XX-Saving...-XX]",
     "toasts": {
       "success": "[XX-Profile updated successfully-XX]"
+    },
+    "validation": {
+      "firstNameMax": "[XX-First name must be 100 characters or less-XX]",
+      "lastNameMax": "[XX-Last name must be 100 characters or less-XX]",
+      "emailRequired": "[XX-Email is required-XX]",
+      "emailInvalid": "[XX-Please enter a valid email address-XX]",
+      "emailMax": "[XX-Email must be 254 characters or less-XX]",
+      "passwordMax": "[XX-Password must be 128 characters or less-XX]"
     }
   },
   "security": {
@@ -274,6 +282,10 @@
         "d30": "[XX-30 days-XX]",
         "d90": "[XX-90 days-XX]",
         "y1": "[XX-1 year-XX]"
+      },
+      "validation": {
+        "nameRequired": "[XX-Token name is required-XX]",
+        "nameMax": "[XX-Token name must be 100 characters or less-XX]"
       }
     },
     "createdModal": {

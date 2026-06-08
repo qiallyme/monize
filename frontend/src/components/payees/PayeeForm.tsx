@@ -16,13 +16,13 @@ import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
 import { FormActions } from '@/components/ui/FormActions';
 import { PayeeAliasManager } from './PayeeAliasManager';
 
-const payeeSchema = z.object({
-  name: z.string().min(1, 'Payee name is required').max(255),
+const buildPayeeSchema = (t: (key: string) => string) => z.object({
+  name: z.string().min(1, t('validation.nameRequired')).max(255),
   defaultCategoryId: z.string().optional(),
   notes: z.string().optional(),
 });
 
-type PayeeFormData = z.infer<typeof payeeSchema>;
+type PayeeFormData = z.infer<ReturnType<typeof buildPayeeSchema>>;
 
 export type PayeeFormSubmitData = PayeeFormData & {
   pendingAliases?: string[];
@@ -48,7 +48,7 @@ export function PayeeForm({ payee, categories, onSubmit, onCancel, onDirtyChange
     setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<PayeeFormData>({
-    resolver: zodResolver(payeeSchema),
+    resolver: zodResolver(buildPayeeSchema(t)),
     defaultValues: payee
       ? {
           name: payee.name,

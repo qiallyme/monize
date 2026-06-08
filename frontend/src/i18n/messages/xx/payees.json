@@ -197,5 +197,8 @@
       "removeFailed": "[XX-Failed to remove alias-XX]"
     }
   },
-  "selectCategoryPlaceholder": "[XX-Select category...-XX]"
+  "selectCategoryPlaceholder": "[XX-Select category...-XX]",
+  "validation": {
+    "nameRequired": "[XX-Payee name is required-XX]"
+  }
 }

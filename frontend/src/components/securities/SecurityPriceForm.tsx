@@ -13,11 +13,11 @@ import { useFormSubmitRef } from '@/hooks/useFormSubmitRef';
 import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
 import { FormActions } from '@/components/ui/FormActions';
 
-const priceSchema = z.object({
-  priceDate: z.string().min(1, 'Date is required'),
-  closePrice: z.string().min(1, 'Price is required').refine(
+const buildPriceSchema = (t: (key: string) => string) => z.object({
+  priceDate: z.string().min(1, t('priceValidation.dateRequired')),
+  closePrice: z.string().min(1, t('priceValidation.priceRequired')).refine(
     (val) => !isNaN(Number(val)) && Number(val) >= 0,
-    'Price must be a non-negative number',
+    t('priceValidation.priceNonNegative'),
   ),
   openPrice: z.string().optional(),
   highPrice: z.string().optional(),
@@ -25,7 +25,7 @@ const priceSchema = z.object({
   volume: z.string().optional(),
 });
 
-type PriceFormData = z.infer<typeof priceSchema>;
+type PriceFormData = z.infer<ReturnType<typeof buildPriceSchema>>;
 
 interface SecurityPriceFormProps {
   price?: SecurityPrice;
@@ -43,7 +43,7 @@ export function SecurityPriceForm({ price, onSubmit, onCancel, onDirtyChange, su
     setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<PriceFormData>({
-    resolver: zodResolver(priceSchema),
+    resolver: zodResolver(buildPriceSchema(t)),
     defaultValues: {
       priceDate: price?.priceDate || new Date().toISOString().substring(0, 10),
       closePrice: price?.closePrice != null ? String(price.closePrice) : '',

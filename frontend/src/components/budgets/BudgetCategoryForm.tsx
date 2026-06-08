@@ -17,18 +17,18 @@ import type {
 const ROLLOVER_TYPES = ['NONE', 'MONTHLY', 'QUARTERLY', 'ANNUAL'] as const;
 const CATEGORY_GROUPS = ['', 'NEED', 'WANT', 'SAVING'] as const;
 
-const budgetCategoryFormSchema = z.object({
-  amount: z.number().min(0, 'Amount must be 0 or greater'),
+const buildBudgetCategoryFormSchema = (t: (key: string) => string) => z.object({
+  amount: z.number().min(0, t('categoryValidation.amountMin')),
   rolloverType: z.enum(ROLLOVER_TYPES),
   rolloverCap: z.string().max(20).optional().or(z.literal('')),
   flexGroup: z.string().max(100).optional().or(z.literal('')),
   categoryGroup: z.enum(CATEGORY_GROUPS),
-  alertWarnPercent: z.string().regex(/^\d*$/, 'Must be a number'),
-  alertCriticalPercent: z.string().regex(/^\d*$/, 'Must be a number'),
+  alertWarnPercent: z.string().regex(/^\d*$/, t('categoryValidation.mustBeNumber')),
+  alertCriticalPercent: z.string().regex(/^\d*$/, t('categoryValidation.mustBeNumber')),
   notes: z.string().max(1000).optional().or(z.literal('')),
 });
 
-type BudgetCategoryFormData = z.infer<typeof budgetCategoryFormSchema>;
+type BudgetCategoryFormData = z.infer<ReturnType<typeof buildBudgetCategoryFormSchema>>;
 
 interface BudgetCategoryFormProps {
   category: BudgetCategory;
@@ -57,7 +57,7 @@ export function BudgetCategoryForm({
     watch,
     formState: { errors },
   } = useForm<BudgetCategoryFormData>({
-    resolver: zodResolver(budgetCategoryFormSchema),
+    resolver: zodResolver(buildBudgetCategoryFormSchema(t)),
     defaultValues: {
       amount: category.amount,
       rolloverType: category.rolloverType,

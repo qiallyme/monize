@@ -8,14 +8,14 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { useTranslations } from 'next-intl';
 
-const saveAsSchema = z.object({
+const buildSaveAsSchema = (t: (key: string) => string) => z.object({
   // Trim then cap at 255 chars so the submitted value is always clean and
   // bounded, mirroring the backend column limit. A whitespace-only name
   // collapses to '' and fails the min(1) rule.
   name: z
     .string()
     .transform((v) => v.trim().slice(0, 255))
-    .pipe(z.string().min(1, 'Name is required')),
+    .pipe(z.string().min(1, t('monteCarloSaveAs.nameRequired'))),
 });
 
 type SaveAsFormData = { name: string };
@@ -40,7 +40,7 @@ export function MonteCarloSaveAsDialog({
     handleSubmit,
     reset,
   } = useForm<SaveAsFormData>({
-    resolver: zodResolver(saveAsSchema),
+    resolver: zodResolver(buildSaveAsSchema(t)),
     defaultValues: { name: initialName },
   });
 

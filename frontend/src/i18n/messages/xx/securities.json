@@ -278,5 +278,17 @@
       "source": "[XX-Source-XX]"
     },
     "selectButton": "[XX-Select-XX]"
+  },
+  "validation": {
+    "symbolRequired": "[XX-Symbol is required-XX]",
+    "symbolMax": "[XX-Symbol must be 20 characters or less-XX]",
+    "nameRequired": "[XX-Name is required-XX]",
+    "nameMax": "[XX-Name must be 255 characters or less-XX]",
+    "currencyRequired": "[XX-Currency is required-XX]"
+  },
+  "priceValidation": {
+    "dateRequired": "[XX-Date is required-XX]",
+    "priceRequired": "[XX-Price is required-XX]",
+    "priceNonNegative": "[XX-Price must be a non-negative number-XX]"
   }
 }

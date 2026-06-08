@@ -535,5 +535,14 @@
         "loadFailed": "[XX-Failed to load budget-XX]"
       }
     }
+  },
+  "validation": {
+    "nameRequired": "[XX-Budget name is required-XX]",
+    "nameMax": "[XX-Budget name must be 255 characters or less-XX]",
+    "descriptionMax": "[XX-Description must be 1000 characters or less-XX]"
+  },
+  "categoryValidation": {
+    "amountMin": "[XX-Amount must be 0 or greater-XX]",
+    "mustBeNumber": "[XX-Must be a number-XX]"
   }
 }

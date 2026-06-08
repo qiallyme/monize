@@ -32,12 +32,12 @@ const EXPIRY_OPTIONS = [
   { value: '365', labelKey: 'createModal.expiry.y1' },
 ];
 
-const createTokenSchema = z.object({
-  name: z.string().min(1, 'Token name is required').max(100, 'Token name must be 100 characters or less'),
+const buildCreateTokenSchema = (t: (key: string) => string) => z.object({
+  name: z.string().min(1, t('createModal.validation.nameRequired')).max(100, t('createModal.validation.nameMax')),
   expiryDays: z.string(),
 });
 
-type CreateTokenFormData = z.infer<typeof createTokenSchema>;
+type CreateTokenFormData = z.infer<ReturnType<typeof buildCreateTokenSchema>>;
 
 function relativeOrFormatted(
   dateStr: string | null,
@@ -85,7 +85,7 @@ export function ApiAccessSection() {
     reset: resetForm,
     formState: { errors },
   } = useForm<CreateTokenFormData>({
-    resolver: zodResolver(createTokenSchema),
+    resolver: zodResolver(buildCreateTokenSchema(t)),
     defaultValues: {
       name: '',
       expiryDays: '',

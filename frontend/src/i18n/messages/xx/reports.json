@@ -1573,5 +1573,8 @@
       "ASC": "[XX-Ascending-XX]",
       "DESC": "[XX-Descending-XX]"
     }
+  },
+  "monteCarloSaveAs": {
+    "nameRequired": "[XX-Name is required-XX]"
   }
 }

@@ -51,8 +51,8 @@ const optionalNumberWithRange = (min: number, max: number) =>
 const paymentFrequencies = ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'] as const;
 const mortgagePaymentFrequencies = ['MONTHLY', 'SEMI_MONTHLY', 'BIWEEKLY', 'ACCELERATED_BIWEEKLY', 'WEEKLY', 'ACCELERATED_WEEKLY'] as const;
 
-const accountSchema = z.object({
-  name: z.string().min(1, 'Account name is required').max(255),
+const buildAccountSchema = (t: (key: string) => string) => z.object({
+  name: z.string().min(1, t('validation.nameRequired')).max(255),
   accountType: z.enum([
     'CHEQUING',
     'SAVINGS',
@@ -65,7 +65,7 @@ const accountSchema = z.object({
     'ASSET',
     'OTHER',
   ]),
-  currencyCode: z.string().length(3, 'Currency code must be 3 characters'),
+  currencyCode: z.string().length(3, t('validation.currencyCodeLength')),
   openingBalance: optionalNumber,
   creditLimit: optionalNumber,
   interestRate: optionalNumberWithRange(0, 100),
@@ -95,7 +95,7 @@ const accountSchema = z.object({
   mortgagePaymentFrequency: z.enum(mortgagePaymentFrequencies).optional(),
 });
 
-type AccountFormData = z.infer<typeof accountSchema>;
+type AccountFormData = z.infer<ReturnType<typeof buildAccountSchema>>;
 
 interface AccountFormProps {
   account?: Account;
@@ -147,7 +147,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
     getValues,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<AccountFormData>({
-    resolver: zodResolver(accountSchema) as Resolver<AccountFormData>,
+    resolver: zodResolver(buildAccountSchema(t)) as Resolver<AccountFormData>,
     defaultValues: account
       ? {
           name: account.name,

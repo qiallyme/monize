@@ -197,5 +197,8 @@
       "removeFailed": "Failed to remove alias"
     }
   },
-  "selectCategoryPlaceholder": "Select category..."
+  "selectCategoryPlaceholder": "Select category...",
+  "validation": {
+    "nameRequired": "Payee name is required"
+  }
 }

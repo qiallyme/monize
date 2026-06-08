@@ -26,18 +26,18 @@ import { EXCHANGE_OPTIONS } from '@/lib/constants';
 
 const logger = createLogger('SecurityForm');
 
-const securitySchema = z.object({
-  symbol: z.string().min(1, 'Symbol is required').max(20, 'Symbol must be 20 characters or less'),
-  name: z.string().min(1, 'Name is required').max(255, 'Name must be 255 characters or less'),
+const buildSecuritySchema = (t: (key: string) => string) => z.object({
+  symbol: z.string().min(1, t('validation.symbolRequired')).max(20, t('validation.symbolMax')),
+  name: z.string().min(1, t('validation.nameRequired')).max(255, t('validation.nameMax')),
   securityType: z.string().optional(),
   exchange: z.string().optional(),
-  currencyCode: z.string().min(1, 'Currency is required'),
+  currencyCode: z.string().min(1, t('validation.currencyRequired')),
   quoteProvider: z.enum(['', 'yahoo', 'msn']).optional(),
   msnInstrumentId: z.string().max(50).optional(),
   isFavourite: z.boolean().optional(),
 });
 
-type SecurityFormData = z.infer<typeof securitySchema>;
+type SecurityFormData = z.infer<ReturnType<typeof buildSecuritySchema>>;
 
 const quoteProviderOverrideOptions = [
   { value: '', label: 'Use default' },
@@ -116,7 +116,7 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     reset,
     formState: { errors, isSubmitting, isDirty, defaultValues },
   } = useForm<SecurityFormData>({
-    resolver: zodResolver(securitySchema),
+    resolver: zodResolver(buildSecuritySchema(t)),
     defaultValues: {
       symbol: security?.symbol || '',
       name: security?.name || '',

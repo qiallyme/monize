@@ -17,16 +17,16 @@ import type {
 const BUDGET_TYPES = ['MONTHLY', 'ANNUAL', 'PAY_PERIOD'] as const;
 const STRATEGIES = ['FIXED', 'ROLLOVER', 'ZERO_BASED', 'FIFTY_THIRTY_TWENTY'] as const;
 
-const budgetFormSchema = z.object({
-  name: z.string().min(1, 'Budget name is required').max(255, 'Budget name must be 255 characters or less'),
-  description: z.string().max(1000, 'Description must be 1000 characters or less').optional().or(z.literal('')),
+const buildBudgetFormSchema = (t: (key: string) => string) => z.object({
+  name: z.string().min(1, t('validation.nameRequired')).max(255, t('validation.nameMax')),
+  description: z.string().max(1000, t('validation.descriptionMax')).optional().or(z.literal('')),
   budgetType: z.enum(BUDGET_TYPES),
   strategy: z.enum(STRATEGIES),
   baseIncome: z.number().min(0).optional(),
   isActive: z.boolean(),
 });
 
-type BudgetFormData = z.infer<typeof budgetFormSchema>;
+type BudgetFormData = z.infer<ReturnType<typeof buildBudgetFormSchema>>;
 
 interface BudgetFormProps {
   budget: Budget;
@@ -52,7 +52,7 @@ export function BudgetForm({
     control,
     formState: { errors },
   } = useForm<BudgetFormData>({
-    resolver: zodResolver(budgetFormSchema),
+    resolver: zodResolver(buildBudgetFormSchema(t)),
     defaultValues: {
       name: budget.name,
       description: budget.description ?? '',

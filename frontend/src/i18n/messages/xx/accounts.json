@@ -282,5 +282,9 @@
     "categoryCreated": "[XX-Category \"{name}\" created-XX]",
     "payeeCreated": "[XX-Payee \"{name}\" created-XX]",
     "payeeCreateFailed": "[XX-Failed to create payee-XX]"
+  },
+  "validation": {
+    "nameRequired": "[XX-Account name is required-XX]",
+    "currencyCodeLength": "[XX-Currency code must be 3 characters-XX]"
   }
 }

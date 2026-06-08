@@ -73,5 +73,8 @@
       "pink": "Pink",
       "grey": "Grey"
     }
+  },
+  "validation": {
+    "nameRequired": "Tag name is required"
   }
 }

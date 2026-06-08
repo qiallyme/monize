@@ -18,14 +18,14 @@ import { FormActions } from '@/components/ui/FormActions';
 
 const logger = createLogger('CurrencyForm');
 
-const currencySchema = z.object({
-  code: z.string().length(3, 'Currency code must be exactly 3 characters'),
-  name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
-  symbol: z.string().min(1, 'Symbol is required').max(10, 'Symbol must be 10 characters or less'),
+const buildCurrencySchema = (t: (key: string) => string) => z.object({
+  code: z.string().length(3, t('validation.codeLength')),
+  name: z.string().min(1, t('validation.nameRequired')).max(100, t('validation.nameMax')),
+  symbol: z.string().min(1, t('validation.symbolRequired')).max(10, t('validation.symbolMax')),
   decimalPlaces: z.coerce.number().int().min(0).max(4).default(2),
 });
 
-type CurrencyFormData = z.infer<typeof currencySchema>;
+type CurrencyFormData = z.infer<ReturnType<typeof buildCurrencySchema>>;
 
 interface CurrencyFormProps {
   currency?: CurrencyInfo;
@@ -48,7 +48,7 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
     reset,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<CurrencyFormData>({
-    resolver: zodResolver(currencySchema) as Resolver<CurrencyFormData>,
+    resolver: zodResolver(buildCurrencySchema(t)) as Resolver<CurrencyFormData>,
     defaultValues: {
       code: currency?.code || '',
       name: currency?.name || '',

@@ -106,5 +106,12 @@
       "notFound": "No currency found for \"{query}\"",
       "lookupFailed": "Lookup failed - please try again"
     }
+  },
+  "validation": {
+    "codeLength": "Currency code must be exactly 3 characters",
+    "nameRequired": "Name is required",
+    "nameMax": "Name must be 100 characters or less",
+    "symbolRequired": "Symbol is required",
+    "symbolMax": "Symbol must be 10 characters or less"
   }
 }

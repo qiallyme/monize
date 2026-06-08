@@ -13,15 +13,15 @@ import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
 import { FormActions } from '@/components/ui/FormActions';
 import { Category } from '@/types/category';
 
-const categorySchema = z.object({
-  name: z.string().min(1, 'Category name is required').max(255),
+const buildCategorySchema = (t: (key: string) => string) => z.object({
+  name: z.string().min(1, t('validation.nameRequired')).max(255),
   parentId: z.string().optional(),
   description: z.string().optional(),
   color: z.string().optional(),
   isIncome: z.boolean(),
 });
 
-type CategoryFormData = z.infer<typeof categorySchema>;
+type CategoryFormData = z.infer<ReturnType<typeof buildCategorySchema>>;
 
 interface CategoryFormProps {
   category?: Category;
@@ -53,7 +53,7 @@ export function CategoryForm({ category, categories, onSubmit, onCancel, onDirty
     setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<CategoryFormData>({
-    resolver: zodResolver(categorySchema),
+    resolver: zodResolver(buildCategorySchema(t)),
     defaultValues: category
       ? {
           name: category.name,

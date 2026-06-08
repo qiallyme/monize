@@ -14,30 +14,30 @@ import { useAuthStore } from '@/store/authStore';
 import { User, UpdateProfileData } from '@/types/auth';
 import { getErrorMessage } from '@/lib/errors';
 
-const profileSchema = z.object({
+const buildProfileSchema = (t: (key: string) => string) => z.object({
   firstName: z
     .string()
-    .max(100, 'First name must be 100 characters or less')
+    .max(100, t('validation.firstNameMax'))
     .optional()
     .or(z.literal('')),
   lastName: z
     .string()
-    .max(100, 'Last name must be 100 characters or less')
+    .max(100, t('validation.lastNameMax'))
     .optional()
     .or(z.literal('')),
   email: z
     .string()
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address')
-    .max(254, 'Email must be 254 characters or less'),
+    .min(1, t('validation.emailRequired'))
+    .email(t('validation.emailInvalid'))
+    .max(254, t('validation.emailMax')),
   currentPassword: z
     .string()
-    .max(128, 'Password must be 128 characters or less')
+    .max(128, t('validation.passwordMax'))
     .optional()
     .or(z.literal('')),
 });
 
-type ProfileFormData = z.infer<typeof profileSchema>;
+type ProfileFormData = z.infer<ReturnType<typeof buildProfileSchema>>;
 
 interface ProfileSectionProps {
   user: User;
@@ -56,7 +56,7 @@ export function ProfileSection({ user, onUserUpdated }: ProfileSectionProps) {
     setValue,
     formState: { errors },
   } = useForm<ProfileFormData>({
-    resolver: zodResolver(profileSchema),
+    resolver: zodResolver(buildProfileSchema(t)),
     defaultValues: {
       firstName: user.firstName || '',
       lastName: user.lastName || '',

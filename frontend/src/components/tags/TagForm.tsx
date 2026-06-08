@@ -13,13 +13,13 @@ import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
 import { FormActions } from '@/components/ui/FormActions';
 import { Tag } from '@/types/tag';
 
-const tagSchema = z.object({
-  name: z.string().min(1, 'Tag name is required').max(100),
+const buildTagSchema = (t: (key: string) => string) => z.object({
+  name: z.string().min(1, t('validation.nameRequired')).max(100),
   color: z.string().optional(),
   icon: z.string().optional(),
 });
 
-type TagFormData = z.infer<typeof tagSchema>;
+type TagFormData = z.infer<ReturnType<typeof buildTagSchema>>;
 
 interface TagFormProps {
   tag?: Tag | null;
@@ -54,7 +54,7 @@ export function TagForm({ tag, onSubmit, onCancel, onDirtyChange, submitRef }: T
     setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<TagFormData>({
-    resolver: zodResolver(tagSchema),
+    resolver: zodResolver(buildTagSchema(t)),
     defaultValues: tag
       ? {
           name: tag.name,
