@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { useTranslations } from 'next-intl';
 
 const saveAsSchema = z.object({
   // Trim then cap at 255 chars so the submitted value is always clean and
@@ -32,6 +33,7 @@ export function MonteCarloSaveAsDialog({
   onCancel,
   onSubmit,
 }: MonteCarloSaveAsDialogProps) {
+  const t = useTranslations('reports');
   const {
     control,
     register,
@@ -68,16 +70,16 @@ export function MonteCarloSaveAsDialog({
     >
       <form onSubmit={handleSubmit(submit)}>
         <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-          Save scenario as
+          {t('monteCarlo.saveAsDialogTitle')}
         </h3>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Enter a name for this scenario. Keep the existing name to overwrite.
+          {t('monteCarlo.saveAsDialogDesc')}
         </p>
         <label
           htmlFor="mc-save-as-name"
           className="block mt-4 text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Name
+          {t('monteCarlo.saveAsNameLabel')}
         </label>
         <input
           id="mc-save-as-name"
@@ -89,10 +91,10 @@ export function MonteCarloSaveAsDialog({
         />
         <div className="mt-6 flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            {t('monteCarlo.cancelBtn')}
           </Button>
           <Button type="submit" variant="primary" disabled={!name?.trim()}>
-            Save
+            {t('monteCarlo.saveAsSubmit')}
           </Button>
         </div>
       </form>

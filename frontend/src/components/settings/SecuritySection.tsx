@@ -6,6 +6,7 @@ import '@/lib/zodConfig';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -39,6 +40,7 @@ interface SecuritySectionProps {
 }
 
 export function SecuritySection({ user, preferences, force2fa, onPreferencesUpdated }: SecuritySectionProps) {
+  const t = useTranslations('settings.security');
   const updatePreferencesStore = usePreferencesStore((state) => state.updatePreferences);
   const { formatDate } = useDateFormat();
 
@@ -78,7 +80,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
         currentPassword: formData.currentPassword,
         newPassword: formData.newPassword,
       });
-      toast.success('Password changed successfully');
+      toast.success(t('toasts.passwordChanged'));
       reset();
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to change password'));
@@ -97,7 +99,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
       const updated = { ...preferences, twoFactorEnabled: false };
       onPreferencesUpdated(updated);
       updatePreferencesStore(updated);
-      toast.success('Two-factor authentication disabled');
+      toast.success(t('twoFactor.disableModal.toasts.disabled'));
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to disable 2FA'));
     } finally {
@@ -143,7 +145,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
     try {
       await authApi.revokeTrustedDevice(id);
       setTrustedDevices((prev) => prev.filter((d) => d.id !== id));
-      toast.success('Device revoked');
+      toast.success(t('trustedDevices.toasts.revoked'));
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to revoke device'));
     }
@@ -154,7 +156,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
       const result = await authApi.revokeAllTrustedDevices();
       setTrustedDevices([]);
       setShowRevokeAllConfirm(false);
-      toast.success(`${result.count} device(s) revoked`);
+      toast.success(t('trustedDevices.toasts.revokedAll', { count: result.count }));
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to revoke devices'));
     }
@@ -164,30 +166,30 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
 
   return (
     <div className="bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 rounded-lg p-6 mb-6">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Security</h2>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{t('heading')}</h2>
       {user.authProvider === 'oidc' && (
         <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-sm text-blue-700 dark:text-blue-300">
-            Your account uses Single Sign-On (SSO) for authentication. The password below is not used for login but can be kept as a backup if SSO is disabled.
+            {t('ssoNotice')}
           </p>
         </div>
       )}
       <form onSubmit={handleSubmit(onSubmitPassword)}>
         <div className="space-y-4">
           <Input
-            label="Current Password"
+            label={t('currentPasswordLabel')}
             type="password"
             {...register('currentPassword')}
             error={errors.currentPassword?.message}
-            placeholder="Enter current password"
+            placeholder={t('currentPasswordPlaceholder')}
           />
           <div>
             <Input
-              label="New Password"
+              label={t('newPasswordLabel')}
               type="password"
               {...register('newPassword')}
               error={errors.newPassword?.message}
-              placeholder="Enter new password"
+              placeholder={t('newPasswordPlaceholder')}
             />
             {!errors.newPassword && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -196,16 +198,16 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
             )}
           </div>
           <Input
-            label="Confirm New Password"
+            label={t('confirmPasswordLabel')}
             type="password"
             {...register('confirmPassword')}
             error={errors.confirmPassword?.message}
-            placeholder="Confirm new password"
+            placeholder={t('confirmPasswordPlaceholder')}
           />
         </div>
         <div className="mt-4 flex justify-end">
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Changing...' : 'Change Password'}
+            {isSubmitting ? t('changingPasswordButton') : t('changePasswordButton')}
           </Button>
         </div>
       </form>
@@ -213,12 +215,12 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
       {/* Two-Factor Authentication */}
       <div className="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
         <h3 className="text-md font-medium text-gray-900 dark:text-gray-100 mb-3">
-          Two-Factor Authentication
+          {t('twoFactor.heading')}
         </h3>
         {user.authProvider === 'oidc' ? (
           <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-sm text-blue-700 dark:text-blue-300">
-              Two-factor authentication is not available for SSO accounts. Authentication security is managed by your identity provider.
+              {t('twoFactor.ssoUnavailable')}
             </p>
           </div>
         ) : (
@@ -227,15 +229,15 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                    Enabled
+                    {t('twoFactor.enabledBadge')}
                   </span>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Your account is protected with TOTP verification.
+                    {t('twoFactor.enabledDescription')}
                   </p>
                 </div>
                 {force2fa ? (
                   <p className="text-xs text-gray-500 dark:text-gray-400 italic">
-                    Required by administrator
+                    {t('twoFactor.requiredByAdmin')}
                   </p>
                 ) : (
                   <Button
@@ -243,21 +245,21 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
                     size="sm"
                     onClick={() => setShowTwoFactorDisable(true)}
                   >
-                    Disable 2FA
+                    {t('twoFactor.disableButton')}
                   </Button>
                 )}
               </div>
             ) : (
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Add an extra layer of security to your account.
+                  {t('twoFactor.addLayerDescription')}
                 </p>
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={() => setShowTwoFactorSetup(true)}
                 >
-                  Enable 2FA
+                  {t('twoFactor.enableButton')}
                 </Button>
               </div>
             )}
@@ -285,13 +287,13 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
       <Modal isOpen={showTwoFactorDisable} onClose={() => { setShowTwoFactorDisable(false); setDisableCode(''); }}>
         <div className="p-6 space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Disable Two-Factor Authentication
+            {t('twoFactor.disableModal.title')}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Enter your current 6-digit code to confirm disabling 2FA.
+            {t('twoFactor.disableModal.description')}
           </p>
           <Input
-            label="Verification Code"
+            label={t('twoFactor.disableModal.verificationCodeLabel')}
             type="text"
             inputMode="numeric"
             autoComplete="one-time-code"
@@ -312,7 +314,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
               onClick={handleDisable2FA}
               disabled={disableCode.length !== 6 || isDisabling2FA}
             >
-              {isDisabling2FA ? 'Disabling...' : 'Disable 2FA'}
+              {isDisabling2FA ? t('twoFactor.disableModal.disablingButton') : t('twoFactor.disableButton')}
             </Button>
           </div>
         </div>
@@ -322,13 +324,13 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
       <Modal isOpen={showBackupCodeVerify} onClose={() => { setShowBackupCodeVerify(false); setBackupCodeVerifyCode(''); }}>
         <div className="p-6 space-y-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Regenerate Backup Codes
+            {t('backupCodes.regenerateModal.title')}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Enter your current 6-digit code to confirm regenerating backup codes. This will invalidate any existing codes.
+            {t('backupCodes.regenerateModal.description')}
           </p>
           <Input
-            label="Verification Code"
+            label={t('backupCodes.regenerateModal.verificationCodeLabel')}
             type="text"
             inputMode="numeric"
             autoComplete="one-time-code"
@@ -348,7 +350,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
               onClick={handleGenerateBackupCodes}
               disabled={backupCodeVerifyCode.length !== 6 || isGeneratingCodes}
             >
-              {isGeneratingCodes ? 'Regenerating...' : 'Regenerate'}
+              {isGeneratingCodes ? t('backupCodes.regenerateModal.regeneratingButton') : t('backupCodes.regenerateModal.regenerateButton')}
             </Button>
           </div>
         </div>
@@ -360,10 +362,10 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-md font-medium text-gray-900 dark:text-gray-100">
-                Backup Codes
+                {t('backupCodes.heading')}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Use backup codes to sign in if you lose access to your authenticator app.
+                {t('backupCodes.description')}
               </p>
             </div>
             <Button
@@ -371,7 +373,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
               size="sm"
               onClick={() => setShowBackupCodeVerify(true)}
             >
-              Regenerate codes
+              {t('backupCodes.regenerateButton')}
             </Button>
           </div>
         </div>
@@ -394,7 +396,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
         <div className="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-md font-medium text-gray-900 dark:text-gray-100">
-              Trusted Devices
+              {t('trustedDevices.heading')}
             </h3>
             {trustedDevices.length > 0 && (
               <Button
@@ -402,7 +404,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
                 size="sm"
                 onClick={() => setShowRevokeAllConfirm(true)}
               >
-                Revoke All
+                {t('trustedDevices.revokeAllButton')}
               </Button>
             )}
           </div>
@@ -413,7 +415,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
             </div>
           ) : trustedDevices.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              No trusted devices. When you check &quot;Don&apos;t ask again on this browser&quot; during 2FA login, the device will appear here.
+              {t('trustedDevices.noDevices')}
             </p>
           ) : (
             <div className="space-y-3">
@@ -429,7 +431,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
                       </p>
                       {device.isCurrent && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-                          Current
+                          {t('trustedDevices.currentBadge')}
                         </span>
                       )}
                     </div>
@@ -450,7 +452,7 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
                     onClick={() => handleRevokeDevice(device.id)}
                     className="ml-3 flex-shrink-0"
                   >
-                    Revoke
+                    {t('trustedDevices.revokeButton')}
                   </Button>
                 </div>
               ))}
@@ -461,17 +463,17 @@ export function SecuritySection({ user, preferences, force2fa, onPreferencesUpda
           <Modal isOpen={showRevokeAllConfirm} onClose={() => setShowRevokeAllConfirm(false)}>
             <div className="p-6 space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Revoke All Trusted Devices
+                {t('trustedDevices.revokeAllModal.title')}
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                This will remove all trusted devices. You will need to enter your 2FA code on your next login from any device.
+                {t('trustedDevices.revokeAllModal.description')}
               </p>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setShowRevokeAllConfirm(false)}>
                   Cancel
                 </Button>
                 <Button variant="danger" onClick={handleRevokeAllDevices}>
-                  Revoke All
+                  {t('trustedDevices.revokeAllButton')}
                 </Button>
               </div>
             </div>

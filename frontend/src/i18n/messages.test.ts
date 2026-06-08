@@ -6,12 +6,12 @@ describe('loadMessages', () => {
     const messages = await loadMessages('en');
     // Each namespace registered in messages.ts must resolve to an object so
     // that useTranslations(namespace) works at runtime, not just in tests.
-    expect(Object.keys(messages).sort()).toEqual([
-      'auth',
-      'common',
-      'navigation',
-      'settings',
-    ]);
+    expect(Object.keys(messages)).toEqual(
+      expect.arrayContaining(['common', 'settings', 'auth', 'navigation']),
+    );
+    for (const value of Object.values(messages)) {
+      expect(typeof value).toBe('object');
+    }
   });
 
   it('resolves nested keys for extracted feature areas', async () => {

@@ -73,11 +73,31 @@ The catalogue is split into small files by feature area. To add a new
 namespace, add it to the `NAMESPACES` array in `src/i18n/messages.ts` and
 create matching JSON files for every locale.
 
-| Namespace    | Contents                                              |
-|--------------|-------------------------------------------------------|
-| `common`     | Shared UI primitives (buttons, dialogs, toasts)       |
-| `settings`   | The settings page (themes, preferences, language)     |
-| `auth`       | Login, register, forgot/reset/change password pages   |
-| `navigation` | App header, mobile nav drawer, search, section links  |
+| Namespace               | Contents                                                  |
+|-------------------------|-----------------------------------------------------------|
+| `common`                | Shared UI primitives (buttons, dialogs, pagination, etc.) |
+| `navigation`            | App header, mobile nav drawer, search, section links      |
+| `layout`                | Banners (demo, delegation, offline, HTTPS), page headers  |
+| `auth`                  | Login, register, forgot/reset/change password pages       |
+| `settings`              | Settings pages (themes, preferences, security, AI, etc.)  |
+| `dashboard`             | Dashboard widgets and summaries                           |
+| `accounts`              | Accounts list, forms, loan payment setup                  |
+| `transactions`          | Transaction list, forms, splits, bulk update              |
+| `bills`                 | Bills and deposits, cash-flow forecast                    |
+| `scheduledTransactions` | Scheduled transaction forms and occurrence overrides      |
+| `budgets`               | Budget dashboard, wizard, categories, strategies          |
+| `investments`           | Investment transactions and holdings                      |
+| `securities`            | Securities list, forms, price/transaction history         |
+| `reports`               | All report views (net worth, cash flow, investments, ...) |
+| `insights`              | Insights list and detail                                  |
+| `ai`                    | AI assistant UI chrome (not model prompts/output)         |
+| `import`                | Transaction import wizard                                 |
+| `categories`            | Categories list and forms                                 |
+| `payees`                | Payees list, forms, alias/auto-assign dialogs             |
+| `tags`                  | Tags list and forms                                       |
+| `currencies`            | Currencies list and forms                                 |
+| `admin`                 | User management (admin only)                              |
 
-More namespaces will be added in subsequent PRs as feature areas are extracted.
+Most user-facing UI strings have been extracted. Remaining English literals are
+limited to a few areas intentionally left for later: form-validation messages
+defined in module-scope Zod schemas, and a small number of chart-internal labels.

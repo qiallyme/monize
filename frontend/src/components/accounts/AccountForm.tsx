@@ -2,6 +2,7 @@
 
 import { useForm, useWatch, Resolver, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import '@/lib/zodConfig';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -104,22 +105,22 @@ interface AccountFormProps {
   submitRef?: MutableRefObject<(() => void) | null>;
 }
 
-const accountTypeOptions = [
-  { value: 'CHEQUING', label: 'Chequing' },
-  { value: 'SAVINGS', label: 'Savings' },
-  { value: 'CREDIT_CARD', label: 'Credit Card' },
-  { value: 'INVESTMENT', label: 'Investment' },
-  { value: 'LOAN', label: 'Loan' },
-  { value: 'LINE_OF_CREDIT', label: 'Line of Credit' },
-  { value: 'MORTGAGE', label: 'Mortgage' },
-  { value: 'ASSET', label: 'Asset' },
-  { value: 'CASH', label: 'Cash' },
-  { value: 'OTHER', label: 'Other' },
-];
-
-
 export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submitRef }: AccountFormProps) {
+  const t = useTranslations('accounts');
   const router = useRouter();
+
+  const accountTypeOptions = [
+    { value: 'CHEQUING', label: t('form.accountTypeOptions.chequing') },
+    { value: 'SAVINGS', label: t('form.accountTypeOptions.savings') },
+    { value: 'CREDIT_CARD', label: t('form.accountTypeOptions.creditCard') },
+    { value: 'INVESTMENT', label: t('form.accountTypeOptions.investment') },
+    { value: 'LOAN', label: t('form.accountTypeOptions.loan') },
+    { value: 'LINE_OF_CREDIT', label: t('form.accountTypeOptions.lineOfCredit') },
+    { value: 'MORTGAGE', label: t('form.accountTypeOptions.mortgage') },
+    { value: 'ASSET', label: t('form.accountTypeOptions.asset') },
+    { value: 'CASH', label: t('form.accountTypeOptions.cash') },
+    { value: 'OTHER', label: t('form.accountTypeOptions.other') },
+  ];
   const { formatCurrency } = useNumberFormat();
   const { defaultCurrency } = useExchangeRates();
   const [currencies, setCurrencies] = useState<CurrencyInfo[]>([]);
@@ -445,13 +446,13 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <Input
-        label="Account Name"
+        label={t('form.accountName')}
         error={errors.name?.message}
         {...register('name')}
       />
 
       <Select
-        label="Account Type"
+        label={t('form.accountType')}
         options={accountTypeOptions}
         error={errors.accountType?.message}
         {...register('accountType')}
@@ -468,12 +469,10 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
           />
           <label htmlFor="createInvestmentPair" className="flex-1">
             <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">
-              Create as Cash + Brokerage pair (recommended)
+              {t('form.investmentPairTitle')}
             </span>
             <span className="block text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Creates two linked accounts: a Cash account for transfers in/out and a
-              Brokerage account for investment transactions. This is the recommended
-              structure for tracking investments.
+              {t('form.investmentPairDescription')}
             </span>
           </label>
         </div>
@@ -486,10 +485,10 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
               htmlFor="select-currency"
               className="block text-sm font-medium text-gray-700 dark:text-gray-300"
             >
-              Currency
+              {t('form.currency')}
             </label>
             {isCurrencyLocked && (
-              <InfoTooltip text="Currency is locked because this account already has transactions. Changing it would silently re-denominate existing balances." />
+              <InfoTooltip text={t('form.currencyLocked')} />
             )}
           </div>
           <Select
@@ -503,7 +502,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
         </div>
 
         <CurrencyInput
-          label={isLoanAccount ? 'Loan Amount' : isMortgageAccount ? 'Mortgage Amount' : 'Opening Balance'}
+          label={isLoanAccount ? t('form.loanAmount') : isMortgageAccount ? t('form.mortgageAmount') : t('form.openingBalance')}
           prefix={currencySymbol}
           value={watchedOpeningBalance}
           onChange={(value) => setValue('openingBalance', value, { shouldValidate: true })}
@@ -514,13 +513,13 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
 
       <div className="grid grid-cols-2 gap-4">
         <Input
-          label="Account Number (optional)"
+          label={t('form.accountNumber')}
           error={errors.accountNumber?.message}
           {...register('accountNumber')}
         />
 
         <Input
-          label={isLoanAccount || isMortgageAccount ? 'Lender/Institution (required)' : 'Institution (optional)'}
+          label={isLoanAccount || isMortgageAccount ? t('form.institutionRequired') : t('form.institution')}
           error={errors.institution?.message}
           {...register('institution')}
         />
@@ -531,7 +530,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
         <div className="grid grid-cols-2 gap-4">
           {!isLoanAccount && !isMortgageAccount && (
             <CurrencyInput
-              label="Credit Limit (optional)"
+              label={t('form.creditLimit')}
               prefix={currencySymbol}
               value={watchedCreditLimit}
               onChange={(value) => setValue('creditLimit', value, { shouldValidate: true })}
@@ -541,7 +540,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
           )}
 
           <Input
-            label={(isLoanAccount || isMortgageAccount) ? 'Interest Rate % (required)' : 'Interest Rate % (optional)'}
+            label={(isLoanAccount || isMortgageAccount) ? t('form.interestRateRequired') : t('form.interestRateOptional')}
             type="number"
             step="0.01"
             error={errors.interestRate?.message}
@@ -555,10 +554,10 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
       {/* Credit card statement date fields */}
       {isCreditCardAccount && (
         <div className="space-y-4">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Statement Dates (optional)</h4>
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('form.statementDates')}</h4>
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Due Date (day of month)"
+              label={t('form.statementDueDay')}
               type="number"
               min={1}
               max={31}
@@ -570,9 +569,9 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
             <div>
               <div className="flex items-center mb-1">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Settlement Date (day of month)
+                  {t('form.statementSettlementDay')}
                 </label>
-                <InfoTooltip text="The settlement date (also called the closing date) is the last day of the billing cycle. Transactions posted on or before this day will appear on the current statement." />
+                <InfoTooltip text={t('form.statementSettlementDayTooltip')} />
               </div>
               <input
                 type="number"
@@ -638,14 +637,14 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
         (isLoanAccount || isMortgageAccount) && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
           <p className="text-sm text-amber-800 dark:text-amber-300 mb-2">
-            This account does not have scheduled payments configured.
+            {t('form.noScheduledPayments')}
           </p>
           <button
             type="button"
             onClick={() => setShowLoanSetupDialog(true)}
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            Set Up Recurring Payments
+            {t('form.setUpRecurringPayments')}
           </button>
         </div>
       )}
@@ -685,7 +684,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
       )}
 
       <Input
-        label="Description (optional)"
+        label={t('form.description')}
         error={errors.description?.message}
         {...register('description')}
       />
@@ -697,7 +696,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
           type="button"
           onClick={toggleFavourite}
           className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          title={watchedIsFavourite ? 'Remove from favourites' : 'Add to favourites'}
+          title={watchedIsFavourite ? t('form.removeFromFavourites') : t('form.addToFavourites')}
         >
           <svg
             className={`w-5 h-5 transition-colors ${
@@ -717,7 +716,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
             />
           </svg>
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            {watchedIsFavourite ? 'Favourite' : 'Add to favourites'}
+            {watchedIsFavourite ? t('form.favourite') : t('form.addToFavourites')}
           </span>
         </button>
         )}
@@ -732,12 +731,12 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
               <ToggleSwitch
                 checked={!!field.value}
                 onChange={field.onChange}
-                label="Exclude from Net Worth"
+                label={t('form.excludeFromNetWorth')}
               />
             )}
           />
           <span className="text-sm text-gray-700 dark:text-gray-300">
-            Exclude from Net Worth
+            {t('form.excludeFromNetWorth')}
           </span>
         </div>
 
@@ -748,7 +747,7 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
               type="button"
               onClick={handleImportQif}
               className="flex items-center gap-1.5 px-2.5 py-2 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              title="Import transactions from QIF file"
+              title={t('form.importTitle')}
             >
               <svg
                 className="w-5 h-5 text-gray-500 dark:text-gray-400"
@@ -763,13 +762,13 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
                   d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
                 />
               </svg>
-              <span className="hidden sm:inline text-sm text-gray-700 dark:text-gray-300">Import</span>
+              <span className="hidden sm:inline text-sm text-gray-700 dark:text-gray-300">{t('form.importLabel')}</span>
             </button>
             <button
               type="button"
               onClick={() => setShowExportModal(true)}
               className="flex items-center gap-1.5 px-2.5 py-2 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              title="Export account transactions"
+              title={t('form.exportTitle')}
             >
               <svg
                 className="w-5 h-5 text-gray-500 dark:text-gray-400"
@@ -784,13 +783,13 @@ export function AccountForm({ account, onSubmit, onCancel, onDirtyChange, submit
                   d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                 />
               </svg>
-              <span className="hidden sm:inline text-sm text-gray-700 dark:text-gray-300">Export</span>
+              <span className="hidden sm:inline text-sm text-gray-700 dark:text-gray-300">{t('form.exportLabel')}</span>
             </button>
           </div>
         )}
       </div>
 
-      <FormActions onCancel={onCancel} submitLabel={account ? 'Update Account' : 'Create Account'} isSubmitting={isSubmitting} />
+      <FormActions onCancel={onCancel} submitLabel={account ? t('form.updateAccount') : t('form.createAccount')} isSubmitting={isSubmitting} />
 
       {account && (
         <AccountExportModal

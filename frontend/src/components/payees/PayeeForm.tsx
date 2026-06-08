@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useMemo, useCallback, MutableRefObject } from 'react';
+import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import '@/lib/zodConfig';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -37,6 +38,7 @@ interface PayeeFormProps {
 }
 
 export function PayeeForm({ payee, categories, onSubmit, onCancel, onDirtyChange, submitRef }: PayeeFormProps) {
+  const t = useTranslations('payees');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(payee?.defaultCategoryId || '');
   const pendingAliasesRef = useRef<string[]>([]);
 
@@ -105,13 +107,13 @@ export function PayeeForm({ payee, categories, onSubmit, onCancel, onDirtyChange
   return (
     <form onSubmit={onFormSubmit} className="space-y-4">
       <Input
-        label="Payee Name"
+        label={t('form.nameLabel')}
         error={errors.name?.message}
         {...register('name')}
       />
 
       <Combobox
-        label="Default Category"
+        label={t('form.categoryLabel')}
         placeholder="Select category..."
         options={categoryOptions}
         value={selectedCategoryId}
@@ -121,7 +123,7 @@ export function PayeeForm({ payee, categories, onSubmit, onCancel, onDirtyChange
       />
 
       <Input
-        label="Notes (optional)"
+        label={t('form.notesLabel')}
         error={errors.notes?.message}
         {...register('notes')}
       />
@@ -132,7 +134,7 @@ export function PayeeForm({ payee, categories, onSubmit, onCancel, onDirtyChange
         <PayeeAliasManager onPendingAliasesChange={(aliases) => { pendingAliasesRef.current = aliases; }} />
       )}
 
-      <FormActions onCancel={onCancel} submitLabel={payee ? 'Update Payee' : 'Create Payee'} isSubmitting={isSubmitting} />
+      <FormActions onCancel={onCancel} submitLabel={payee ? t('form.submitUpdate') : t('form.submitCreate')} isSubmitting={isSubmitting} />
     </form>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import toast from 'react-hot-toast';
@@ -66,6 +67,8 @@ export default function TransactionsPage() {
 }
 
 function TransactionsContent() {
+  const t = useTranslations('transactions');
+  const tc = useTranslations('common');
   const router = useRouter();
   const { formatDate } = useDateFormat();
   const weekStartsOn = (usePreferencesStore((s) => s.preferences?.weekStartsOn) ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -307,7 +310,7 @@ function TransactionsContent() {
 
   const handleEdit = async (transaction: Transaction) => {
     if (transaction.linkedInvestmentTransactionId) {
-      toast('This transaction is linked to an investment. Opening in Investments page.', { icon: '📈' });
+      toast(t('page.toasts.investmentLinked'));
       router.push(`/investments?edit=${transaction.linkedInvestmentTransactionId}`);
       return;
     }
@@ -359,7 +362,7 @@ function TransactionsContent() {
   const handleScheduleFormSuccess = () => {
     setSchedulingFrom(undefined);
     setShowScheduleForm(false);
-    toast.success('Scheduled transaction created');
+    toast.success(t('page.toasts.scheduledCreated'));
   };
 
   const handleScheduleFormClose = () => {
@@ -674,10 +677,10 @@ function TransactionsContent() {
     <PageLayout>
       <main className="px-4 sm:px-6 lg:px-12 pt-6 pb-8">
         <PageHeader
-          title="Transactions"
-          subtitle="Manage your income and expenses"
+          title={t('page.title')}
+          subtitle={t('page.subtitle')}
           helpUrl="https://github.com/kenlasko/monize/wiki/Transactions"
-          actions={<Button onClick={handleCreateNew}>+ New Transaction</Button>}
+          actions={<Button onClick={handleCreateNew}>{t('page.newButton')}</Button>}
         />
         {filters.filterCategoryIds.length > 0 || filters.filterPayeeIds.length > 0 || filters.filterTagIds.length > 0 || filters.filterSearch.length > 0 ? (
           <CategoryPayeeBarChart
@@ -710,7 +713,7 @@ function TransactionsContent() {
         {/* Form Modal */}
         <Modal isOpen={showForm} onClose={handleClose} {...modalProps} maxWidth="6xl" className="p-6 !max-w-[69rem]">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-            {editingTransaction ? 'Edit Transaction' : duplicatingFrom ? 'Duplicate Transaction' : 'New Transaction'}
+            {editingTransaction ? t('page.editModal.editTitle') : duplicatingFrom ? t('page.editModal.duplicateTitle') : t('page.editModal.newTitle')}
           </h2>
           <TransactionForm
             key={`${editingTransaction?.id || 'new'}-${duplicatingFrom?.id || ''}-${filters.filterAccountIds.join(',')}-${formKey}`}
@@ -737,7 +740,7 @@ function TransactionsContent() {
         {showScheduleForm && (
           <Modal isOpen={showScheduleForm} onClose={handleScheduleFormClose} maxWidth="6xl" className="p-6 !max-w-[69rem]" pushHistory>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-              Schedule as Recurring
+              {t('page.editModal.scheduleTitle')}
             </h2>
             <ScheduledTransactionForm
               key={`schedule-${schedulingFrom?.id || 'new'}`}
@@ -751,7 +754,7 @@ function TransactionsContent() {
         {/* Payee Edit Modal */}
         {editingPayee && (
           <Modal isOpen={showPayeeForm} onClose={handlePayeeFormCancel} maxWidth="lg" className="p-6" pushHistory>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Edit Payee</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">{t('page.editModal.editPayeeTitle')}</h2>
             <PayeeForm
               payee={editingPayee}
               categories={categories}
@@ -839,16 +842,16 @@ function TransactionsContent() {
           isOpen={showBulkDeleteConfirm}
           onCancel={() => setShowBulkDeleteConfirm(false)}
           onConfirm={handleBulkDelete}
-          title="Delete Transactions"
-          message={`Are you sure you want to delete ${selection.selectionCount} transaction${selection.selectionCount !== 1 ? 's' : ''}? This will also delete any linked transfer counterparts. This action cannot be undone.`}
-          confirmLabel="Delete"
+          title={t('page.bulkDelete.title')}
+          message={t('page.bulkDelete.message', { count: selection.selectionCount })}
+          confirmLabel={tc('delete')}
           variant="danger"
         />
 
         {/* Transactions List */}
         <div className="bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 rounded-lg overflow-hidden">
           {isLoading && transactions.length === 0 ? (
-            <LoadingSpinner text="Loading transactions..." />
+            <LoadingSpinner text={t('page.loading')} />
           ) : (
             <TransactionList
               transactions={transactions}
@@ -906,7 +909,7 @@ function TransactionsContent() {
         {/* Show total count when only one page */}
         {pagination && pagination.totalPages <= 1 && pagination.total > 0 && (
           <div className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
-            {pagination.total} transaction{pagination.total !== 1 ? 's' : ''}
+            {t('page.totalCount', { count: pagination.total })}
           </div>
         )}
       </main>

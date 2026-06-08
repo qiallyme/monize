@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { CurrencyInfo, CreateCurrencyData } from '@/lib/exchange-rates';
 import { exchangeRatesApi } from '@/lib/exchange-rates';
 import { createLogger } from '@/lib/logger';
+import { useTranslations } from 'next-intl';
 import { useFormSubmitRef } from '@/hooks/useFormSubmitRef';
 import { useFormDirtyNotify } from '@/hooks/useFormDirtyNotify';
 import { FormActions } from '@/components/ui/FormActions';
@@ -35,6 +36,7 @@ interface CurrencyFormProps {
 }
 
 export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, submitRef }: CurrencyFormProps) {
+  const t = useTranslations('currencies');
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [hasLookupResult, setHasLookupResult] = useState(false);
 
@@ -63,7 +65,7 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
     const query = codeQuery.length >= 2 ? codeQuery : nameQuery;
 
     if (query.length < 2) {
-      toast.error('Enter a currency code or name (at least 2 characters) to lookup');
+      toast.error(t('form.toasts.lookupTooShort'));
       return;
     }
 
@@ -78,17 +80,17 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
         setHasLookupResult(true);
 
         const details = [`Code: ${result.code}`, `Name: ${result.name}`, `Symbol: ${result.symbol}`];
-        toast.success(`Found: ${details.join(', ')}`);
+        toast.success(t('form.toasts.found', { details: details.join(', ') }));
       } else {
-        toast.error(`No currency found for "${query}"`);
+        toast.error(t('form.toasts.notFound', { query }));
       }
     } catch (error) {
       logger.error('Currency lookup failed:', error);
-      toast.error('Lookup failed - please try again');
+      toast.error(t('form.toasts.lookupFailed'));
     } finally {
       setIsLookingUp(false);
     }
-  }, [getValues, setValue]);
+  }, [getValues, setValue, t]);
 
   const handleClear = useCallback(() => {
     reset({
@@ -120,10 +122,10 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
       <div className="flex gap-2 items-end">
         <div className="flex-1">
           <Input
-            label="Currency Code"
+            label={t('form.codeLabel')}
             {...register('code')}
             error={errors.code?.message}
-            placeholder="e.g., USD, EUR, GBP"
+            placeholder={t('form.codePlaceholder')}
             className="uppercase"
             disabled={!!currency}
           />
@@ -137,7 +139,7 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
               disabled={isLookingUp}
               className="mb-[1px]"
             >
-              {isLookingUp ? 'Looking up...' : 'Lookup'}
+              {isLookingUp ? t('form.lookingUp') : t('form.lookupButton')}
             </Button>
             {hasLookupResult && (
               <Button
@@ -145,9 +147,9 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
                 variant="ghost"
                 onClick={handleClear}
                 className="mb-[1px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                title="Clear all fields"
+                title={t('form.clearTitle')}
               >
-                Clear
+                {t('form.clearButton')}
               </Button>
             )}
           </div>
@@ -155,21 +157,21 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
       </div>
 
       <Input
-        label="Name"
+        label={t('form.nameLabel')}
         {...register('name')}
         error={errors.name?.message}
-        placeholder={currency ? 'e.g., Canadian Dollar' : 'e.g., Canadian Dollar, Malaysia, Ringgit (used for lookup too)'}
+        placeholder={currency ? t('form.namePlaceholderEdit') : t('form.namePlaceholderCreate')}
       />
 
       <Input
-        label="Symbol"
+        label={t('form.symbolLabel')}
         {...register('symbol')}
         error={errors.symbol?.message}
-        placeholder="e.g., $, €, £, ¥"
+        placeholder={t('form.symbolPlaceholder')}
       />
 
       <Input
-        label="Decimal Places"
+        label={t('form.decimalPlacesLabel')}
         type="number"
         {...register('decimalPlaces')}
         error={errors.decimalPlaces?.message}
@@ -177,7 +179,7 @@ export function CurrencyForm({ currency, onSubmit, onCancel, onDirtyChange, subm
         max={4}
       />
 
-      <FormActions onCancel={onCancel} submitLabel={currency ? 'Update Currency' : 'Create Currency'} isSubmitting={isSubmitting} />
+      <FormActions onCancel={onCancel} submitLabel={currency ? t('form.submitUpdate') : t('form.submitCreate')} isSubmitting={isSubmitting} />
     </form>
   );
 }

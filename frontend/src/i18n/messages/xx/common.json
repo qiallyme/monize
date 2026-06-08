@@ -4,5 +4,82 @@
   "delete": "[XX-Delete-XX]",
   "edit": "[XX-Edit-XX]",
   "close": "[XX-Close-XX]",
-  "loading": "[XX-Loading...-XX]"
+  "loading": "[XX-Loading...-XX]",
+  "pagination": {
+    "showing": "[XX-Showing-XX]",
+    "of": "[XX-of-XX]",
+    "firstPage": "[XX-First page-XX]",
+    "lastPage": "[XX-Last page-XX]",
+    "previousPage": "[XX-Previous page-XX]",
+    "nextPage": "[XX-Next page-XX]",
+    "back10Pages": "[XX-Back 10 pages-XX]",
+    "forward10Pages": "[XX-Forward 10 pages-XX]",
+    "enterPageNumber": "[XX-Enter page number-XX]"
+  },
+  "confirmDialog": {
+    "confirm": "[XX-Confirm-XX]"
+  },
+  "unsavedChanges": {
+    "title": "[XX-Unsaved Changes-XX]",
+    "message": "[XX-You have unsaved changes. What would you like to do?-XX]",
+    "discard": "[XX-Discard-XX]"
+  },
+  "exportDropdown": {
+    "export": "[XX-Export-XX]",
+    "exporting": "[XX-Exporting...-XX]",
+    "exportPdf": "[XX-Export PDF-XX]",
+    "exportReport": "[XX-Export report-XX]",
+    "failedPdf": "[XX-Failed to export PDF. Please try again.-XX]"
+  },
+  "dateRange": {
+    "custom": "[XX-Custom-XX]",
+    "startDate": "[XX-Start Date-XX]",
+    "endDate": "[XX-End Date-XX]"
+  },
+  "colorPicker": {
+    "custom": "[XX-Custom:-XX]",
+    "apply": "[XX-Apply-XX]"
+  },
+  "chartDownload": {
+    "downloadAsPng": "[XX-Download {filename} as PNG-XX]",
+    "unableToCapture": "[XX-Unable to capture chart image-XX]",
+    "failedToDownload": "[XX-Failed to download chart-XX]"
+  },
+  "chartViewToggle": {
+    "pieChart": "[XX-Pie Chart-XX]",
+    "barChart": "[XX-Bar Chart-XX]",
+    "lineChart": "[XX-Line Chart-XX]",
+    "areaChart": "[XX-Area Chart-XX]",
+    "table": "[XX-Table-XX]"
+  },
+  "formActions": {
+    "cancel": "[XX-Cancel-XX]",
+    "save": "[XX-Save-XX]"
+  },
+  "themeToggle": {
+    "light": "[XX-Light-XX]",
+    "dark": "[XX-Dark-XX]",
+    "system": "[XX-System-XX]",
+    "title": "[XX-Theme: {label}. Click to change.-XX]"
+  },
+  "errorBoundary": {
+    "defaultMessage": "[XX-Something went wrong rendering this component.-XX]"
+  },
+  "calendar": {
+    "clear": "[XX-Clear-XX]",
+    "today": "[XX-Today-XX]"
+  },
+  "multiSelect": {
+    "search": "[XX-Search...-XX]",
+    "selectAll": "[XX-Select All-XX]",
+    "clear": "[XX-Clear-XX]",
+    "noOptions": "[XX-No options found-XX]"
+  },
+  "combobox": {
+    "createOption": "[XX-Create \"{value}\"-XX]"
+  },
+  "passwordInput": {
+    "show": "[XX-Show input-XX]",
+    "hide": "[XX-Hide input-XX]"
+  }
 }

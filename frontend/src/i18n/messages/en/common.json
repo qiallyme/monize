@@ -4,5 +4,82 @@
   "delete": "Delete",
   "edit": "Edit",
   "close": "Close",
-  "loading": "Loading..."
+  "loading": "Loading...",
+  "pagination": {
+    "showing": "Showing",
+    "of": "of",
+    "firstPage": "First page",
+    "lastPage": "Last page",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "back10Pages": "Back 10 pages",
+    "forward10Pages": "Forward 10 pages",
+    "enterPageNumber": "Enter page number"
+  },
+  "confirmDialog": {
+    "confirm": "Confirm"
+  },
+  "unsavedChanges": {
+    "title": "Unsaved Changes",
+    "message": "You have unsaved changes. What would you like to do?",
+    "discard": "Discard"
+  },
+  "exportDropdown": {
+    "export": "Export",
+    "exporting": "Exporting...",
+    "exportPdf": "Export PDF",
+    "exportReport": "Export report",
+    "failedPdf": "Failed to export PDF. Please try again."
+  },
+  "dateRange": {
+    "custom": "Custom",
+    "startDate": "Start Date",
+    "endDate": "End Date"
+  },
+  "colorPicker": {
+    "custom": "Custom:",
+    "apply": "Apply"
+  },
+  "chartDownload": {
+    "downloadAsPng": "Download {filename} as PNG",
+    "unableToCapture": "Unable to capture chart image",
+    "failedToDownload": "Failed to download chart"
+  },
+  "chartViewToggle": {
+    "pieChart": "Pie Chart",
+    "barChart": "Bar Chart",
+    "lineChart": "Line Chart",
+    "areaChart": "Area Chart",
+    "table": "Table"
+  },
+  "formActions": {
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "themeToggle": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "title": "Theme: {label}. Click to change."
+  },
+  "errorBoundary": {
+    "defaultMessage": "Something went wrong rendering this component."
+  },
+  "calendar": {
+    "clear": "Clear",
+    "today": "Today"
+  },
+  "multiSelect": {
+    "search": "Search...",
+    "selectAll": "Select All",
+    "clear": "Clear",
+    "noOptions": "No options found"
+  },
+  "combobox": {
+    "createOption": "Create \"{value}\""
+  },
+  "passwordInput": {
+    "show": "Show input",
+    "hide": "Hide input"
+  }
 }

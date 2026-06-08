@@ -95,7 +95,7 @@ export function MobileNavDrawer({
               className="rounded"
               priority
             />
-            <span>{t('brand')}</span>
+            <span>Monize</span>
           </button>
           <button
             onClick={onClose}
