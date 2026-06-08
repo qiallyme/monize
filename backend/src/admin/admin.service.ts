@@ -11,7 +11,10 @@ import { ConfigService } from "@nestjs/config";
 import { DataSource, Repository } from "typeorm";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
+import { I18nService } from "nestjs-i18n";
 import { tr } from "../i18n/translate";
+import { emailTranslator } from "../i18n/email-translator";
+import { DEFAULT_LOCALE } from "../i18n/config";
 import { User } from "../users/entities/user.entity";
 import { UserPreference } from "../users/entities/user-preference.entity";
 import { RefreshToken } from "../auth/entities/refresh-token.entity";
@@ -43,6 +46,7 @@ export class AdminService {
     private dataSource: DataSource,
     private configService: ConfigService,
     private emailService: EmailService,
+    private readonly i18n: I18nService,
   ) {}
 
   async findAllUsers() {
@@ -195,11 +199,13 @@ export class AdminService {
         "http://localhost:3000",
       );
       const inviteUrl = `${frontendUrl}/reset-password?token=${inviteToken}`;
+      const lang = DEFAULT_LOCALE;
+      const t = emailTranslator(this.i18n, lang);
       this.emailService
         .sendMail(
           email,
-          "Your Monize account is ready",
-          accountInviteTemplate(dto.firstName || "", inviteUrl),
+          t("emails.accountInvite.subject", "Your Monize account is ready"),
+          accountInviteTemplate(dto.firstName || "", inviteUrl, t),
         )
         .catch((err) =>
           this.logger.warn(

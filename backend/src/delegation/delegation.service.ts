@@ -26,7 +26,10 @@ import { Transaction } from "../transactions/entities/transaction.entity";
 import { ScheduledTransaction } from "../scheduled-transactions/entities/scheduled-transaction.entity";
 import { hashToken } from "../auth/crypto.util";
 import { generateReadablePassword } from "../admin/utils/password-generator";
+import { I18nService } from "nestjs-i18n";
 import { tr } from "../i18n/translate";
+import { emailTranslator } from "../i18n/email-translator";
+import { DEFAULT_LOCALE } from "../i18n/config";
 import { EmailService } from "../notifications/email.service";
 import { delegateInviteTemplate } from "../notifications/email-templates";
 import { ConfigService } from "@nestjs/config";
@@ -107,6 +110,7 @@ export class DelegationService {
     private emailService: EmailService,
     private configService: ConfigService,
     private dataSource: DataSource,
+    private readonly i18n: I18nService,
   ) {}
 
   // --- Context resolution (used by JwtStrategy and the guard) ---
@@ -894,14 +898,17 @@ export class DelegationService {
           "http://localhost:3000",
         );
         const inviteUrl = `${frontendUrl}/reset-password?token=${inviteToken}`;
+        const lang = DEFAULT_LOCALE;
+        const t = emailTranslator(this.i18n, lang);
         this.emailService
           .sendMail(
             email,
-            "You have been invited to Monize",
+            t("emails.delegateInvite.subject", "You have been invited to Monize"),
             delegateInviteTemplate(
               dto.firstName || "",
               this.userLabel(owner),
               inviteUrl,
+              t,
             ),
           )
           .catch((err) =>
