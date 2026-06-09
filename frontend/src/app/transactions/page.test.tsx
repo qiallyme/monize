@@ -1182,6 +1182,52 @@ describe('TransactionsPage', () => {
     });
   });
 
+  describe('Account Info Widget', () => {
+    beforeEach(() => {
+      window.localStorage.clear();
+    });
+
+    it('shows the chart-derived current balance, not the stale account balance', async () => {
+      mockGetAllAccounts.mockResolvedValue(mockAccounts);
+      // acc-1's stored currentBalance is 5000 (stale); the daily-balance
+      // series — refetched whenever transactions change — ends at 1500.
+      mockGetDailyBalances.mockResolvedValue([
+        { date: '2026-02-01', balance: 1000, accountId: 'acc-1', currencyCode: 'USD' },
+        { date: '2026-02-15', balance: 1500, accountId: 'acc-1', currencyCode: 'USD' },
+      ]);
+
+      render(<TransactionsPage />);
+      await waitFor(() => {
+        expect(screen.getByTestId('filter-panel')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('set-account-filter'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Current Balance')).toBeInTheDocument();
+      });
+      expect(screen.getByText('$1500.00')).toBeInTheDocument();
+      expect(screen.queryByText('$5000.00')).not.toBeInTheDocument();
+    });
+
+    it('falls back to the stored account balance when no daily-balance rows exist', async () => {
+      mockGetAllAccounts.mockResolvedValue(mockAccounts);
+      mockGetDailyBalances.mockResolvedValue([]);
+
+      render(<TransactionsPage />);
+      await waitFor(() => {
+        expect(screen.getByTestId('filter-panel')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('set-account-filter'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Current Balance')).toBeInTheDocument();
+      });
+      expect(screen.getByText('$5000.00')).toBeInTheDocument();
+    });
+  });
+
   describe('Transaction Editing', () => {
     it('opens edit form when a regular transaction is clicked', async () => {
       mockGetAll.mockResolvedValue({

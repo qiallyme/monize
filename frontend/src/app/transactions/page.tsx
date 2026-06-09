@@ -49,6 +49,7 @@ import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useFormModal } from '@/hooks/useFormModal';
 import { AccountFormModal } from '@/components/accounts/AccountFormModal';
 import { AccountInfoWidget } from '@/components/transactions/AccountInfoWidget';
+import { computeBalanceSummary } from '@/lib/balance-history';
 import { ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
 import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
@@ -567,6 +568,15 @@ function TransactionsContent() {
     return institutions.find((i) => i.id === singleFilteredAccount.institutionId);
   }, [singleFilteredAccount, institutions]);
 
+  // The accounts list is fetched once per page load, so account.currentBalance
+  // goes stale as transactions are added or edited. The daily-balance series is
+  // refetched alongside the transactions, so the widget's balance is derived
+  // from it — the exact figure the Balance History chart shows as "Current".
+  const singleAccountCurrentBalance = useMemo(
+    () => computeBalanceSummary(chartBalances)?.currentBalance,
+    [chartBalances],
+  );
+
   const selection = useTransactionSelection(
     transactions,
     pagination?.total ?? 0,
@@ -764,6 +774,7 @@ function TransactionsContent() {
                 >
                   <AccountInfoWidget
                     account={singleFilteredAccount}
+                    currentBalance={singleAccountCurrentBalance}
                     institution={singleFilteredInstitution}
                     scheduledTransactions={scheduledTransactions}
                     onEdit={() => accountModal.openEdit(singleFilteredAccount)}
