@@ -151,6 +151,29 @@ describe('AccountFormModal', () => {
     );
   });
 
+  it('clears a previously set institution by sending null when removed on edit', async () => {
+    mockUpdate.mockResolvedValue({});
+    render(
+      <AccountFormModal
+        formModal={buildFormModal({
+          editingItem: { id: 'a-1', accountType: 'CHEQUING', institutionId: 'inst-1' } as Account,
+          isEditing: true,
+        })}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(capturedOnSubmit).not.toBeNull());
+    await act(async () => {
+      await capturedOnSubmit!({ name: 'Renamed', accountType: 'CHEQUING', institutionId: undefined });
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      'a-1',
+      expect.objectContaining({ institutionId: null }),
+    );
+  });
+
   it('omits an empty description when the account never had one', async () => {
     mockUpdate.mockResolvedValue({});
     render(
