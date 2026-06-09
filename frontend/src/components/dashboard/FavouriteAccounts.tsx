@@ -9,20 +9,7 @@ import { usePreferencesStore } from '@/store/preferencesStore';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { accountsApi } from '@/lib/accounts';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
-
-function getOrdinal(day: number): string {
-  const suffix =
-    day >= 11 && day <= 13
-      ? 'th'
-      : day % 10 === 1
-        ? 'st'
-        : day % 10 === 2
-          ? 'nd'
-          : day % 10 === 3
-            ? 'rd'
-            : 'th';
-  return `${day}${suffix}`;
-}
+import { getOrdinal } from '@/lib/ordinal';
 
 interface FavouriteAccountsProps {
   accounts: Account[];

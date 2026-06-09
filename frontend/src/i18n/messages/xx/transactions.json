@@ -6,6 +6,8 @@
     "currency": "[XX-Currency-XX]",
     "creditLimit": "[XX-Credit Limit-XX]",
     "interestRate": "[XX-Interest Rate-XX]",
+    "statementSettlement": "[XX-Settlement Day-XX]",
+    "statementDue": "[XX-Payment Due-XX]",
     "closed": "[XX-Closed-XX]",
     "editAria": "[XX-Edit account settings-XX]"
   },

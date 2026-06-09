@@ -86,10 +86,29 @@ describe('AccountInfoWidget', () => {
     expect(screen.getByText('Legacy Bank')).toBeInTheDocument();
   });
 
+  it('shows statement settlement and due days as ordinals when populated', () => {
+    render(
+      <AccountInfoWidget
+        account={makeAccount({
+          accountType: 'CREDIT_CARD',
+          statementSettlementDay: 22,
+          statementDueDay: 1,
+        })}
+        onEdit={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Settlement Day')).toBeInTheDocument();
+    expect(screen.getByText('22nd')).toBeInTheDocument();
+    expect(screen.getByText('Payment Due')).toBeInTheDocument();
+    expect(screen.getByText('1st')).toBeInTheDocument();
+  });
+
   it('omits optional fields that are absent', () => {
     render(<AccountInfoWidget account={makeAccount()} onEdit={vi.fn()} />);
     expect(screen.queryByText('Account Number')).not.toBeInTheDocument();
     expect(screen.queryByText('Credit Limit')).not.toBeInTheDocument();
+    expect(screen.queryByText('Settlement Day')).not.toBeInTheDocument();
+    expect(screen.queryByText('Payment Due')).not.toBeInTheDocument();
     expect(screen.queryByText('Closed')).not.toBeInTheDocument();
   });
 });

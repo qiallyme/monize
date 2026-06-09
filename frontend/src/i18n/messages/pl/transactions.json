@@ -6,6 +6,8 @@
     "currency": "Waluta",
     "creditLimit": "Limit kredytowy",
     "interestRate": "Oprocentowanie",
+    "statementSettlement": "Dzień rozliczenia",
+    "statementDue": "Termin płatności",
     "closed": "Zamknięte",
     "editAria": "Edytuj ustawienia konta"
   },

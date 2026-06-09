@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { PencilSquareIcon } from '@heroicons/react/24/outline';
 import { Account } from '@/types/account';
 import { formatAccountType } from '@/lib/account-utils';
+import { getOrdinal } from '@/lib/ordinal';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
 import { InstitutionLogo, InstitutionLogoData } from '@/components/institutions/InstitutionLogo';
 
@@ -52,6 +53,18 @@ export function AccountInfoWidget({ account, institution, onEdit }: AccountInfoW
     details.push({
       label: t('accountWidget.interestRate'),
       value: `${Number(account.interestRate)}%`,
+    });
+  }
+  if (account.statementSettlementDay) {
+    details.push({
+      label: t('accountWidget.statementSettlement'),
+      value: getOrdinal(account.statementSettlementDay),
+    });
+  }
+  if (account.statementDueDay) {
+    details.push({
+      label: t('accountWidget.statementDue'),
+      value: getOrdinal(account.statementDueDay),
     });
   }
 

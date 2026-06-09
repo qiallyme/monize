@@ -6,6 +6,8 @@
     "currency": "Currency",
     "creditLimit": "Credit Limit",
     "interestRate": "Interest Rate",
+    "statementSettlement": "Settlement Day",
+    "statementDue": "Payment Due",
     "closed": "Closed",
     "editAria": "Edit account settings"
   },
