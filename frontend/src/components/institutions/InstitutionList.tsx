@@ -9,6 +9,7 @@ import { Institution } from '@/types/institution';
 import { institutionsApi } from '@/lib/institutions';
 import { getErrorMessage } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
+import { useTableDensity, DensityLevel } from '@/hooks/useTableDensity';
 import { InstitutionLogo } from './InstitutionLogo';
 
 const logger = createLogger('InstitutionList');
@@ -18,6 +19,7 @@ interface InstitutionListProps {
   onEdit: (institution: Institution) => void;
   onDelete: (id: string) => void;
   onManageAccounts: (institution: Institution) => void;
+  density?: DensityLevel;
 }
 
 export function InstitutionList({
@@ -25,9 +27,11 @@ export function InstitutionList({
   onEdit,
   onDelete,
   onManageAccounts,
+  density = 'normal',
 }: InstitutionListProps) {
   const t = useTranslations('institutions');
   const tc = useTranslations('common');
+  const { cellPadding, headerPadding } = useTableDensity(density);
   const [toDelete, setToDelete] = useState<Institution | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -60,19 +64,19 @@ export function InstitutionList({
       <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead className="bg-gray-50 dark:bg-gray-800">
           <tr>
-            <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
               {t('list.columns.name')}
             </th>
-            <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
+            <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell`}>
               {t('list.columns.website')}
             </th>
-            <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell">
+            <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden sm:table-cell`}>
               {t('list.columns.country')}
             </th>
-            <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <th className={`${headerPadding} text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
               {t('list.columns.accounts')}
             </th>
-            <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <th className={`${headerPadding} text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
               {t('list.columns.actions')}
             </th>
           </tr>
@@ -83,7 +87,7 @@ export function InstitutionList({
               key={institution.id}
               className="hover:bg-gray-50 dark:hover:bg-gray-800"
             >
-              <td className="px-3 sm:px-6 py-3">
+              <td className={cellPadding}>
                 <div className="flex items-center gap-3 min-w-0">
                   <InstitutionLogo institution={institution} size={24} fallbackGlyph="$" />
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
@@ -91,7 +95,7 @@ export function InstitutionList({
                   </span>
                 </div>
               </td>
-              <td className="px-3 sm:px-6 py-3 hidden md:table-cell max-w-[16rem]">
+              <td className={`${cellPadding} hidden md:table-cell max-w-[16rem]`}>
                 <a
                   href={institution.website}
                   target="_blank"
@@ -102,10 +106,10 @@ export function InstitutionList({
                   {institution.website}
                 </a>
               </td>
-              <td className="px-3 sm:px-6 py-3 hidden sm:table-cell text-sm text-gray-500 dark:text-gray-400">
+              <td className={`${cellPadding} hidden sm:table-cell text-sm text-gray-500 dark:text-gray-400`}>
                 {institution.country || '—'}
               </td>
-              <td className="px-3 sm:px-6 py-3">
+              <td className={cellPadding}>
                 <button
                   onClick={() => onManageAccounts(institution)}
                   className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
@@ -113,7 +117,7 @@ export function InstitutionList({
                   {t('list.accountCount', { count: institution.accountCount })}
                 </button>
               </td>
-              <td className="px-3 sm:px-6 py-3 text-right whitespace-nowrap space-x-2">
+              <td className={`${cellPadding} text-right whitespace-nowrap space-x-2`}>
                 <Button
                   variant="outline"
                   size="sm"

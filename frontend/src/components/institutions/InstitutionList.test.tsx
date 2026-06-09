@@ -40,6 +40,21 @@ describe('InstitutionList', () => {
     expect(screen.getByText('2 accounts')).toBeInTheDocument();
   });
 
+  it('applies dense row padding when density is dense', () => {
+    render(
+      <InstitutionList
+        institutions={[makeInstitution()]}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onManageAccounts={vi.fn()}
+        density="dense"
+      />,
+    );
+    // The name cell uses the dense padding (py-1) rather than the default.
+    const nameCell = screen.getByText('TD Canada Trust').closest('td');
+    expect(nameCell?.className).toContain('py-1');
+  });
+
   it('shows the empty state', () => {
     render(
       <InstitutionList
