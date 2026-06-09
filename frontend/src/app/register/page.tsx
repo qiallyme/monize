@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import '@/lib/zodConfig';
@@ -17,6 +17,7 @@ import { useAuthStore } from '@/store/authStore';
 import { authApi, AuthMethods } from '@/lib/auth';
 import { buildPasswordSchema, buildEmailSchema } from '@/lib/zod-helpers';
 import { TwoFactorSetup } from '@/components/auth/TwoFactorSetup';
+import { OnboardingPreferences } from '@/components/auth/OnboardingPreferences';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('Register');
@@ -41,10 +42,12 @@ type RegisterFormData = z.infer<ReturnType<typeof buildRegisterSchema>>;
 export default function RegisterPage() {
   const t = useTranslations('auth.register');
   const tc = useTranslations('common');
+  const locale = useLocale();
   const router = useRouter();
   const { login } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [showTwoFactorSetup, setShowTwoFactorSetup] = useState(false);
+  const [showPreferencesSetup, setShowPreferencesSetup] = useState(false);
   const [authMethods, setAuthMethods] = useState<AuthMethods>({ local: true, oidc: false, registration: true, smtp: false, force2fa: false, demo: false });
   const [isLoadingMethods, setIsLoadingMethods] = useState(true);
 
@@ -183,9 +186,31 @@ export default function RegisterPage() {
             </p>
           </div>
           <TwoFactorSetup
-            onComplete={() => router.push('/dashboard')}
-            onSkip={authMethods.force2fa ? undefined : () => router.push('/dashboard')}
+            onComplete={() => { setShowTwoFactorSetup(false); setShowPreferencesSetup(true); }}
+            onSkip={authMethods.force2fa ? undefined : () => { setShowTwoFactorSetup(false); setShowPreferencesSetup(true); }}
             isForced={authMethods.force2fa}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (showPreferencesSetup) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <Image src="/icons/monize-logo.svg" alt="Monize" width={96} height={96} className="mx-auto rounded-xl" priority />
+            <h2 className="mt-4 text-3xl font-extrabold text-gray-900 dark:text-gray-100">
+              {t('preferences.title')}
+            </h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              {t('preferences.subtitle')}
+            </p>
+          </div>
+          <OnboardingPreferences
+            initialLanguage={locale}
+            onComplete={() => router.push('/dashboard')}
           />
         </div>
       </div>
