@@ -43,6 +43,8 @@ import { useDateFormat } from '@/hooks/useDateFormat';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useFormModal } from '@/hooks/useFormModal';
+import { AccountFormModal } from '@/components/accounts/AccountFormModal';
+import { AccountInfoWidget } from '@/components/transactions/AccountInfoWidget';
 import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -83,6 +85,9 @@ function TransactionsContent() {
   const [monthlyTotals, setMonthlyTotals] = useState<MonthlyTotal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showForm, editingItem: editingTransaction, openCreate, openEdit, close, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Transaction>();
+  // Separate modal instance for editing the account behind a single-account
+  // filter, reusing the same form as the Accounts page.
+  const accountModal = useFormModal<Account>();
   const [duplicatingFrom, setDuplicatingFrom] = useState<Transaction | undefined>();
   const [schedulingFrom, setSchedulingFrom] = useState<Transaction | undefined>();
   const [showScheduleForm, setShowScheduleForm] = useState(false);
@@ -534,6 +539,17 @@ function TransactionsContent() {
     return undefined;
   }, [accountBalances, filters.filterAccountIds, accounts]);
 
+  // When the list is narrowed to exactly one account, surface that account so
+  // its info widget can render beside the Account Balance chart.
+  const singleFilteredAccount = useMemo(() => {
+    if (filters.filterAccountIds.length !== 1) return undefined;
+    const id = filters.filterAccountIds[0];
+    return (
+      filters.selectedAccounts.find((a) => a.id === id) ??
+      accounts.find((a) => a.id === id)
+    );
+  }, [filters.filterAccountIds, filters.selectedAccounts, accounts]);
+
   const selection = useTransactionSelection(
     transactions,
     pagination?.total ?? 0,
@@ -682,33 +698,55 @@ function TransactionsContent() {
           helpUrl="https://github.com/kenlasko/monize/wiki/Transactions"
           actions={<Button onClick={handleCreateNew}>{t('page.newButton')}</Button>}
         />
-        {filters.filterCategoryIds.length > 0 || filters.filterPayeeIds.length > 0 || filters.filterTagIds.length > 0 || filters.filterSearch.length > 0 ? (
-          <CategoryPayeeBarChart
-            data={monthlyTotals}
-            isLoading={isLoading}
-            filterLabel={monthlyTotalsFilterLabel}
-            onMonthClick={(startDate, endDate) => {
-              filters.isFilterChange.current = true;
-              filters.setFilterStartDate(startDate);
-              filters.setFilterEndDate(endDate);
-              filters.setFilterTimePeriod('custom');
-            }}
-          />
-        ) : accountBalances.length > 1 ? (
-          <AccountBalancesBarChart
-            data={accountBalances}
-            isLoading={isLoading}
-            currencyCode={chartCurrency}
-            onAccountClick={filters.handleAccountFilterClick}
-          />
-        ) : (
-          <BalanceHistoryChart
-            data={chartBalances}
-            isLoading={isLoading}
-            currencyCode={chartCurrency}
-            accountName={balanceHistoryAccountName}
-          />
-        )}
+        {(() => {
+          const chart = filters.filterCategoryIds.length > 0 || filters.filterPayeeIds.length > 0 || filters.filterTagIds.length > 0 || filters.filterSearch.length > 0 ? (
+            <CategoryPayeeBarChart
+              data={monthlyTotals}
+              isLoading={isLoading}
+              filterLabel={monthlyTotalsFilterLabel}
+              onMonthClick={(startDate, endDate) => {
+                filters.isFilterChange.current = true;
+                filters.setFilterStartDate(startDate);
+                filters.setFilterEndDate(endDate);
+                filters.setFilterTimePeriod('custom');
+              }}
+            />
+          ) : accountBalances.length > 1 ? (
+            <AccountBalancesBarChart
+              data={accountBalances}
+              isLoading={isLoading}
+              currencyCode={chartCurrency}
+              onAccountClick={filters.handleAccountFilterClick}
+            />
+          ) : (
+            <BalanceHistoryChart
+              data={chartBalances}
+              isLoading={isLoading}
+              currencyCode={chartCurrency}
+              accountName={balanceHistoryAccountName}
+            />
+          );
+
+          // Filtered to a single account: show its info widget (25%) to the
+          // left of the chart (75%). Stacks vertically on narrow screens.
+          if (singleFilteredAccount) {
+            return (
+              <div className="flex flex-col lg:flex-row lg:gap-6">
+                <div className="lg:w-1/4 flex-shrink-0">
+                  <AccountInfoWidget
+                    account={singleFilteredAccount}
+                    onEdit={() => accountModal.openEdit(singleFilteredAccount)}
+                  />
+                </div>
+                <div className="lg:flex-1 min-w-0">{chart}</div>
+              </div>
+            );
+          }
+          return chart;
+        })()}
+
+        {/* Account Edit Modal (shared with the Accounts page) */}
+        <AccountFormModal formModal={accountModal} onSaved={loadAllData} />
 
         {/* Form Modal */}
         <Modal isOpen={showForm} onClose={handleClose} {...modalProps} maxWidth="6xl" className="p-6 !max-w-[69rem]">

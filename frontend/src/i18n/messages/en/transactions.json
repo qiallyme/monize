@@ -1,4 +1,15 @@
 {
+  "accountWidget": {
+    "currentBalance": "Current Balance",
+    "type": "Type",
+    "institution": "Institution",
+    "accountNumber": "Account Number",
+    "currency": "Currency",
+    "creditLimit": "Credit Limit",
+    "interestRate": "Interest Rate",
+    "closed": "Closed",
+    "editAria": "Edit account settings"
+  },
   "page": {
     "title": "Transactions",
     "subtitle": "Manage your income and expenses",

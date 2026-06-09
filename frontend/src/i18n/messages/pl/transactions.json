@@ -1,4 +1,15 @@
 {
+  "accountWidget": {
+    "currentBalance": "Bieżące saldo",
+    "type": "Typ",
+    "institution": "Instytucja",
+    "accountNumber": "Numer konta",
+    "currency": "Waluta",
+    "creditLimit": "Limit kredytowy",
+    "interestRate": "Oprocentowanie",
+    "closed": "Zamknięte",
+    "editAria": "Edytuj ustawienia konta"
+  },
   "page": {
     "title": "Transakcje",
     "subtitle": "Zarządzaj swoimi przychodami i wydatkami",
