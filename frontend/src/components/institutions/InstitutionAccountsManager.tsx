@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Modal } from '@/components/ui/Modal';
 import { Combobox } from '@/components/ui/Combobox';
@@ -13,6 +14,7 @@ import { institutionsApi } from '@/lib/institutions';
 import { accountsApi } from '@/lib/accounts';
 import { getErrorMessage } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
+import { isInvestmentCashHalf, getMainAccountName } from '@/lib/account-utils';
 import { InstitutionLogo } from './InstitutionLogo';
 
 const logger = createLogger('InstitutionAccountsManager');
@@ -32,11 +34,13 @@ export function InstitutionAccountsManager({
   onChanged,
 }: InstitutionAccountsManagerProps) {
   const t = useTranslations('institutions');
+  const router = useRouter();
   const [assigned, setAssigned] = useState<Account[]>([]);
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'active' | 'closed' | ''>('');
 
   const load = useCallback(async () => {
     if (!institution) return;
@@ -67,13 +71,39 @@ export function InstitutionAccountsManager({
     [assigned],
   );
 
+  // Collapse a linked brokerage/cash investment pair into a single entity by
+  // dropping the cash half; assigning or removing the brokerage carries its
+  // partner along, so only the main account is shown.
+  const assignedMain = useMemo(
+    () => assigned.filter((a) => !isInvestmentCashHalf(a)),
+    [assigned],
+  );
+
+  // Apply the active/closed status filter to the collapsed account list.
+  const visibleAccounts = useMemo(() => {
+    if (!filterStatus) return assignedMain;
+    return assignedMain.filter((a) =>
+      filterStatus === 'active' ? !a.isClosed : a.isClosed,
+    );
+  }, [assignedMain, filterStatus]);
+
   const availableOptions = useMemo(
     () =>
       allAccounts
-        .filter((a) => !assignedIds.has(a.id))
-        .map((a) => ({ value: a.id, label: a.name })),
+        .filter((a) => !assignedIds.has(a.id) && !isInvestmentCashHalf(a))
+        .map((a) => ({ value: a.id, label: getMainAccountName(a.name) })),
     [allAccounts, assignedIds],
   );
+
+  // Close the modal and jump to the Transactions page filtered to the account.
+  // For a closed account, force the Show Accounts filter to All so its
+  // transactions aren't hidden by an Active-only filter.
+  const handleViewTransactions = (account: Account) => {
+    onClose();
+    const params = new URLSearchParams({ accountId: account.id });
+    if (account.isClosed) params.set('accountStatus', 'all');
+    router.push(`/transactions?${params.toString()}`);
+  };
 
   const handleAdd = async (accountId: string) => {
     if (!institution || !accountId) return;
@@ -107,7 +137,7 @@ export function InstitutionAccountsManager({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth="lg" className="p-6" pushHistory>
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="lg" className="p-6">
       <div className="flex items-center gap-3 mb-4">
         <InstitutionLogo institution={institution ?? undefined} size={32} fallbackGlyph="$" />
         <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">
@@ -117,13 +147,93 @@ export function InstitutionAccountsManager({
         </h2>
       </div>
 
-      <div className="mb-4">
+      {isLoading ? (
+        <LoadingSpinner text={t('accountsManager.loading')} />
+      ) : assignedMain.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+          {t('accountsManager.empty')}
+        </p>
+      ) : (
+        <>
+          {/* Active/Closed status filter */}
+          <div className="mb-3 inline-flex rounded-md shadow-sm">
+            <button
+              type="button"
+              onClick={() => setFilterStatus('')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-l-md border ${
+                filterStatus === ''
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+              }`}
+            >
+              {t('accountsManager.filter.all')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterStatus('active')}
+              className={`px-3 py-1.5 text-sm font-medium border-t border-b ${
+                filterStatus === 'active'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+              }`}
+            >
+              {t('accountsManager.filter.active')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterStatus('closed')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-r-md border ${
+                filterStatus === 'closed'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+              }`}
+            >
+              {t('accountsManager.filter.closed')}
+            </button>
+          </div>
+
+          {visibleAccounts.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+              {t('accountsManager.noneMatch')}
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-md">
+              {visibleAccounts.map((account) => (
+                <li
+                  key={account.id}
+                  className="flex items-center justify-between px-3 py-2 gap-3"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleViewTransactions(account)}
+                    title={t('accountsManager.viewTransactions')}
+                    className="text-sm text-left text-blue-600 dark:text-blue-400 hover:underline truncate"
+                  >
+                    {getMainAccountName(account.name)}
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busyId === account.id}
+                    onClick={() => handleRemove(account.id)}
+                  >
+                    {t('accountsManager.remove')}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
         <Combobox
           label={t('accountsManager.addLabel')}
           placeholder={t('accountsManager.addPlaceholder')}
           options={availableOptions}
           value={selectedAccountId}
           usePortal
+          openOnFocus={false}
           onChange={(value) => {
             if (value) handleAdd(value);
           }}
@@ -134,35 +244,6 @@ export function InstitutionAccountsManager({
           </p>
         )}
       </div>
-
-      {isLoading ? (
-        <LoadingSpinner text={t('accountsManager.loading')} />
-      ) : assigned.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
-          {t('accountsManager.empty')}
-        </p>
-      ) : (
-        <ul className="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-md">
-          {assigned.map((account) => (
-            <li
-              key={account.id}
-              className="flex items-center justify-between px-3 py-2 gap-3"
-            >
-              <span className="text-sm text-gray-900 dark:text-gray-100 truncate">
-                {account.name}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busyId === account.id}
-                onClick={() => handleRemove(account.id)}
-              >
-                {t('accountsManager.remove')}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
 
       <div className="mt-6 flex justify-end">
         <Button variant="secondary" onClick={onClose}>

@@ -58,6 +58,7 @@ export function InstitutionForm({
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<InstitutionFormData>({
     resolver: zodResolver(buildInstitutionSchema(t)),
@@ -102,6 +103,10 @@ export function InstitutionForm({
       <Input
         label={t('form.websiteLabel')}
         placeholder={t('form.websitePlaceholder')}
+        inputMode="url"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         error={errors.website?.message}
         {...register('website')}
       />
@@ -110,8 +115,15 @@ export function InstitutionForm({
         label={t('form.countryLabel')}
         placeholder={t('form.countryPlaceholder')}
         maxLength={2}
+        autoCapitalize="characters"
         error={errors.country?.message}
         {...register('country')}
+        onChange={(e) =>
+          setValue('country', e.target.value.toUpperCase(), {
+            shouldDirty: true,
+            shouldValidate: true,
+          })
+        }
       />
 
       <p className="text-xs text-gray-500 dark:text-gray-400">

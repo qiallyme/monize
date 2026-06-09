@@ -30,6 +30,17 @@
       "actions": "Akcje"
     },
     "accountCount": "{count, plural, =0 {Brak kont} one {# konto} few {# konta} many {# kont} other {# konta}}",
+    "density": {
+      "title": "Przełącz gęstość wierszy",
+      "normal": "Normalna",
+      "compact": "Kompaktowa",
+      "dense": "Gęsta"
+    },
+    "statusFilter": {
+      "all": "Wszystkie",
+      "active": "Aktywne",
+      "closed": "Zamknięte"
+    },
     "actions": {
       "manageAccounts": "Konta"
     },
@@ -62,7 +73,14 @@
     "noneToAdd": "Wszystkie Twoje konta są już przypisane do instytucji.",
     "loading": "Ładowanie kont...",
     "empty": "Do tej instytucji nie przypisano jeszcze żadnych kont.",
+    "noneMatch": "Żadne konto nie pasuje do wybranego filtra.",
+    "filter": {
+      "all": "Wszystkie",
+      "active": "Aktywny",
+      "closed": "Zamknięte"
+    },
     "remove": "Usuń",
+    "viewTransactions": "Wyświetl transakcje dla tego konta",
     "added": "Konto dodane",
     "removed": "Konto usunięte",
     "addFailed": "Nie udało się dodać konta",

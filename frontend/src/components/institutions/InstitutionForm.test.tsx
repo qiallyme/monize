@@ -93,6 +93,26 @@ describe('InstitutionForm', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('treats the website field as a URL on mobile (not normal text)', () => {
+    render(<InstitutionForm onSubmit={vi.fn()} onCancel={() => {}} />);
+    const website = screen.getByLabelText('Website');
+    expect(website).toHaveAttribute('inputmode', 'url');
+    expect(website).toHaveAttribute('autocapitalize', 'none');
+    expect(website).toHaveAttribute('autocorrect', 'off');
+    expect(website).toHaveAttribute('spellcheck', 'false');
+  });
+
+  it('forces the country code to uppercase while typing', async () => {
+    render(<InstitutionForm onSubmit={vi.fn()} onCancel={() => {}} />);
+    const country = screen.getByLabelText('Country (optional)') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(country, { target: { value: 'ca' } });
+    });
+
+    await waitFor(() => expect(country).toHaveValue('CA'));
+  });
+
   it('prefills the name for inline creation', () => {
     render(
       <InstitutionForm

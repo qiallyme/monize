@@ -55,9 +55,8 @@ export function InstitutionLogo({
         style={dimension}
         onError={() => setErrored(true)}
         // Circular chip with no forced backing: transparent favicons keep their
-        // transparency, opaque ones fill the circle. The ring keeps it defined
-        // against any background.
-        className={`shrink-0 rounded-full object-contain ring-1 ring-black/10 dark:ring-white/15 ${className}`}
+        // transparency, opaque ones fill the circle.
+        className={`shrink-0 rounded-full object-contain ${className}`}
       />
     );
   }

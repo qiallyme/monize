@@ -1,16 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import toast from 'react-hot-toast';
 import { useTranslations } from 'next-intl';
 import { useOnUndoRedo } from '@/hooks/useOnUndoRedo';
 import { Button } from '@/components/ui/Button';
-import dynamic from 'next/dynamic';
 
-const AccountForm = dynamic(() => import('@/components/accounts/AccountForm').then(m => m.AccountForm), { ssr: false });
 import { AccountList } from '@/components/accounts/AccountList';
-import { Modal } from '@/components/ui/Modal';
-import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
+import { AccountFormModal } from '@/components/accounts/AccountFormModal';
 import { accountsApi } from '@/lib/accounts';
 import { investmentsApi } from '@/lib/investments';
 import { institutionsApi } from '@/lib/institutions';
@@ -45,7 +41,8 @@ function AccountsContent() {
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { showForm, editingItem, openCreate, openEdit, close, isEditing, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Account>();
+  const formModal = useFormModal<Account>();
+  const { openCreate, openEdit } = formModal;
   const { convertToDefault, defaultCurrency } = useExchangeRates();
   const { formatCurrency } = useNumberFormat();
 
@@ -85,51 +82,6 @@ function AccountsContent() {
     }
     return map;
   }, [portfolioSummary]);
-
-  const handleFormSubmit = async (data: any) => {
-    try {
-      const cleanedData = {
-        ...data,
-        openingBalance: data.openingBalance || data.openingBalance === 0 ? data.openingBalance : undefined,
-        creditLimit: data.creditLimit || data.creditLimit === 0 ? data.creditLimit : undefined,
-        interestRate: data.interestRate || data.interestRate === 0 ? data.interestRate : undefined,
-      };
-
-      // LOAN/MORTGAGE store openingBalance as negative. The form shows the
-      // absolute amount ("Loan Amount" / "Mortgage Amount"), so negate it when
-      // saving an update. Backend handles negation on create for these types.
-      // All other account types (including CREDIT_CARD, LINE_OF_CREDIT) let the
-      // user type the sign directly, so no auto-negation is applied.
-      const effectiveType = cleanedData.accountType || editingItem?.accountType;
-      if (
-        cleanedData.openingBalance != null &&
-        cleanedData.openingBalance > 0 &&
-        (effectiveType === 'LOAN' || effectiveType === 'MORTGAGE') &&
-        editingItem
-      ) {
-        cleanedData.openingBalance = -cleanedData.openingBalance;
-      }
-
-      Object.keys(cleanedData).forEach(key => {
-        if (cleanedData[key] === undefined || cleanedData[key] === '' || (typeof cleanedData[key] === 'number' && isNaN(cleanedData[key]))) {
-          delete cleanedData[key];
-        }
-      });
-
-      if (editingItem) {
-        await accountsApi.update(editingItem.id, cleanedData);
-        toast.success(t('toast.updateSuccess'));
-      } else {
-        await accountsApi.create(cleanedData);
-        toast.success(t('toast.createSuccess'));
-      }
-      close();
-      loadAccounts();
-    } catch (error) {
-      showErrorToast(error, `Failed to ${editingItem ? 'update' : 'create'} account`);
-      throw error;
-    }
-  };
 
   const calculateSummary = () => {
     const activeAccounts = accounts.filter((a) => !a.isClosed);
@@ -197,19 +149,7 @@ function AccountsContent() {
         </div>
 
         {/* Form Modal */}
-        <Modal isOpen={showForm} onClose={close} {...modalProps} maxWidth="2xl" className="p-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-            {isEditing ? t('page.editAccountModal') : t('page.newAccountModal')}
-          </h2>
-          <AccountForm
-            account={editingItem}
-            onSubmit={handleFormSubmit}
-            onCancel={close}
-            onDirtyChange={setFormDirty}
-            submitRef={formSubmitRef}
-          />
-        </Modal>
-        <UnsavedChangesDialog {...unsavedChangesDialog} />
+        <AccountFormModal formModal={formModal} onSaved={loadAccounts} />
 
         {/* Accounts List */}
         <div className="bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 rounded-lg overflow-hidden">

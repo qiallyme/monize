@@ -303,6 +303,7 @@ export function useTransactionFilters({ accounts, categories, payees, tags, week
   useEffect(() => {
     const hasAnyUrlParams = searchParams.has('accountId') ||
       searchParams.has('accountIds') ||
+      searchParams.has('accountStatus') ||
       searchParams.has('categoryId') ||
       searchParams.has('categoryIds') ||
       searchParams.has('categoryType') ||
@@ -338,6 +339,17 @@ export function useTransactionFilters({ accounts, categories, payees, tags, week
     };
 
     setFilterAccountIds(getAccountIds());
+    // An explicit accountStatus param (e.g. when opening a closed account from
+    // the Institutions page) overrides the stored Show Accounts filter so the
+    // selected account is not pruned and its transactions are visible.
+    const accountStatusParam = searchParams.get('accountStatus');
+    if (
+      accountStatusParam === 'all' ||
+      accountStatusParam === 'active' ||
+      accountStatusParam === 'closed'
+    ) {
+      setFilterAccountStatus(accountStatusParam === 'all' ? '' : accountStatusParam);
+    }
     setFilterCategoryIds(getCategoryIds());
     setFilterPayeeIds(getPayeeIds());
     setFilterTagIds(getFilterValues(STORAGE_KEYS.tagIds, searchParams.get('tagIds'), hasAnyUrlParams));

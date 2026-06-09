@@ -26,6 +26,8 @@ const CategoryPayeeBarChart = dynamic(() => import('@/components/transactions/Ca
 const AccountBalancesBarChart = dynamic(() => import('@/components/transactions/AccountBalancesBarChart').then(m => m.AccountBalancesBarChart), { ssr: false, loading: ChartLoadingPlaceholder });
 import { transactionsApi } from '@/lib/transactions';
 import { accountsApi } from '@/lib/accounts';
+import { institutionsApi } from '@/lib/institutions';
+import { scheduledTransactionsApi } from '@/lib/scheduled-transactions';
 import { categoriesApi } from '@/lib/categories';
 import { payeesApi } from '@/lib/payees';
 import { tagsApi } from '@/lib/tags';
@@ -35,14 +37,19 @@ import { useTransactionSelection } from '@/hooks/useTransactionSelection';
 import { useTransactionFilters } from '@/hooks/useTransactionFilters';
 import { BulkSelectionBanner } from '@/components/transactions/BulkSelectionBanner';
 import { Account } from '@/types/account';
+import { Institution } from '@/types/institution';
 import { Category } from '@/types/category';
 import { Payee } from '@/types/payee';
 import { Tag } from '@/types/tag';
+import { ScheduledTransaction } from '@/types/scheduled-transaction';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import { usePreferencesStore } from '@/store/preferencesStore';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { useFormModal } from '@/hooks/useFormModal';
+import { AccountFormModal } from '@/components/accounts/AccountFormModal';
+import { AccountInfoWidget } from '@/components/transactions/AccountInfoWidget';
+import { ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
 import { Modal } from '@/components/ui/Modal';
 import { UnsavedChangesDialog } from '@/components/ui/UnsavedChangesDialog';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -76,6 +83,8 @@ function TransactionsContent() {
   const { convertToDefault } = useExchangeRates();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [scheduledTransactions, setScheduledTransactions] = useState<ScheduledTransaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -83,12 +92,16 @@ function TransactionsContent() {
   const [monthlyTotals, setMonthlyTotals] = useState<MonthlyTotal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showForm, editingItem: editingTransaction, openCreate, openEdit, close, modalProps, setFormDirty, unsavedChangesDialog, formSubmitRef } = useFormModal<Transaction>();
+  // Separate modal instance for editing the account behind a single-account
+  // filter, reusing the same form as the Accounts page.
+  const accountModal = useFormModal<Account>();
   const [duplicatingFrom, setDuplicatingFrom] = useState<Transaction | undefined>();
   const [schedulingFrom, setSchedulingFrom] = useState<Transaction | undefined>();
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showPayeeForm, setShowPayeeForm] = useState(false);
   const [editingPayee, setEditingPayee] = useState<Payee | undefined>();
   const [listDensity, setListDensity] = useLocalStorage<DensityLevel>('monize-transactions-density', 'normal');
+  const [accountWidgetCollapsed, setAccountWidgetCollapsed] = useLocalStorage<boolean>('monize-transactions-account-widget-collapsed', false);
   const [showBulkUpdate, setShowBulkUpdate] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
@@ -113,16 +126,20 @@ function TransactionsContent() {
   const loadStaticData = useCallback(async () => {
     if (staticDataLoaded.current) return;
     try {
-      const [accountsData, categoriesData, payeesData, tagsData] = await Promise.all([
+      const [accountsData, categoriesData, payeesData, tagsData, institutionsData, scheduledData] = await Promise.all([
         accountsApi.getAll(true),
         categoriesApi.getAll(),
         payeesApi.getAll(),
         tagsApi.getAll(),
+        institutionsApi.getAll().catch(() => [] as Institution[]),
+        scheduledTransactionsApi.getAll().catch(() => [] as ScheduledTransaction[]),
       ]);
       setAccounts(accountsData);
       setCategories(categoriesData);
       setPayees(payeesData);
       setTags(tagsData);
+      setInstitutions(institutionsData);
+      setScheduledTransactions(scheduledData);
       staticDataLoaded.current = true;
     } catch (error) {
       showErrorToast(error, 'Failed to load form data');
@@ -534,6 +551,22 @@ function TransactionsContent() {
     return undefined;
   }, [accountBalances, filters.filterAccountIds, accounts]);
 
+  // When the list is narrowed to exactly one account, surface that account so
+  // its info widget can render beside the Account Balance chart.
+  const singleFilteredAccount = useMemo(() => {
+    if (filters.filterAccountIds.length !== 1) return undefined;
+    const id = filters.filterAccountIds[0];
+    return (
+      filters.selectedAccounts.find((a) => a.id === id) ??
+      accounts.find((a) => a.id === id)
+    );
+  }, [filters.filterAccountIds, filters.selectedAccounts, accounts]);
+
+  const singleFilteredInstitution = useMemo(() => {
+    if (!singleFilteredAccount?.institutionId) return undefined;
+    return institutions.find((i) => i.id === singleFilteredAccount.institutionId);
+  }, [singleFilteredAccount, institutions]);
+
   const selection = useTransactionSelection(
     transactions,
     pagination?.total ?? 0,
@@ -682,33 +715,74 @@ function TransactionsContent() {
           helpUrl="https://github.com/kenlasko/monize/wiki/Transactions"
           actions={<Button onClick={handleCreateNew}>{t('page.newButton')}</Button>}
         />
-        {filters.filterCategoryIds.length > 0 || filters.filterPayeeIds.length > 0 || filters.filterTagIds.length > 0 || filters.filterSearch.length > 0 ? (
-          <CategoryPayeeBarChart
-            data={monthlyTotals}
-            isLoading={isLoading}
-            filterLabel={monthlyTotalsFilterLabel}
-            onMonthClick={(startDate, endDate) => {
-              filters.isFilterChange.current = true;
-              filters.setFilterStartDate(startDate);
-              filters.setFilterEndDate(endDate);
-              filters.setFilterTimePeriod('custom');
-            }}
-          />
-        ) : accountBalances.length > 1 ? (
-          <AccountBalancesBarChart
-            data={accountBalances}
-            isLoading={isLoading}
-            currencyCode={chartCurrency}
-            onAccountClick={filters.handleAccountFilterClick}
-          />
-        ) : (
-          <BalanceHistoryChart
-            data={chartBalances}
-            isLoading={isLoading}
-            currencyCode={chartCurrency}
-            accountName={balanceHistoryAccountName}
-          />
-        )}
+        {(() => {
+          const chart = filters.filterCategoryIds.length > 0 || filters.filterPayeeIds.length > 0 || filters.filterTagIds.length > 0 || filters.filterSearch.length > 0 ? (
+            <CategoryPayeeBarChart
+              data={monthlyTotals}
+              isLoading={isLoading}
+              filterLabel={monthlyTotalsFilterLabel}
+              onMonthClick={(startDate, endDate) => {
+                filters.isFilterChange.current = true;
+                filters.setFilterStartDate(startDate);
+                filters.setFilterEndDate(endDate);
+                filters.setFilterTimePeriod('custom');
+              }}
+            />
+          ) : accountBalances.length > 1 ? (
+            <AccountBalancesBarChart
+              data={accountBalances}
+              isLoading={isLoading}
+              currencyCode={chartCurrency}
+              onAccountClick={filters.handleAccountFilterClick}
+            />
+          ) : (
+            <BalanceHistoryChart
+              data={chartBalances}
+              isLoading={isLoading}
+              currencyCode={chartCurrency}
+              accountName={balanceHistoryAccountName}
+            />
+          );
+
+          // Filtered to a single account: show its info widget (25%) to the
+          // left of the chart (75%). Stacks vertically on narrow screens. The
+          // widget can be collapsed (persisted) so the chart uses full width.
+          if (singleFilteredAccount) {
+            if (accountWidgetCollapsed) {
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAccountWidgetCollapsed(false)}
+                    className="mb-2 inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <ChevronDoubleRightIcon className="h-4 w-4" />
+                    {t('accountWidget.show')}
+                  </button>
+                  {chart}
+                </>
+              );
+            }
+            return (
+              <div className="flex flex-col lg:flex-row lg:gap-6 lg:items-stretch">
+                <div className="lg:w-1/4 flex-shrink-0 lg:relative">
+                  <AccountInfoWidget
+                    account={singleFilteredAccount}
+                    institution={singleFilteredInstitution}
+                    scheduledTransactions={scheduledTransactions}
+                    onEdit={() => accountModal.openEdit(singleFilteredAccount)}
+                    onCollapse={() => setAccountWidgetCollapsed(true)}
+                  />
+                </div>
+                <div className="lg:flex-1 min-w-0">{chart}</div>
+              </div>
+            );
+          }
+          return chart;
+        })()}
+
+        {/* Account Edit Modal (shared with the Accounts page) */}
+        <AccountFormModal formModal={accountModal} onSaved={loadAllData} />
 
         {/* Form Modal */}
         <Modal isOpen={showForm} onClose={handleClose} {...modalProps} maxWidth="6xl" className="p-6 !max-w-[69rem]">

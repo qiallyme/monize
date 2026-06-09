@@ -140,6 +140,15 @@ vi.mock('@/lib/accounts', () => ({
   },
 }));
 
+vi.mock('@/lib/institutions', () => ({
+  institutionsApi: { getAll: vi.fn().mockResolvedValue([]) },
+  institutionLogoUrl: (id: string) => `/api/v1/institutions/${id}/logo`,
+}));
+
+vi.mock('@/lib/scheduled-transactions', () => ({
+  scheduledTransactionsApi: { getAll: vi.fn().mockResolvedValue([]) },
+}));
+
 const mockGetAllCategories = vi.fn();
 vi.mock('@/lib/categories', () => ({
   categoriesApi: {

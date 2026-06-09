@@ -1,4 +1,21 @@
 {
+  "accountWidget": {
+    "currentBalance": "Bieżące saldo",
+    "nextPayment": "Następna płatność",
+    "viewBills": "Zobacz w Rachunki i wpłaty",
+    "type": "Typ",
+    "accountNumber": "Numer konta",
+    "currency": "Waluta",
+    "creditLimit": "Limit kredytowy",
+    "interestRate": "Oprocentowanie",
+    "statementSettlement": "Dzień rozliczenia",
+    "statementSettlementTooltip": "Ostatni dzień cyklu rozliczeniowego. Transakcje zaksięgowane w tym dniu lub wcześniej pojawiają się na bieżącym wyciągu.",
+    "statementDue": "Termin płatności",
+    "closed": "Zamknięte",
+    "editAria": "Edytuj ustawienia konta",
+    "collapseAria": "Ukryj informacje o koncie",
+    "show": "Pokaż informacje o koncie"
+  },
   "page": {
     "title": "Transakcje",
     "subtitle": "Zarządzaj swoimi przychodami i wydatkami",
