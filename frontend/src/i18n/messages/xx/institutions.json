@@ -36,6 +36,11 @@
       "compact": "[XX-Compact-XX]",
       "dense": "[XX-Dense-XX]"
     },
+    "statusFilter": {
+      "all": "[XX-All-XX]",
+      "active": "[XX-Active-XX]",
+      "closed": "[XX-Closed-XX]"
+    },
     "actions": {
       "manageAccounts": "[XX-Accounts-XX]"
     },
