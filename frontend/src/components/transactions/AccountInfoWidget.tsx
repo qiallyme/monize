@@ -110,15 +110,19 @@ export function AccountInfoWidget({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
               {account.name}
             </h3>
-            {institutionName && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                {institutionName}
-              </p>
-            )}
-            {account.isClosed && (
-              <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                {t('accountWidget.closed')}
-              </span>
+            {(institutionName || account.isClosed) && (
+              <div className="flex items-center gap-2 min-w-0">
+                {institutionName && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                    {institutionName}
+                  </p>
+                )}
+                {account.isClosed && (
+                  <span className="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                    {t('accountWidget.closed')}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>

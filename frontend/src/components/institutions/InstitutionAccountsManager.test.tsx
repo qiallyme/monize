@@ -107,6 +107,25 @@ describe('InstitutionAccountsManager', () => {
     expect(mockPush).toHaveBeenCalledWith('/transactions?accountId=a-1');
   });
 
+  it('forces Show Accounts to All when a closed account is clicked', async () => {
+    const closed = { id: 'a-9', name: 'Old Savings', institutionId: 'i-1', isClosed: true } as Account;
+    vi.mocked(institutionsApi.getAccounts).mockResolvedValue([closed]);
+    vi.mocked(accountsApi.getAll).mockResolvedValue([closed]);
+
+    await renderManager();
+    await waitFor(() =>
+      expect(screen.getByText('Old Savings')).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Old Savings'));
+    });
+
+    expect(mockPush).toHaveBeenCalledWith(
+      '/transactions?accountId=a-9&accountStatus=all',
+    );
+  });
+
   it('removes an assigned account', async () => {
     vi.mocked(institutionsApi.getAccounts).mockResolvedValue([
       account('a-1', 'Chequing'),

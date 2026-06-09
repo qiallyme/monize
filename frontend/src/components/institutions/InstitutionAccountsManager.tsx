@@ -96,9 +96,13 @@ export function InstitutionAccountsManager({
   );
 
   // Close the modal and jump to the Transactions page filtered to the account.
-  const handleViewTransactions = (accountId: string) => {
+  // For a closed account, force the Show Accounts filter to All so its
+  // transactions aren't hidden by an Active-only filter.
+  const handleViewTransactions = (account: Account) => {
     onClose();
-    router.push(`/transactions?accountId=${accountId}`);
+    const params = new URLSearchParams({ accountId: account.id });
+    if (account.isClosed) params.set('accountStatus', 'all');
+    router.push(`/transactions?${params.toString()}`);
   };
 
   const handleAdd = async (accountId: string) => {
@@ -201,7 +205,7 @@ export function InstitutionAccountsManager({
                 >
                   <button
                     type="button"
-                    onClick={() => handleViewTransactions(account.id)}
+                    onClick={() => handleViewTransactions(account)}
                     title={t('accountsManager.viewTransactions')}
                     className="text-sm text-left text-blue-600 dark:text-blue-400 hover:underline truncate"
                   >
