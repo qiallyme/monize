@@ -76,7 +76,8 @@ function isOAuthPath(pathname: string): boolean {
     pathname.startsWith('/oauth-consent/') ||
     pathname === '/.well-known/oauth-protected-resource' ||
     pathname === '/.well-known/oauth-authorization-server' ||
-    pathname.startsWith('/.well-known/oauth-authorization-server/')
+    pathname.startsWith('/.well-known/oauth-authorization-server/') ||
+    pathname === '/.well-known/openid-configuration'
   );
 }
 
@@ -173,6 +174,7 @@ export const config = {
     '/.well-known/oauth-protected-resource',
     '/.well-known/oauth-authorization-server',
     '/.well-known/oauth-authorization-server/:path*',
+    '/.well-known/openid-configuration',
     // Match all other paths except static files
     '/((?!_next/static|_next/image|favicon.ico|.*\\..*|public).*)',
   ],
