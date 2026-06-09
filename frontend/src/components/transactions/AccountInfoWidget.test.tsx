@@ -88,6 +88,21 @@ describe('AccountInfoWidget', () => {
     expect(screen.getByRole('img', { name: 'TD Canada Trust' })).toBeInTheDocument();
   });
 
+  it('links the institution logo to its website in a new tab', () => {
+    render(
+      <AccountInfoWidget
+        account={makeAccount({ institutionId: 'inst-1' })}
+        institution={{ id: 'inst-1', name: 'TD', hasLogo: true, website: 'https://td.com' }}
+        onEdit={vi.fn()}
+        onCollapse={vi.fn()}
+      />,
+    );
+    const link = screen.getByRole('link');
+    expect(link).toHaveAttribute('href', 'https://td.com');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
   it('falls back to the legacy institution string when no entity is linked', () => {
     render(
       <AccountInfoWidget

@@ -15,8 +15,9 @@ import { InfoTooltip } from '@/components/ui/InfoTooltip';
 
 interface AccountInfoWidgetProps {
   account: Account;
-  /** The account's institution, when assigned, for the logo + name. */
-  institution?: InstitutionLogoData | null;
+  /** The account's institution, when assigned, for the logo + name. The
+   *  optional website makes the logo a link to the institution's site. */
+  institution?: (InstitutionLogoData & { website?: string }) | null;
   /** Scheduled bills/deposits; the soonest for this account is surfaced. */
   scheduledTransactions?: ScheduledTransaction[];
   /** Open the shared account edit modal for this account. */
@@ -105,7 +106,19 @@ export function AccountInfoWidget({
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-700/50 p-4 sm:p-6 mb-6 lg:mb-0 lg:absolute lg:inset-x-0 lg:top-0 lg:bottom-6 lg:overflow-y-auto flex flex-col">
       <div className="flex items-start justify-between gap-2 mb-4">
         <div className="flex items-center gap-3 min-w-0">
-          <InstitutionLogo institution={institution ?? undefined} size={40} fallbackGlyph="$" />
+          {institution?.website ? (
+            <a
+              href={institution.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={institution.website}
+              className="flex-shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <InstitutionLogo institution={institution} size={40} fallbackGlyph="$" />
+            </a>
+          ) : (
+            <InstitutionLogo institution={institution ?? undefined} size={40} fallbackGlyph="$" />
+          )}
           <div className="min-w-0">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
               {account.name}
