@@ -2,7 +2,6 @@
   "accountWidget": {
     "currentBalance": "Bieżące saldo",
     "type": "Typ",
-    "institution": "Instytucja",
     "accountNumber": "Numer konta",
     "currency": "Waluta",
     "creditLimit": "Limit kredytowy",

@@ -26,6 +26,7 @@ const CategoryPayeeBarChart = dynamic(() => import('@/components/transactions/Ca
 const AccountBalancesBarChart = dynamic(() => import('@/components/transactions/AccountBalancesBarChart').then(m => m.AccountBalancesBarChart), { ssr: false, loading: ChartLoadingPlaceholder });
 import { transactionsApi } from '@/lib/transactions';
 import { accountsApi } from '@/lib/accounts';
+import { institutionsApi } from '@/lib/institutions';
 import { categoriesApi } from '@/lib/categories';
 import { payeesApi } from '@/lib/payees';
 import { tagsApi } from '@/lib/tags';
@@ -35,6 +36,7 @@ import { useTransactionSelection } from '@/hooks/useTransactionSelection';
 import { useTransactionFilters } from '@/hooks/useTransactionFilters';
 import { BulkSelectionBanner } from '@/components/transactions/BulkSelectionBanner';
 import { Account } from '@/types/account';
+import { Institution } from '@/types/institution';
 import { Category } from '@/types/category';
 import { Payee } from '@/types/payee';
 import { Tag } from '@/types/tag';
@@ -78,6 +80,7 @@ function TransactionsContent() {
   const { convertToDefault } = useExchangeRates();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -118,16 +121,18 @@ function TransactionsContent() {
   const loadStaticData = useCallback(async () => {
     if (staticDataLoaded.current) return;
     try {
-      const [accountsData, categoriesData, payeesData, tagsData] = await Promise.all([
+      const [accountsData, categoriesData, payeesData, tagsData, institutionsData] = await Promise.all([
         accountsApi.getAll(true),
         categoriesApi.getAll(),
         payeesApi.getAll(),
         tagsApi.getAll(),
+        institutionsApi.getAll().catch(() => [] as Institution[]),
       ]);
       setAccounts(accountsData);
       setCategories(categoriesData);
       setPayees(payeesData);
       setTags(tagsData);
+      setInstitutions(institutionsData);
       staticDataLoaded.current = true;
     } catch (error) {
       showErrorToast(error, 'Failed to load form data');
@@ -550,6 +555,11 @@ function TransactionsContent() {
     );
   }, [filters.filterAccountIds, filters.selectedAccounts, accounts]);
 
+  const singleFilteredInstitution = useMemo(() => {
+    if (!singleFilteredAccount?.institutionId) return undefined;
+    return institutions.find((i) => i.id === singleFilteredAccount.institutionId);
+  }, [singleFilteredAccount, institutions]);
+
   const selection = useTransactionSelection(
     transactions,
     pagination?.total ?? 0,
@@ -735,6 +745,7 @@ function TransactionsContent() {
                 <div className="lg:w-1/4 flex-shrink-0">
                   <AccountInfoWidget
                     account={singleFilteredAccount}
+                    institution={singleFilteredInstitution}
                     onEdit={() => accountModal.openEdit(singleFilteredAccount)}
                   />
                 </div>

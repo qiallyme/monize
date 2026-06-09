@@ -49,7 +49,6 @@ describe('AccountInfoWidget', () => {
       <AccountInfoWidget
         account={makeAccount({
           accountType: 'CREDIT_CARD',
-          institution: 'TD',
           accountNumber: '****1234',
           creditLimit: 5000,
           interestRate: 19.99,
@@ -58,16 +57,37 @@ describe('AccountInfoWidget', () => {
         onEdit={vi.fn()}
       />,
     );
-    expect(screen.getByText('TD')).toBeInTheDocument();
     expect(screen.getByText('****1234')).toBeInTheDocument();
     expect(screen.getByText('CAD 5000.00')).toBeInTheDocument();
     expect(screen.getByText('19.99%')).toBeInTheDocument();
     expect(screen.getByText('Closed')).toBeInTheDocument();
   });
 
+  it('shows the institution name and logo when an institution is provided', () => {
+    render(
+      <AccountInfoWidget
+        account={makeAccount({ institutionId: 'inst-1' })}
+        institution={{ id: 'inst-1', name: 'TD Canada Trust', hasLogo: true }}
+        onEdit={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('TD Canada Trust')).toBeInTheDocument();
+    // The cached favicon is rendered with the institution name as alt text.
+    expect(screen.getByRole('img', { name: 'TD Canada Trust' })).toBeInTheDocument();
+  });
+
+  it('falls back to the legacy institution string when no entity is linked', () => {
+    render(
+      <AccountInfoWidget
+        account={makeAccount({ institution: 'Legacy Bank' })}
+        onEdit={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Legacy Bank')).toBeInTheDocument();
+  });
+
   it('omits optional fields that are absent', () => {
     render(<AccountInfoWidget account={makeAccount()} onEdit={vi.fn()} />);
-    expect(screen.queryByText('Institution')).not.toBeInTheDocument();
     expect(screen.queryByText('Account Number')).not.toBeInTheDocument();
     expect(screen.queryByText('Credit Limit')).not.toBeInTheDocument();
     expect(screen.queryByText('Closed')).not.toBeInTheDocument();

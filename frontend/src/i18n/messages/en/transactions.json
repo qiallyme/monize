@@ -2,7 +2,6 @@
   "accountWidget": {
     "currentBalance": "Current Balance",
     "type": "Type",
-    "institution": "Institution",
     "accountNumber": "Account Number",
     "currency": "Currency",
     "creditLimit": "Credit Limit",
