@@ -5,8 +5,8 @@ import { useTranslations } from 'next-intl';
 import { gainLossColor } from '@/lib/format';
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -185,7 +185,13 @@ export function BalanceHistoryChart({
 
       <div ref={chartRef} className="h-72" style={{ minHeight: 288 }}>
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          <LineChart data={chartData} margin={{ left: 0, right: 8, top: 5, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ left: 0, right: 8, top: 5, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <CartesianGrid
               strokeDasharray="3 3"
               stroke="#e5e7eb"
@@ -222,15 +228,17 @@ export function BalanceHistoryChart({
                 strokeOpacity={0.4}
               />
             )}
-            <Line
+            <Area
               type="monotone"
               dataKey="balance"
               stroke="#3b82f6"
               strokeWidth={2}
+              fillOpacity={1}
+              fill="url(#colorBalance)"
               dot={false}
               activeDot={{ r: 6, fill: '#3b82f6' }}
             />
-          </LineChart>
+          </AreaChart>
         </ResponsiveContainer>
       </div>
 
