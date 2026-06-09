@@ -87,6 +87,21 @@ export function AccountFormModal({ formModal, onSaved }: AccountFormModalProps) 
         cleanedData.openingBalance = -cleanedData.openingBalance;
       }
 
+      // When editing, a cleared optional text field must reach the backend as
+      // null so the stored value is overwritten. Left as '' it would be stripped
+      // by the cleanup below and the field would silently keep its old value.
+      if (editingItem) {
+        const clearableTextFields = ['description', 'accountNumber'] as const;
+        for (const key of clearableTextFields) {
+          if (
+            (cleanedData[key] === '' || cleanedData[key] === undefined) &&
+            editingItem[key]
+          ) {
+            cleanedData[key] = null;
+          }
+        }
+      }
+
       Object.keys(cleanedData).forEach((key) => {
         if (
           cleanedData[key] === undefined ||
