@@ -233,11 +233,16 @@ export class EmergencyAccessMonitorService {
       );
       await this.emailService.sendMail(
         owner.email,
-        reminderT(
-          "emails.emergencyAccessReminder.subject",
-          `Monize: your account has been inactive for ${daysSinceLogin} day${daysSinceLogin === 1 ? "" : "s"}`,
-          { daysSinceLogin },
-        ),
+        daysSinceLogin === 1
+          ? reminderT(
+              "emails.emergencyAccessReminder.subjectOne",
+              "Monize: your account has been inactive for 1 day",
+            )
+          : reminderT(
+              "emails.emergencyAccessReminder.subjectMany",
+              `Monize: your account has been inactive for ${daysSinceLogin} days`,
+              { daysSinceLogin },
+            ),
         html,
       );
       settings.lastReminderSentAt = new Date(now);

@@ -629,10 +629,12 @@ export class BudgetAlertService {
           ? t(
               "emails.budgetAlertImmediate.subject",
               `Monize: Alert - ${alerts[0].title}`,
+              { title: alerts[0].title },
             )
           : t(
               "emails.budgetAlertImmediate.subjectPlural",
               `Monize: ${alerts.length} alerts need attention`,
+              { count: alerts.length },
             );
 
       await this.emailService.sendMail(user.email, subject, html);

@@ -7,13 +7,26 @@
 
 export const DEFAULT_LOCALE = "en";
 
-// 'en' ships in every environment. 'pl' is a full Polish translation. 'xx' is
-// the pseudo-locale used for translation QA: it wraps every catalog string in
-// `[XX-...-XX]` markers so untranslated backend strings (those not routed
-// through `tr()`) stand out when the request locale is `xx`. Mirrors the
-// frontend's `xx` devOnly locale (see frontend/src/i18n/config.ts), which hides
-// it from the language picker in production.
-export const SUPPORTED_LOCALE_CODES: readonly string[] = ["en", "pl", "xx"];
+// 'en' ships in every environment. The other entries (except 'xx') are full
+// translations: German, Spanish, French, Italian, Dutch, Polish, European
+// Portuguese, and Brazilian Portuguese. 'xx' is the pseudo-locale used for
+// translation QA: it wraps every catalog string in `[XX-...-XX]` markers so
+// untranslated backend strings (those not routed through `tr()`) stand out
+// when the request locale is `xx`. Mirrors the frontend's `xx` devOnly locale
+// (see frontend/src/i18n/config.ts), which hides it from the language picker
+// in production.
+export const SUPPORTED_LOCALE_CODES: readonly string[] = [
+  "de",
+  "en",
+  "es",
+  "fr",
+  "it",
+  "nl",
+  "pl",
+  "pt",
+  "pt-BR",
+  "xx",
+];
 
 export function isSupportedLocale(code: string | undefined | null): boolean {
   if (!code) return false;
