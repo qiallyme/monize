@@ -147,6 +147,16 @@
       "light": "[XX-Light-XX]",
       "dark": "[XX-Dark-XX]"
     },
+    "colorThemeLabel": "[XX-Colour theme-XX]",
+    "colorThemeOptions": {
+      "default": "[XX-Default-XX]",
+      "beige": "[XX-Beige-XX]",
+      "msmoney": "[XX-Classic Money-XX]",
+      "nord": "[XX-Nord-XX]",
+      "forest": "[XX-Forest-XX]",
+      "solarized": "[XX-Solarized-XX]",
+      "highcontrast": "[XX-High contrast-XX]"
+    },
     "timezoneBrowserOption": "[XX-Use browser timezone (auto-detected as {tz})-XX]"
   },
   "notifications": {

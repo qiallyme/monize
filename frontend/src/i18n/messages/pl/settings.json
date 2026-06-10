@@ -147,6 +147,16 @@
       "light": "Jasny",
       "dark": "Ciemny"
     },
+    "colorThemeLabel": "Motyw kolorystyczny",
+    "colorThemeOptions": {
+      "default": "Domyślny",
+      "beige": "Beżowy",
+      "msmoney": "Klasyczny Money",
+      "nord": "Nord",
+      "forest": "Leśny",
+      "solarized": "Solarized",
+      "highcontrast": "Wysoki kontrast"
+    },
     "timezoneBrowserOption": "Użyj strefy czasowej przeglądarki (wykryto {tz})"
   },
   "notifications": {

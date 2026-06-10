@@ -147,6 +147,16 @@
       "light": "Light",
       "dark": "Dark"
     },
+    "colorThemeLabel": "Colour theme",
+    "colorThemeOptions": {
+      "default": "Default",
+      "beige": "Beige",
+      "msmoney": "Classic Money",
+      "nord": "Nord",
+      "forest": "Forest",
+      "solarized": "Solarized",
+      "highcontrast": "High contrast"
+    },
     "timezoneBrowserOption": "Use browser timezone (auto-detected as {tz})"
   },
   "notifications": {
