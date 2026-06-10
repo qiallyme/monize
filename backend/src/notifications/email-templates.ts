@@ -50,7 +50,7 @@ export function billReminderTemplate(
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h2 style="color: #1f2937;">${t("emails.billReminder.heading", "Upcoming Bill Reminder")}</h2>
       <p style="color: #374151;">${t("emails.billReminder.greeting", `Hi ${safeName},`, { name: safeName })}</p>
-      <p style="color: #374151;">${t("emails.billReminder.intro", `You have ${bills.length} upcoming bill${bills.length === 1 ? "" : "s"} that need${bills.length === 1 ? "s" : ""} attention:`, { count: bills.length })}</p>
+      <p style="color: #374151;">${bills.length === 1 ? t("emails.billReminder.introOne", "You have 1 upcoming bill that needs attention:") : t("emails.billReminder.introMany", `You have ${bills.length} upcoming bills that need attention:`, { count: bills.length })}</p>
       <table style="width: 100%; border-collapse: collapse; margin: 16px 0; border: 1px solid #e5e7eb; border-radius: 8px;">
         <thead>
           <tr style="background: #f3f4f6;">
@@ -89,7 +89,7 @@ export function mortgageReminderTemplate(
         `<tr>
           <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(m.name)}</td>
           <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb;">${escapeHtml(m.termEndDate)}</td>
-          <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: right; color: ${m.daysUntilRenewal <= 30 ? "#dc2626" : "#d97706"}; font-weight: 500;">${m.daysUntilRenewal} day${m.daysUntilRenewal === 1 ? "" : "s"}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: right; color: ${m.daysUntilRenewal <= 30 ? "#dc2626" : "#d97706"}; font-weight: 500;">${m.daysUntilRenewal === 1 ? t("emails.mortgageReminder.daysRemainingOne", "1 day") : t("emails.mortgageReminder.daysRemainingMany", `${m.daysUntilRenewal} days`, { count: m.daysUntilRenewal })}</td>
         </tr>`,
     )
     .join("");
@@ -98,7 +98,7 @@ export function mortgageReminderTemplate(
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h2 style="color: #1f2937;">${t("emails.mortgageReminder.heading", "Mortgage Renewal Reminder")}</h2>
       <p style="color: #374151;">${t("emails.mortgageReminder.greeting", `Hi ${safeName},`, { name: safeName })}</p>
-      <p style="color: #374151;">${t("emails.mortgageReminder.intro", `You have ${mortgages.length} mortgage${mortgages.length === 1 ? "" : "s"} with an upcoming term renewal. Contact your lender to discuss renewal options before the term ends:`, { count: mortgages.length })}</p>
+      <p style="color: #374151;">${mortgages.length === 1 ? t("emails.mortgageReminder.introOne", "You have 1 mortgage with an upcoming term renewal. Contact your lender to discuss renewal options before the term ends:") : t("emails.mortgageReminder.introMany", `You have ${mortgages.length} mortgages with an upcoming term renewal. Contact your lender to discuss renewal options before the term ends:`, { count: mortgages.length })}</p>
       <table style="width: 100%; border-collapse: collapse; margin: 16px 0; border: 1px solid #e5e7eb; border-radius: 8px;">
         <thead>
           <tr style="background: #f3f4f6;">
@@ -211,17 +211,17 @@ export function budgetWeeklyDigestTemplate(
   const alertSummary: string[] = [];
   if (criticalAlerts.length > 0) {
     alertSummary.push(
-      `<span style="color: #dc2626; font-weight: 600;">${criticalAlerts.length} ${t("emails.budgetWeeklyDigest.critical", "critical")}</span>`,
+      `<span style="color: #dc2626; font-weight: 600;">${criticalAlerts.length} ${criticalAlerts.length === 1 ? t("emails.budgetWeeklyDigest.criticalOne", "critical") : t("emails.budgetWeeklyDigest.criticalMany", "critical")}</span>`,
     );
   }
   if (warningAlerts.length > 0) {
     alertSummary.push(
-      `<span style="color: #d97706; font-weight: 600;">${warningAlerts.length} ${t("emails.budgetWeeklyDigest.warning", `warning${warningAlerts.length !== 1 ? "s" : ""}`, { count: warningAlerts.length })}</span>`,
+      `<span style="color: #d97706; font-weight: 600;">${warningAlerts.length} ${warningAlerts.length === 1 ? t("emails.budgetWeeklyDigest.warningOne", "warning") : t("emails.budgetWeeklyDigest.warningMany", "warnings")}</span>`,
     );
   }
   if (positiveAlerts.length > 0) {
     alertSummary.push(
-      `<span style="color: #059669; font-weight: 600;">${positiveAlerts.length} ${t("emails.budgetWeeklyDigest.positive", "positive")}</span>`,
+      `<span style="color: #059669; font-weight: 600;">${positiveAlerts.length} ${positiveAlerts.length === 1 ? t("emails.budgetWeeklyDigest.positiveOne", "positive") : t("emails.budgetWeeklyDigest.positiveMany", "positive")}</span>`,
     );
   }
 
@@ -528,16 +528,18 @@ export function emergencyAccessReminderTemplate(
   const grantPhrase =
     data.daysUntilGrant <= 0
       ? t("emails.emergencyAccessReminder.grantPhraseToday", "today")
-      : t(
-          "emails.emergencyAccessReminder.grantPhraseFuture",
-          `in ${data.daysUntilGrant} day${data.daysUntilGrant === 1 ? "" : "s"}`,
-          { count: data.daysUntilGrant },
-        );
+      : data.daysUntilGrant === 1
+        ? t("emails.emergencyAccessReminder.grantPhraseFutureOne", "in 1 day")
+        : t(
+            "emails.emergencyAccessReminder.grantPhraseFutureMany",
+            `in ${data.daysUntilGrant} days`,
+            { count: data.daysUntilGrant },
+          );
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h2 style="color: #b45309;">${t("emails.emergencyAccessReminder.heading", "Monize Emergency Access Reminder")}</h2>
       <p style="color: #374151;">${t("emails.emergencyAccessReminder.greeting", `Hi ${safeName},`, { name: safeName })}</p>
-      <p style="color: #374151;">${t("emails.emergencyAccessReminder.body", `You have not signed in to Monize for <strong>${data.daysSinceLogin} day${data.daysSinceLogin === 1 ? "" : "s"}</strong>. If you remain inactive, your designated emergency contacts will be granted full access to your account ${grantPhrase}.`, { daysSinceLogin: data.daysSinceLogin, grantPhrase })}</p>
+      <p style="color: #374151;">${data.daysSinceLogin === 1 ? t("emails.emergencyAccessReminder.bodyOne", `You have not signed in to Monize for <strong>1 day</strong>. If you remain inactive, your designated emergency contacts will be granted full access to your account ${grantPhrase}.`, { grantPhrase }) : t("emails.emergencyAccessReminder.bodyMany", `You have not signed in to Monize for <strong>${data.daysSinceLogin} days</strong>. If you remain inactive, your designated emergency contacts will be granted full access to your account ${grantPhrase}.`, { daysSinceLogin: data.daysSinceLogin, grantPhrase })}</p>
       <p style="color: #374151;">${t("emails.emergencyAccessReminder.contactsLabel", "Designated contacts:")}</p>
       <ul style="margin: 8px 0 16px 20px; padding: 0;">${contactRows}</ul>
       <p style="margin: 24px 0;">

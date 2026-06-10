@@ -257,10 +257,12 @@ export class BudgetPeriodCronService {
         ? t(
             "emails.budgetMonthlySummary.subject",
             `Monize: Monthly budget summary - ${summaries[0].periodLabel}`,
+            { period: summaries[0].periodLabel },
           )
         : t(
             "emails.budgetMonthlySummary.subjectPlural",
             `Monize: Monthly budget summary for ${summaries.length} budgets`,
+            { count: summaries.length },
           );
 
     await this.emailService.sendMail(user.email, subject, html);
