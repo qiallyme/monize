@@ -78,11 +78,11 @@
   },
   "confirmDialog": {
     "closeTitle": "Konto schließen",
-    "closeMessage": "Möchten Sie „{name}" wirklich schließen? Das Konto muss einen Saldo von null haben, um geschlossen werden zu können.",
+    "closeMessage": "Möchten Sie „{name}” wirklich schließen? Das Konto muss einen Saldo von null haben, um geschlossen werden zu können.",
     "closeConfirm": "Konto schließen",
     "closeConfirmLoading": "Wird geschlossen...",
     "deleteTitle": "Konto löschen",
-    "deleteMessage": "Möchten Sie „{name}" wirklich dauerhaft löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deleteMessage": "Möchten Sie „{name}” wirklich dauerhaft löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     "deleteConfirm": "Konto löschen",
     "deleteConfirmLoading": "Wird gelöscht..."
   },
@@ -150,7 +150,6 @@
     "splitTransactions": "Buchungsteile",
     "dateFormat": "Datumsformat",
     "customFormat": "Benutzerdefiniertes Format",
-    "customFormatHelper": "Verwenden Sie Y für Jahr, M für Monat, D für Tag mit Trennzeichen (- / ')",
     "customFormatHelp": "Verwenden Sie Y für Jahr, M für Monat, D für Tag mit Trennzeichen (- / ')",
     "exportButton": "Exportieren",
     "splitOptions": {
@@ -281,11 +280,11 @@
     "dateAcquiredNote": "Das Aktiva wird bei der Reinvermögensberechnung vor diesem Datum nicht berücksichtigt."
   },
   "toasts": {
-    "categoryCreatedNested": "Kategorie „{parent}: {name}" erstellt",
-    "categoryCreated": "Kategorie „{name}" erstellt",
-    "payeeCreated": "Zahlungsempfänger „{name}" erstellt",
+    "categoryCreatedNested": "Kategorie „{parent}: {name}” erstellt",
+    "categoryCreated": "Kategorie „{name}” erstellt",
+    "payeeCreated": "Zahlungsempfänger „{name}” erstellt",
     "payeeCreateFailed": "Zahlungsempfänger konnte nicht erstellt werden",
-    "institutionCreated": "Institut „{name}" erstellt",
+    "institutionCreated": "Institut „{name}” erstellt",
     "institutionCreateFailed": "Institut konnte nicht erstellt werden"
   },
   "validation": {
