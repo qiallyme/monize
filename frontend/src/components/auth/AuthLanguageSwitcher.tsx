@@ -80,7 +80,7 @@ export function AuthLanguageSwitcher() {
         <div
           role="menu"
           aria-label={t('label')}
-          className="absolute right-0 mt-1 w-48 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-80 overflow-y-auto"
+          className="absolute right-0 mt-1 w-48 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg"
         >
           {SUPPORTED_LOCALES.map((l) => (
             <button
