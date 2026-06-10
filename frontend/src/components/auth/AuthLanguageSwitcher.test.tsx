@@ -21,31 +21,46 @@ vi.mock('js-cookie', () => ({
 
 import Cookies from 'js-cookie';
 
+async function openMenu() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  });
+}
+
 describe('AuthLanguageSwitcher', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders every supported locale as an option', () => {
+  it('renders a globe button and no menu initially', () => {
     render(<AuthLanguageSwitcher />);
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    const optionValues = Array.from(select.options).map((o) => o.value);
-    expect(optionValues).toContain('en');
-    expect(optionValues).toContain('pl');
+    expect(screen.getByRole('button', { name: 'Language' })).toBeInTheDocument();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('shows the active locale as selected', () => {
+  it('opens a menu listing every supported locale with the active one checked', async () => {
     render(<AuthLanguageSwitcher />);
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
-    expect(select.value).toBe('en');
+    await openMenu();
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    const items = screen.getAllByRole('menuitemradio');
+    expect(items.length).toBeGreaterThanOrEqual(9);
+    expect(screen.getByRole('menuitemradio', { name: 'English' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('menuitemradio', { name: 'Polski' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
-  it('persists the chosen language to the cookie and refreshes', async () => {
+  it('persists the chosen language to the cookie, refreshes, and closes the menu', async () => {
     render(<AuthLanguageSwitcher />);
+    await openMenu();
 
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
     await act(async () => {
-      fireEvent.change(select, { target: { value: 'pl' } });
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'Polski' }));
     });
 
     expect(Cookies.set).toHaveBeenCalledWith(
@@ -54,10 +69,41 @@ describe('AuthLanguageSwitcher', () => {
       expect.objectContaining({ sameSite: 'lax' }),
     );
     expect(mockRefresh).toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('does not save anything to the API (user is not signed in)', () => {
+  it('does nothing when re-selecting the active language', async () => {
     render(<AuthLanguageSwitcher />);
-    expect(screen.getByRole('combobox')).toHaveAccessibleName('Language');
+    await openMenu();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'English' }));
+    });
+
+    expect(Cookies.set).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('closes the menu on Escape', async () => {
+    render(<AuthLanguageSwitcher />);
+    await openMenu();
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    });
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('closes the menu when clicking outside', async () => {
+    render(<AuthLanguageSwitcher />);
+    await openMenu();
+
+    await act(async () => {
+      fireEvent.mouseDown(document.body);
+    });
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });

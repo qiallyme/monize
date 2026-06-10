@@ -215,6 +215,7 @@ export default function LoginPage() {
   if (twoFactorState) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+        <AuthLanguageSwitcher />
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
             <Image src="/icons/monize-logo.svg" alt="Monize" width={96} height={96} className="mx-auto rounded-xl" priority />
