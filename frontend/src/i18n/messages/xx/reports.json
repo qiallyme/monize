@@ -993,6 +993,21 @@
     "colMean": "[XX-Mean-XX]",
     "colVolatility": "[XX-Volatility-XX]"
   },
+  "monthlyCategoryBreakdown": {
+    "showPercentages": "[XX-Show percentages-XX]",
+    "noData": "[XX-No data for this period.-XX]",
+    "category": "[XX-Category-XX]",
+    "total": "[XX-Total-XX]",
+    "avgPerMonth": "[XX-Avg/month-XX]",
+    "otherExpenses": "[XX-Other expenses-XX]",
+    "subtotal": "[XX-Subtotal-XX]",
+    "summary": "[XX-Summary-XX]",
+    "totalExpenses": "[XX-Total expenses-XX]",
+    "totalIncome": "[XX-Total income-XX]",
+    "balance": "[XX-Balance-XX]",
+    "exportCsv": "[XX-Export CSV-XX]",
+    "csvParentColumn": "[XX-Parent category-XX]"
+  },
   "monthlyComparison": {
     "loadError": "[XX-Failed to load report data.-XX]",
     "incomeVsExpenses": "[XX-Income vs Expenses-XX]",

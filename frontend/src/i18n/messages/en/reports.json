@@ -993,6 +993,21 @@
     "colMean": "Mean",
     "colVolatility": "Volatility"
   },
+  "monthlyCategoryBreakdown": {
+    "showPercentages": "Show percentages",
+    "noData": "No data for this period.",
+    "category": "Category",
+    "total": "Total",
+    "avgPerMonth": "Avg/month",
+    "otherExpenses": "Other expenses",
+    "subtotal": "Subtotal",
+    "summary": "Summary",
+    "totalExpenses": "Total expenses",
+    "totalIncome": "Total income",
+    "balance": "Balance",
+    "exportCsv": "Export CSV",
+    "csvParentColumn": "Parent category"
+  },
   "monthlyComparison": {
     "loadError": "Failed to load report data.",
     "incomeVsExpenses": "Income vs Expenses",

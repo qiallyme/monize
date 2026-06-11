@@ -993,6 +993,21 @@
     "colMean": "Średnia",
     "colVolatility": "Zmienność"
   },
+  "monthlyCategoryBreakdown": {
+    "showPercentages": "Pokaż procenty",
+    "noData": "Brak danych dla tego okresu.",
+    "category": "Kategoria",
+    "total": "Suma",
+    "avgPerMonth": "Śr./mies.",
+    "otherExpenses": "Pozostałe wydatki",
+    "subtotal": "Suma częściowa",
+    "summary": "Podsumowanie",
+    "totalExpenses": "Wydatki łącznie",
+    "totalIncome": "Przychody łącznie",
+    "balance": "Saldo",
+    "exportCsv": "Eksportuj CSV",
+    "csvParentColumn": "Kategoria nadrzędna"
+  },
   "monthlyComparison": {
     "loadError": "Nie udało się załadować danych raportu.",
     "incomeVsExpenses": "Przychody a wydatki",

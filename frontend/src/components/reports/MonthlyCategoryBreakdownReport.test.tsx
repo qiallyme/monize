@@ -14,6 +14,19 @@ vi.mock('@/hooks/useNumberFormat', () => ({
   }),
 }));
 
+// Deterministic month formatting (the real hook is locale-dependent for the
+// 'browser' default). Renders YYYY-MM as MM/YYYY so headers are assertable.
+vi.mock('@/hooks/useDateFormat', () => ({
+  useDateFormat: () => ({
+    formatDate: (d: string) => d,
+    formatMonth: (m: string) => {
+      const [year, mon] = m.split('-');
+      return `${mon}/${year}`;
+    },
+    dateFormat: 'MM/DD/YYYY',
+  }),
+}));
+
 let mockIsValid = true;
 vi.mock('@/hooks/useDateRange', () => {
   const resolvedRange = { start: '2025-01-01', end: '2025-06-30' };
@@ -60,6 +73,11 @@ vi.mock('@/lib/logger', () => ({
     info: vi.fn(),
     debug: vi.fn(),
   }),
+}));
+
+const mockExportToCsv = vi.fn();
+vi.mock('@/lib/csv-export', () => ({
+  exportToCsv: (...args: unknown[]) => mockExportToCsv(...args),
 }));
 
 const sampleResponse = {
@@ -147,9 +165,9 @@ describe('MonthlyCategoryBreakdownReport', () => {
     expect(screen.getByText('Total income')).toBeInTheDocument();
     expect(screen.getByText('Balance')).toBeInTheDocument();
 
-    // Month headers (MM.YYYY).
-    expect(screen.getByText('01.2025')).toBeInTheDocument();
-    expect(screen.getByText('03.2025')).toBeInTheDocument();
+    // Month headers follow the user's date format (mocked here as MM/YYYY).
+    expect(screen.getByText('01/2025')).toBeInTheDocument();
+    expect(screen.getByText('03/2025')).toBeInTheDocument();
 
     // Expense cell shows a negative sign, income a positive sign.
     expect(screen.getAllByText('- $100.00').length).toBeGreaterThan(0);
@@ -194,6 +212,38 @@ describe('MonthlyCategoryBreakdownReport', () => {
     await waitFor(() => {
       expect(screen.getAllByText('-100.0%').length).toBeGreaterThan(0);
     });
+  });
+
+  it('exports the breakdown as a CSV when the export button is clicked', async () => {
+    mockGetMonthlyCategoryBreakdown.mockResolvedValue(sampleResponse);
+    render(<MonthlyCategoryBreakdownReport />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Export CSV'));
+    });
+
+    expect(mockExportToCsv).toHaveBeenCalledTimes(1);
+    const [filename, headers, rows] = mockExportToCsv.mock.calls[0];
+    expect(filename).toBe('monthly-category-breakdown');
+    // Parent + Category + 3 months + Total + Avg/month columns.
+    expect(headers).toHaveLength(7);
+    expect(headers[0]).toBe('Parent category');
+    expect(headers[1]).toBe('Category');
+
+    // Groceries row: expense values are negated to match the table display.
+    const groceries = rows.find((r: unknown[]) => r[1] === 'Groceries');
+    expect(groceries).toBeDefined();
+    expect(groceries[0]).toBe('Food & Dining');
+    expect(groceries[2]).toBe(-100);
+
+    // Summary rows are appended.
+    expect(rows.some((r: unknown[]) => r[1] === 'Total expenses')).toBe(true);
+    expect(rows.some((r: unknown[]) => r[1] === 'Total income')).toBe(true);
+    expect(rows.some((r: unknown[]) => r[1] === 'Balance')).toBe(true);
   });
 
   it('applies deviation highlighting when a category has 3+ non-zero months', async () => {
