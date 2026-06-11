@@ -19,6 +19,7 @@ interface AutoMergePayeesDialogProps {
 }
 
 interface EditableGroup {
+  id: string;
   groupKey: string;
   included: boolean;
   canonicalPayeeId: string;
@@ -29,7 +30,11 @@ interface EditableGroup {
 }
 
 function toEditableGroups(groups: AutoMergeGroup[]): EditableGroup[] {
-  return groups.map((g) => ({
+  return groups.map((g, index) => ({
+    // Stable, unique identity for React keys and state updates. groupKey (the
+    // shared token prefix) is not guaranteed unique across groups, so we cannot
+    // key on it.
+    id: `group-${index}`,
     groupKey: g.groupKey,
     included: true,
     canonicalPayeeId: g.suggestedCanonicalPayeeId,
@@ -88,9 +93,9 @@ export function AutoMergePayeesDialog({
     }
   };
 
-  const updateGroup = (groupKey: string, patch: Partial<EditableGroup>) => {
+  const updateGroup = (id: string, patch: Partial<EditableGroup>) => {
     setGroups((prev) =>
-      prev.map((g) => (g.groupKey === groupKey ? { ...g, ...patch } : g)),
+      prev.map((g) => (g.id === id ? { ...g, ...patch } : g)),
     );
   };
 
@@ -103,14 +108,14 @@ export function AutoMergePayeesDialog({
     } else {
       next.add(payeeId);
     }
-    updateGroup(group.groupKey, { selectedMemberIds: next });
+    updateGroup(group.id, { selectedMemberIds: next });
   };
 
   const setCanonical = (group: EditableGroup, payeeId: string) => {
     const member = group.members.find((m) => m.payeeId === payeeId);
     const next = new Set(group.selectedMemberIds);
     next.add(payeeId); // a canonical is always included
-    updateGroup(group.groupKey, {
+    updateGroup(group.id, {
       canonicalPayeeId: payeeId,
       canonicalName: member ? member.name : group.canonicalName,
       selectedMemberIds: next,
@@ -286,7 +291,7 @@ export function AutoMergePayeesDialog({
               <div className="space-y-4">
                 {groups.map((group) => (
                   <div
-                    key={group.groupKey}
+                    key={group.id}
                     className={`border rounded-lg p-4 ${
                       group.included
                         ? 'border-gray-200 dark:border-gray-700'
@@ -299,7 +304,7 @@ export function AutoMergePayeesDialog({
                         type="checkbox"
                         checked={group.included}
                         onChange={(e) =>
-                          updateGroup(group.groupKey, { included: e.target.checked })
+                          updateGroup(group.id, { included: e.target.checked })
                         }
                         className="mt-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
                         aria-label={t('autoMerge.includeGroupLabel')}
@@ -313,7 +318,7 @@ export function AutoMergePayeesDialog({
                             type="text"
                             value={group.canonicalName}
                             onChange={(e) =>
-                              updateGroup(group.groupKey, {
+                              updateGroup(group.id, {
                                 canonicalName: e.target.value,
                               })
                             }
@@ -328,7 +333,7 @@ export function AutoMergePayeesDialog({
                             type="text"
                             value={group.alias}
                             onChange={(e) =>
-                              updateGroup(group.groupKey, { alias: e.target.value })
+                              updateGroup(group.id, { alias: e.target.value })
                             }
                             placeholder={t('autoMerge.aliasPlaceholder')}
                             className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm text-sm font-mono focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100"
@@ -348,7 +353,7 @@ export function AutoMergePayeesDialog({
                           >
                             <input
                               type="radio"
-                              name={`canonical-${group.groupKey}`}
+                              name={`canonical-${group.id}`}
                               checked={isCanonical}
                               onChange={() => setCanonical(group, member.payeeId)}
                               disabled={!group.included}

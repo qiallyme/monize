@@ -171,4 +171,67 @@ describe('AutoMergePayeesDialog', () => {
       },
     ]);
   });
+
+  it('lets groups that share a groupKey be de-selected independently', async () => {
+    // Two distinct groups can carry the same groupKey (the shared token
+    // prefix); they must still be editable independently.
+    const groupA: AutoMergeGroup = {
+      groupKey: 'ROYAL',
+      suggestedCanonicalPayeeId: 'a1',
+      suggestedName: 'Royal Electric',
+      suggestedAlias: '*ROYAL ELECTRIC*',
+      totalTransactions: 25,
+      members: [
+        { payeeId: 'a1', name: 'Royal Electric', transactionCount: 23, isCanonical: true },
+        { payeeId: 'a2', name: 'Royal Electric Co', transactionCount: 2, isCanonical: false },
+      ],
+    };
+    const groupB: AutoMergeGroup = {
+      groupKey: 'ROYAL',
+      suggestedCanonicalPayeeId: 'b1',
+      suggestedName: 'Royal City Nursery',
+      suggestedAlias: '*ROYAL CITY NURSERY*',
+      totalTransactions: 11,
+      members: [
+        { payeeId: 'b1', name: 'Royal City Nursery', transactionCount: 9, isCanonical: true },
+        { payeeId: 'b2', name: 'Royal City Nursery Downtown', transactionCount: 2, isCanonical: false },
+      ],
+    };
+    mockPreview.mockResolvedValue([groupA, groupB]);
+    mockApply.mockResolvedValue({
+      groupsMerged: 1,
+      payeesMerged: 1,
+      transactionsMigrated: 2,
+      aliasesCreated: 1,
+      skippedAliases: 0,
+    });
+    render(<AutoMergePayeesDialog isOpen onClose={onClose} onSuccess={onSuccess} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Preview Groups'));
+    });
+    await waitFor(() => expect(screen.getByDisplayValue('Royal Electric')).toBeInTheDocument());
+
+    // De-select only the first group.
+    const groupCheckboxes = screen.getAllByLabelText('Include this group');
+    expect(groupCheckboxes).toHaveLength(2);
+    await act(async () => {
+      fireEvent.click(groupCheckboxes[0]);
+    });
+
+    // Footer should now offer to merge exactly one group.
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Merge 1 Group/));
+    });
+
+    await waitFor(() => expect(mockApply).toHaveBeenCalled());
+    expect(mockApply).toHaveBeenCalledWith([
+      {
+        canonicalPayeeId: 'b1',
+        canonicalName: 'Royal City Nursery',
+        sourcePayeeIds: ['b2'],
+        alias: '*ROYAL CITY NURSERY*',
+      },
+    ]);
+  });
 });
