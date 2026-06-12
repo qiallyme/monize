@@ -42,7 +42,13 @@
       "Bash(git log:*)",
       "Bash(npm audit:*)",
       "Bash(git status:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(gh pr *)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('src/i18n/messages/en/reports.json'\\)\\); print\\('\\\\n'.join\\(list\\(d.keys\\(\\)\\)\\)\\)\")",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('src/i18n/messages/en/reports.json'\\)\\); print\\(json.dumps\\(d.get\\('monthlyComparison',{}\\), indent=2, ensure_ascii=False\\)\\)\")",
+      "Bash(git fetch *)",
+      "Bash(gh repo *)",
+      "Bash(gh auth *)"
     ]
   }
 }
