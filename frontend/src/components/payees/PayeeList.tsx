@@ -102,7 +102,7 @@ const PayeeRow = memo(function PayeeRow({
       className={`group hover:bg-gray-100 dark:hover:bg-gray-800 ${density !== 'normal' && index % 2 === 1 ? 'bg-gray-50 dark:bg-table-stripe-dark' : 'bg-white dark:bg-gray-900'} ${!payee.isActive ? 'opacity-60' : ''}`}
     >
       <td className={`${cellPadding} whitespace-nowrap`}>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
           <button
             onClick={handleViewTransactions}
             className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-left"
