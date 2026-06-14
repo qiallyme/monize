@@ -10,6 +10,11 @@ import {
   toolError,
   safeToolError,
 } from "../mcp-context";
+import {
+  getAccountsOutput,
+  getAccountBalanceOutput,
+  getAccountBalancesOutput,
+} from "../tool-output-schemas";
 
 @Injectable()
 export class McpAccountsTools {
@@ -26,6 +31,7 @@ export class McpAccountsTools {
             .optional()
             .describe("Include closed accounts"),
         },
+        outputSchema: getAccountsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -52,6 +58,7 @@ export class McpAccountsTools {
         inputSchema: {
           accountId: z.string().uuid().describe("Account ID"),
         },
+        outputSchema: getAccountBalanceOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -105,6 +112,7 @@ export class McpAccountsTools {
               "Optional: filter to specific account types (CHEQUING, SAVINGS, CREDIT_CARD, LOAN, MORTGAGE, INVESTMENT, CASH, LINE_OF_CREDIT, ASSET, OTHER). Omit to include all types.",
             ),
         },
+        outputSchema: getAccountBalancesOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

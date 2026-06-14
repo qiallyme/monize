@@ -18,6 +18,16 @@ import {
   getDefaultDateRange,
   resolveComparePeriods,
 } from "../../common/tool-schemas";
+import {
+  searchTransactionsOutput,
+  queryTransactionsOutput,
+  getSpendingByCategoryOutput,
+  getIncomeSummaryOutput,
+  comparePeriodsOutput,
+  getTransfersOutput,
+  createTransactionOutput,
+  categorizeTransactionOutput,
+} from "../tool-output-schemas";
 
 @Injectable()
 export class McpTransactionsTools {
@@ -77,6 +87,7 @@ export class McpTransactionsTools {
             .default(50)
             .describe("Max results (default 50, max 100)"),
         },
+        outputSchema: searchTransactionsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -149,6 +160,7 @@ export class McpTransactionsTools {
             .optional()
             .describe("Filter by direction"),
         },
+        outputSchema: queryTransactionsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -203,6 +215,7 @@ export class McpTransactionsTools {
               `Limit to top N categories by amount. Defaults to ${DEFAULT_TOP_N}.`,
             ),
         },
+        outputSchema: getSpendingByCategoryOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -246,6 +259,7 @@ export class McpTransactionsTools {
             .optional()
             .describe("How to group income (default: category)"),
         },
+        outputSchema: getIncomeSummaryOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -309,6 +323,7 @@ export class McpTransactionsTools {
             .optional()
             .describe("Filter by direction (default: expenses)"),
         },
+        outputSchema: comparePeriodsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -365,6 +380,7 @@ export class McpTransactionsTools {
               "Optional account IDs to filter to. Omit to cover all accounts.",
             ),
         },
+        outputSchema: getTransfersOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -415,6 +431,7 @@ export class McpTransactionsTools {
               "If true, validate and return a preview without creating the transaction",
             ),
         },
+        outputSchema: createTransactionOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -492,6 +509,7 @@ export class McpTransactionsTools {
           transactionId: z.string().uuid().describe("Transaction ID"),
           categoryId: z.string().uuid().describe("Category ID"),
         },
+        outputSchema: categorizeTransactionOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

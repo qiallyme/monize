@@ -9,6 +9,7 @@ import {
   toolError,
   safeToolError,
 } from "../mcp-context";
+import { getPayeesOutput, createPayeeOutput } from "../tool-output-schemas";
 
 @Injectable()
 export class McpPayeesTools {
@@ -26,6 +27,7 @@ export class McpPayeesTools {
             .optional()
             .describe("Search query to filter payees"),
         },
+        outputSchema: getPayeesOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -62,6 +64,7 @@ export class McpPayeesTools {
             .optional()
             .describe("Default category ID for this payee"),
         },
+        outputSchema: createPayeeOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

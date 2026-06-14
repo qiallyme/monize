@@ -9,6 +9,10 @@ import {
   toolError,
   safeToolError,
 } from "../mcp-context";
+import {
+  getUpcomingBillsOutput,
+  getScheduledTransactionsOutput,
+} from "../tool-output-schemas";
 
 const SCHEDULED_KIND_VALUES = [
   "bill",
@@ -50,6 +54,7 @@ export class McpScheduledTools {
             .optional()
             .describe("Optional account IDs to filter to."),
         },
+        outputSchema: getUpcomingBillsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -98,6 +103,7 @@ export class McpScheduledTools {
               "Filter by active status. Omit to include both active and paused schedules.",
             ),
         },
+        outputSchema: getScheduledTransactionsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

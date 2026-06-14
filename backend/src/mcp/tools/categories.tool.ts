@@ -9,6 +9,7 @@ import {
   toolError,
   safeToolError,
 } from "../mcp-context";
+import { getCategoriesOutput } from "../tool-output-schemas";
 
 @Injectable()
 export class McpCategoriesTools {
@@ -35,6 +36,7 @@ export class McpCategoriesTools {
               "Optional case-insensitive substring match on category name. Matched subcategories' parents are included so hierarchy stays visible.",
             ),
         },
+        outputSchema: getCategoriesOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

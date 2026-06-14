@@ -11,6 +11,10 @@ import {
   safeToolError,
 } from "../mcp-context";
 import { formatDateYMD } from "../../common/date-utils";
+import {
+  getNetWorthOutput,
+  getNetWorthHistoryOutput,
+} from "../tool-output-schemas";
 
 @Injectable()
 export class McpNetWorthTools {
@@ -25,6 +29,7 @@ export class McpNetWorthTools {
       {
         description: "Get current net worth breakdown by account",
         inputSchema: {},
+        outputSchema: getNetWorthOutput,
       },
       async (_args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -66,6 +71,7 @@ export class McpNetWorthTools {
               "Number of months of history. Only applied when startDate/endDate are omitted.",
             ),
         },
+        outputSchema: getNetWorthHistoryOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

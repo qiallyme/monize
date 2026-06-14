@@ -16,6 +16,12 @@ import {
   toolError,
   safeToolError,
 } from "../mcp-context";
+import {
+  getPortfolioSummaryOutput,
+  queryInvestmentTransactionsOutput,
+  getCapitalGainsOutput,
+  getHoldingDetailsOutput,
+} from "../tool-output-schemas";
 
 @Injectable()
 export class McpInvestmentsTools {
@@ -40,6 +46,7 @@ export class McpInvestmentsTools {
               "Optional investment account IDs to filter to. Omit to cover all investment accounts.",
             ),
         },
+        outputSchema: getPortfolioSummaryOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -99,6 +106,7 @@ export class McpInvestmentsTools {
               "Grouping: by account name, transaction date, security symbol, or action type. Defaults to 'security' when omitted.",
             ),
         },
+        outputSchema: queryInvestmentTransactionsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -159,6 +167,7 @@ export class McpInvestmentsTools {
               "Bucket the breakdown by month, security, or account. Defaults to 'month' when omitted.",
             ),
         },
+        outputSchema: getCapitalGainsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -198,6 +207,7 @@ export class McpInvestmentsTools {
             .optional()
             .describe("Account ID to filter holdings"),
         },
+        outputSchema: getHoldingDetailsOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

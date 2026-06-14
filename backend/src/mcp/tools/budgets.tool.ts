@@ -9,6 +9,7 @@ import {
   toolError,
   safeToolError,
 } from "../mcp-context";
+import { getBudgetStatusOutput } from "../tool-output-schemas";
 
 @Injectable()
 export class McpBudgetsTools {
@@ -36,6 +37,7 @@ export class McpBudgetsTools {
               "Optional: filter to a specific budget by name. If omitted, uses the first active budget.",
             ),
         },
+        outputSchema: getBudgetStatusOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

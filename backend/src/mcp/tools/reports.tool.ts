@@ -13,6 +13,11 @@ import {
   getDefaultDateRange,
   getDefaultPreviousMonth,
 } from "../../common/tool-schemas";
+import {
+  generateReportOutput,
+  monthlyComparisonOutput,
+  getAnomaliesOutput,
+} from "../tool-output-schemas";
 
 @Injectable()
 export class McpReportsTools {
@@ -44,6 +49,7 @@ export class McpReportsTools {
             .optional()
             .describe("End date (YYYY-MM-DD). Defaults to today."),
         },
+        outputSchema: generateReportOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -114,6 +120,7 @@ export class McpReportsTools {
               "Month to compare in YYYY-MM format (e.g., 2026-01). Defaults to the previous complete month.",
             ),
         },
+        outputSchema: monthlyComparisonOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);
@@ -146,6 +153,7 @@ export class McpReportsTools {
             .default(3)
             .describe("Number of months to analyze (default 3)"),
         },
+        outputSchema: getAnomaliesOutput,
       },
       async (args, extra) => {
         const ctx = resolve(extra.sessionId);

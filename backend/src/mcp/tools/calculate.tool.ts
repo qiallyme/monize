@@ -3,6 +3,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { toolResult, toolError } from "../mcp-context";
 import { executeCalculation } from "../../ai/query/calculate-tool";
+import { calculateOutput } from "../tool-output-schemas";
 
 @Injectable()
 export class McpCalculateTools {
@@ -33,6 +34,7 @@ export class McpCalculateTools {
             .optional()
             .describe("Optional label (e.g., 'savings rate')"),
         },
+        outputSchema: calculateOutput,
       },
       async (args) => {
         const result = executeCalculation({
