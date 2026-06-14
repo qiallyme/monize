@@ -563,4 +563,26 @@ describe('MonthlyCategoryBreakdownReport', () => {
     expect(url).toContain('startDate=2025-01-01');
     expect(url).toContain('endDate=2025-06-30');
   });
+
+  it('drills into the category over the full range when its Total cell is clicked', async () => {
+    mockGetMonthlyCategoryBreakdown.mockResolvedValue(sampleResponse);
+    render(<MonthlyCategoryBreakdownReport />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeInTheDocument();
+    });
+
+    // Groceries total is 100+200+300 = 600; the row's Total cell is the first
+    // such button and drills with the same filter as the category name.
+    const totals = screen.getAllByRole('button', { name: '- $600.00' });
+    await act(async () => {
+      fireEvent.click(totals[0]);
+    });
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    const url = mockPush.mock.calls[0][0] as string;
+    expect(url).toContain('categoryIds=cat-groceries');
+    expect(url).toContain('startDate=2025-01-01');
+    expect(url).toContain('endDate=2025-06-30');
+  });
 });

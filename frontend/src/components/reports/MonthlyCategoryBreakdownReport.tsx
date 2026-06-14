@@ -809,7 +809,17 @@ export function MonthlyCategoryBreakdownReport() {
               );
             })}
             <td className="px-2 py-1 text-right font-semibold text-gray-900 dark:text-gray-100">
-              {formatCell(row.total, sectionSum, row.isIncome)}
+              {row.categoryId ? (
+                <button
+                  type="button"
+                  onClick={() => drillDownRange([row.categoryId!])}
+                  className="hover:underline"
+                >
+                  {formatCell(row.total, sectionSum, row.isIncome)}
+                </button>
+              ) : (
+                formatCell(row.total, sectionSum, row.isIncome)
+              )}
             </td>
             <td className="px-2 py-1 text-right text-gray-700 dark:text-gray-300">
               {formatCell(row.avg, sectionAvg, row.isIncome)}
@@ -840,7 +850,17 @@ export function MonthlyCategoryBreakdownReport() {
             );
           })}
           <td className="px-2 py-1 text-right">
-            {formatCell(section.subtotalSum, sectionSum, section.isIncome)}
+            {section.allCategoryIds.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => drillDownRange(section.allCategoryIds)}
+                className="hover:underline"
+              >
+                {formatCell(section.subtotalSum, sectionSum, section.isIncome)}
+              </button>
+            ) : (
+              formatCell(section.subtotalSum, sectionSum, section.isIncome)
+            )}
           </td>
           <td className="px-2 py-1 text-right">
             {formatCell(section.subtotalAvg, sectionAvg, section.isIncome)}
@@ -873,7 +893,19 @@ export function MonthlyCategoryBreakdownReport() {
           </td>
         ))}
         <td className={`px-2 py-1 text-right ${accent}`}>
-          {formatGrand(sum, isIncome, formatCurrency, currency)}
+          <button
+            type="button"
+            onClick={() =>
+              drillDownRange(
+                isIncome
+                  ? model!.incomeCategoryIds
+                  : model!.expenseCategoryIds,
+              )
+            }
+            className="hover:underline"
+          >
+            {formatGrand(sum, isIncome, formatCurrency, currency)}
+          </button>
         </td>
         <td className={`px-2 py-1 text-right ${accent}`}>
           {formatGrand(avg, isIncome, formatCurrency, currency)}
@@ -942,7 +974,13 @@ export function MonthlyCategoryBreakdownReport() {
               );
             })}
             <td className="px-2 py-1 text-right font-semibold text-gray-900 dark:text-gray-100">
-              {formatGrand(row.total, null, formatCurrency, currency)}
+              <button
+                type="button"
+                onClick={() => drillTransfersRange([row.accountId])}
+                className="hover:underline"
+              >
+                {formatGrand(row.total, null, formatCurrency, currency)}
+              </button>
             </td>
             <td className="px-2 py-1 text-right text-gray-700 dark:text-gray-300">
               {formatGrand(row.avg, null, formatCurrency, currency)}
@@ -978,7 +1016,13 @@ export function MonthlyCategoryBreakdownReport() {
             );
           })}
           <td className={`px-2 py-1 text-right ${accent}`}>
-            {formatGrand(tr.totalSum, null, formatCurrency, currency)}
+            <button
+              type="button"
+              onClick={() => drillTransfersRange(model!.allTransferAccountIds)}
+              className="hover:underline"
+            >
+              {formatGrand(tr.totalSum, null, formatCurrency, currency)}
+            </button>
           </td>
           <td className={`px-2 py-1 text-right ${accent}`}>
             {formatGrand(tr.totalAvg, null, formatCurrency, currency)}
@@ -1029,7 +1073,13 @@ export function MonthlyCategoryBreakdownReport() {
         );
       })}
       <td className={`px-2 py-1 text-right ${accent}`}>
-        {formatGrand(sum, signMode, formatCurrency, currency)}
+        {drill ? (
+          <button type="button" onClick={drill.range} className="hover:underline">
+            {formatGrand(sum, signMode, formatCurrency, currency)}
+          </button>
+        ) : (
+          formatGrand(sum, signMode, formatCurrency, currency)
+        )}
       </td>
       <td className={`px-2 py-1 text-right ${accent}`}>
         {formatGrand(avg, signMode, formatCurrency, currency)}
@@ -1256,7 +1306,13 @@ export function MonthlyCategoryBreakdownReport() {
                     );
                   })}
                   <td className={`px-2 py-1 text-right ${model!.balanceSum >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {formatGrand(model!.balanceSum, null, formatCurrency, currency)}
+                    <button
+                      type="button"
+                      onClick={() => drillDownRange(model!.allCategoryIds)}
+                      className="hover:underline"
+                    >
+                      {formatGrand(model!.balanceSum, null, formatCurrency, currency)}
+                    </button>
                   </td>
                   <td className={`px-2 py-1 text-right ${model!.balanceAvg >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                     {formatGrand(model!.balanceAvg, null, formatCurrency, currency)}
@@ -1350,7 +1406,17 @@ export function MonthlyCategoryBreakdownReport() {
                         );
                       })}
                       <td className="px-2 py-1 text-right">
-                        {formatCell(section.subtotalSum, sectionSum, section.isIncome)}
+                        {section.allCategoryIds.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => drillDownRange(section.allCategoryIds)}
+                            className="hover:underline"
+                          >
+                            {formatCell(section.subtotalSum, sectionSum, section.isIncome)}
+                          </button>
+                        ) : (
+                          formatCell(section.subtotalSum, sectionSum, section.isIncome)
+                        )}
                       </td>
                       <td className="px-2 py-1 text-right">
                         {formatCell(section.subtotalAvg, sectionAvg, section.isIncome)}
