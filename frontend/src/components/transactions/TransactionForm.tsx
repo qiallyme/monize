@@ -817,8 +817,12 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
         ...data,
         splits: splitsData,
         tagIds: selectedTagIds.length > 0 ? selectedTagIds : [],
-        // Clear categoryId for split transactions
-        categoryId: isSplitMode ? undefined : data.categoryId,
+        // Clear categoryId for split transactions. For non-split transactions
+        // send null (not '' or undefined) when the category was removed: an
+        // empty string fails the backend's UUID validation (so the update is
+        // rejected and the old category sticks), while undefined is dropped by
+        // JSON.stringify (so the backend never learns the category was cleared).
+        categoryId: isSplitMode ? undefined : (data.categoryId || null),
         // Ensure cleared optional fields are sent as null (not undefined)
         // so the backend knows to clear them rather than ignoring the field
         description: data.description ?? null,

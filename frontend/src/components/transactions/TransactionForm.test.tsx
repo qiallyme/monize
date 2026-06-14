@@ -1939,6 +1939,42 @@ describe('TransactionForm', () => {
       });
     });
 
+    it('sends categoryId null when the user clears a previously assigned category', async () => {
+      const existingTransaction = createExistingTransaction();
+
+      render(
+        <TransactionForm
+          transaction={existingTransaction}
+          onSuccess={mockOnSuccess}
+          onCancel={mockOnCancel}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('combobox-input-Category')).toBeInTheDocument();
+      });
+
+      // Clear the category. The category field allows custom values, so the
+      // mocked Combobox forwards onChange('', '') for the now-empty input. The
+      // zod helper coerces '' to undefined; the form must still send null so
+      // the backend clears the category rather than ignoring the omitted field.
+      fireEvent.change(screen.getByTestId('combobox-input-Category'), {
+        target: { value: 'x' },
+      });
+      fireEvent.change(screen.getByTestId('combobox-input-Category'), {
+        target: { value: '' },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /Update Transaction/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          existingTransaction.id,
+          expect.objectContaining({ categoryId: null })
+        );
+      });
+    });
+
     it('creates subcategory when "Parent: Child" format is used', async () => {
       // First call creates the parent category, second creates the child
       mockCategoryCreate
@@ -2964,7 +3000,9 @@ describe('TransactionForm', () => {
       fireEvent.click(screen.getByRole('button', { name: /Create Transaction/i }));
       await waitFor(() => expect(mockCreate).toHaveBeenCalled());
       const payload = mockCreate.mock.calls[0][0];
-      expect(payload.categoryId).toBe('');
+      // A typed-but-not-created custom value leaves no category: send null, not
+      // an empty string (which the backend rejects as an invalid UUID).
+      expect(payload.categoryId).toBeNull();
     });
   });
 

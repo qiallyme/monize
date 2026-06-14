@@ -99,7 +99,7 @@ export interface CreateTransactionData {
   transactionDate: string;
   payeeId?: string;
   payeeName?: string;
-  categoryId?: string;
+  categoryId?: string | null;
   amount: number;
   currencyCode: string;
   exchangeRate?: number;
