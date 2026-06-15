@@ -140,7 +140,7 @@
     "browserLocale": "Use browser locale (auto-detect)",
     "browserTimezonePrefix": "Use browser timezone (auto-detected as {tz})",
     "numberFormatOptions": {
-      "browser": "Use browser locale (auto-detect)",
+      "browser": "Use browser locale (auto-detected as {sample})",
       "enUS": "English (US) - 1,234.56",
       "enGB": "English (UK) - 1,234.56",
       "deDE": "German - 1.234,56",

@@ -140,7 +140,7 @@
     "browserLocale": "Usa localizzazione del browser (rilevamento automatico)",
     "browserTimezonePrefix": "Usa fuso orario del browser (rilevato automaticamente: {tz})",
     "numberFormatOptions": {
-      "browser": "Usa localizzazione del browser (rilevamento automatico)",
+      "browser": "Usa localizzazione del browser (rilevata automaticamente: {sample})",
       "enUS": "English (US) - 1,234.56",
       "enGB": "English (UK) - 1,234.56",
       "deDE": "German - 1.234,56",

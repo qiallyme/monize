@@ -15,6 +15,7 @@ import { exchangeRatesApi, CurrencyInfo } from '@/lib/exchange-rates';
 import { investmentsApi } from '@/lib/investments';
 import { Combobox } from '@/components/ui/Combobox';
 import { getDateFormatOptions, EXCHANGE_OPTIONS } from '@/lib/constants';
+import { getEffectiveLocale } from '@/hooks/useNumberFormat';
 import { LanguageSelector } from '@/components/settings/LanguageSelector';
 import { ThemeSelector } from '@/components/settings/ThemeSelector';
 import { ColorThemeSelector } from '@/components/settings/ColorThemeSelector';
@@ -158,6 +159,10 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
     }
   };
 
+  const numberFormatSample = new Intl.NumberFormat(
+    getEffectiveLocale('browser', language),
+  ).format(1234.56);
+
   return (
     <div className="bg-white dark:bg-gray-800 shadow dark:shadow-gray-700/50 rounded-lg p-6 mb-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{t('heading')}</h2>
@@ -244,7 +249,13 @@ export function PreferencesSection({ preferences, onPreferencesUpdated }: Prefer
 
         <Select
           label={t('numberFormatLabel')}
-          options={NUMBER_FORMAT_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
+          options={NUMBER_FORMAT_OPTIONS.map((o) => ({
+            value: o.value,
+            label:
+              o.value === 'browser'
+                ? t('numberFormatOptions.browser', { sample: numberFormatSample })
+                : t(o.labelKey),
+          }))}
           value={numberFormat}
           onChange={(e) => setNumberFormat(e.target.value)}
         />

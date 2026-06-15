@@ -222,6 +222,15 @@ describe('PreferencesSection', () => {
     });
   });
 
+  it('shows the detected sample in the number-format browser option', () => {
+    render(<PreferencesSection preferences={mockPreferences} onPreferencesUpdated={mockOnPreferencesUpdated} />);
+
+    // The number-format browser option is the only "Use browser locale" entry
+    // whose detected value is a number sample (the language option shows a name).
+    const option = screen.getByText(/Use browser locale \(auto-detected as [\d.,\s]+\)/);
+    expect(option).toBeInTheDocument();
+  });
+
   it('allows searching for timezones by typing', async () => {
     render(<PreferencesSection preferences={mockPreferences} onPreferencesUpdated={mockOnPreferencesUpdated} />);
 

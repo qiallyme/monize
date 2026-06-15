@@ -13,7 +13,7 @@ import { roundToDecimals, adaptiveFractionDigits } from '@/lib/format';
  *   not a real Intl locale, so we hand off to the browser default instead.
  * - Returning undefined hands off to the browser default.
  */
-function getEffectiveLocale(
+export function getEffectiveLocale(
   numberFormat: string,
   language: string | undefined,
 ): string | undefined {

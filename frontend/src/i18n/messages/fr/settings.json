@@ -140,7 +140,7 @@
     "browserLocale": "Utiliser les paramètres régionaux du navigateur (détection automatique)",
     "browserTimezonePrefix": "Utiliser le fuseau horaire du navigateur (détecté automatiquement : {tz})",
     "numberFormatOptions": {
-      "browser": "Utiliser les paramètres régionaux du navigateur (détection automatique)",
+      "browser": "Utiliser les paramètres régionaux du navigateur (détecté automatiquement : {sample})",
       "enUS": "English (US) - 1,234.56",
       "enGB": "English (UK) - 1,234.56",
       "deDE": "German - 1.234,56",

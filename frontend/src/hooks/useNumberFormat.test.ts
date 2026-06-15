@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useNumberFormat } from './useNumberFormat';
+import { useNumberFormat, getEffectiveLocale } from './useNumberFormat';
 import { usePreferencesStore } from '@/store/preferencesStore';
 
 vi.mock('@/store/preferencesStore', () => ({
@@ -8,6 +8,24 @@ vi.mock('@/store/preferencesStore', () => ({
     selector({ preferences: { numberFormat: 'en-US', defaultCurrency: 'USD' } })
   ),
 }));
+
+describe('getEffectiveLocale', () => {
+  it('returns an explicit number format verbatim', () => {
+    expect(getEffectiveLocale('en-GB', 'fr')).toBe('en-GB');
+    expect(getEffectiveLocale('de-DE', undefined)).toBe('de-DE');
+  });
+
+  it('falls back to the UI language when set to "browser"', () => {
+    expect(getEffectiveLocale('browser', 'fr')).toBe('fr');
+    expect(getEffectiveLocale('browser', 'en-GB')).toBe('en-GB');
+  });
+
+  it('returns undefined (browser default) for a browser/xx/unset language', () => {
+    expect(getEffectiveLocale('browser', 'browser')).toBeUndefined();
+    expect(getEffectiveLocale('browser', 'xx')).toBeUndefined();
+    expect(getEffectiveLocale('browser', undefined)).toBeUndefined();
+  });
+});
 
 describe('useNumberFormat with a "browser" UI language', () => {
   afterEach(() => {
