@@ -774,6 +774,40 @@ describe("AuthService", () => {
       expect(existing.authProvider).toBe("oidc");
       expect(sendSpy).not.toHaveBeenCalled();
     });
+
+    it("with OIDC_REQUIRE_VERIFIED_EMAIL=false also merges directly on the duplicate-email (23505) catch path", async () => {
+      configService.get.mockImplementation((key: string) => {
+        if (key === "JWT_SECRET")
+          return "test-jwt-secret-minimum-32-chars-long";
+        if (key === "OIDC_REQUIRE_VERIFIED_EMAIL") return "false";
+        return undefined;
+      });
+      const existing: any = {
+        id: "u1",
+        email: "user@example.com",
+        passwordHash: "hash",
+        authProvider: "local",
+      };
+      usersRepository.findOne
+        .mockResolvedValueOnce(null) // by oidcSubject
+        .mockResolvedValueOnce(null) // primary by-email lookup misses -> create
+        .mockResolvedValueOnce(existing); // catch path re-lookup by email
+      // Force the create INSERT to fail with a unique-violation so we exercise
+      // the duplicate-email catch path (not the primary merge path).
+      dataSource.transaction.mockRejectedValue({ code: "23505" });
+      usersRepository.save.mockImplementation(async (u: any) => u);
+      const sendSpy = jest
+        .spyOn(service as any, "sendOidcLinkEmail")
+        .mockResolvedValue(undefined);
+
+      const result = await service.findOrCreateOidcUser(oidcProfile, true);
+
+      expect(result.linkPending).toBeFalsy();
+      expect(result.user).toBe(existing);
+      expect(existing.oidcSubject).toBe("oidc-sub-123");
+      expect(existing.authProvider).toBe("oidc");
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe("sanitizeUser", () => {
