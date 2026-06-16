@@ -554,7 +554,7 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
   {
     name: "create_transaction",
     description:
-      "Propose creating a new transaction. This does NOT create anything immediately: it shows the user a confirmation card they must explicitly approve before the transaction is saved. Use it only when the user clearly asks to add or record a transaction in their latest message. Amount is positive for income and negative for expenses. If a payee name is given it must match an existing payee (by name or alias); the transaction then links to that payee and inherits its default category. If no existing payee matches, this tool prepares NOTHING and reports that the payee was not found -- ask the user whether to use a different existing payee or to create the new payee first with create_payee (then call this tool again). After calling this tool, briefly tell the user to review and approve the card; never claim the transaction was created.",
+      "Propose creating a new transaction. This does NOT create anything immediately: it shows the user a confirmation card they must explicitly approve before the transaction is saved. Use it only when the user clearly asks to add or record a transaction in their latest message. Amount is positive for income and negative for expenses. A payee name is matched to an existing payee (by name or alias) and linked. If no payee matches, by default a new payee is created on approval; set createPayeeIfMissing to false (e.g. when the user says it is a one-time payee) to instead record the name as free text without creating a payee. After calling this tool, briefly tell the user to review and approve the card; never claim the transaction was created.",
     inputSchema: {
       type: "object",
       properties: {
@@ -575,7 +575,7 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
         payeeName: {
           type: "string",
           description:
-            "Optional payee name. Must match an existing payee (by name or alias). If none matches, the transaction is not prepared -- create the payee first with create_payee, or use a different name.",
+            "Optional payee name. Matched to an existing payee (by name or alias) when one exists; otherwise handled per createPayeeIfMissing.",
         },
         categoryName: {
           type: "string",
@@ -585,6 +585,11 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
         description: {
           type: "string",
           description: "Optional description or memo.",
+        },
+        createPayeeIfMissing: {
+          type: "boolean",
+          description:
+            "When the payee name matches no existing payee, whether to create a new payee on approval (true, the default) or record the name as free text without creating a payee (false). Set false for a one-time payee. Ignored when the name matches an existing payee.",
         },
       },
       required: ["accountName", "amount", "date"],

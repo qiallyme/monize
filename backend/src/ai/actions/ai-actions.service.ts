@@ -152,7 +152,9 @@ export class AiActionsService {
       categoryId: descriptor.categoryId ?? undefined,
       description: descriptor.description ?? undefined,
     });
-    const transaction = await this.transactionsService.create(userId, dto);
+    const transaction = await this.transactionsService.create(userId, dto, {
+      createPayeeIfMissing: descriptor.createPayee === true,
+    });
     return { type: "create_transaction", id: transaction.id };
   }
 

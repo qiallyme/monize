@@ -444,6 +444,7 @@ describe("McpTransactionsTools", () => {
         payeeId: "p1",
         payeeName: "Store",
         payeeMatched: true,
+        payeeWillBeCreated: false,
         categoryId: null,
         categoryName: null,
         description: null,
@@ -481,6 +482,7 @@ describe("McpTransactionsTools", () => {
           amount: -50,
           payeeId: "p1",
         }),
+        { createPayeeIfMissing: true },
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe("t1");
@@ -504,6 +506,7 @@ describe("McpTransactionsTools", () => {
         payeeId: "p1",
         payeeName: "Store",
         payeeMatched: true,
+        payeeWillBeCreated: false,
         categoryId: null,
         categoryName: null,
         description: null,
@@ -585,6 +588,7 @@ describe("McpTransactionsTools", () => {
         payeeId: null,
         payeeName: "Coffee Shop",
         payeeMatched: false,
+        payeeWillBeCreated: true,
         categoryId: null,
         categoryName: null,
         description: null,
@@ -606,7 +610,7 @@ describe("McpTransactionsTools", () => {
       expect(transactionsService.create).not.toHaveBeenCalled();
     });
 
-    it("should return preview in dry-run mode without creating and offer to create an unmatched payee", async () => {
+    it("should return preview in dry-run mode without creating and flag that an unmatched payee will be created", async () => {
       resolve.mockReturnValue({ userId: "u1", scopes: "read,write" });
       transactionsService.previewCreate.mockResolvedValue({
         accountId: "a1",
@@ -616,6 +620,7 @@ describe("McpTransactionsTools", () => {
         payeeId: null,
         payeeName: "Coffee Shop",
         payeeMatched: false,
+        payeeWillBeCreated: true,
         categoryId: null,
         categoryName: null,
         description: null,
@@ -642,9 +647,10 @@ describe("McpTransactionsTools", () => {
       expect(parsed.preview.accountName).toBe("Checking");
       expect(parsed.preview.currencyCode).toBe("USD");
       expect(parsed.preview.payeeMatched).toBe(false);
+      expect(parsed.preview.payeeWillBeCreated).toBe(true);
       expect(parsed.message).toContain("preview");
-      // No matching payee -> guide the model to offer creating one.
-      expect(parsed.message).toContain("create_payee");
+      // No matching payee + default create -> a new payee will be created.
+      expect(parsed.message).toContain("a new payee will be created");
     });
 
     it("persists the sanitized preview values (LLM07-F3)", async () => {
@@ -690,7 +696,104 @@ describe("McpTransactionsTools", () => {
           payeeName: "scriptalert('XSS')/script",
           description: "Purchase at bStore/b",
         }),
+        { createPayeeIfMissing: true },
       );
+    });
+
+    it("records a free-text payee (no payee created) when createPayeeIfMissing is false", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read,write" });
+      transactionsService.previewCreate.mockResolvedValue({
+        accountId: "a1",
+        accountName: "Checking",
+        amount: -50,
+        transactionDate: "2025-01-15",
+        payeeId: null,
+        payeeName: "Coffee Shop",
+        payeeMatched: false,
+        payeeWillBeCreated: false,
+        categoryId: null,
+        categoryName: null,
+        description: null,
+        currencyCode: "USD",
+      });
+      transactionsService.create.mockResolvedValue({
+        id: "t1",
+        transactionDate: "2025-01-15",
+        amount: "-50.0000",
+        payeeId: null,
+        payeeName: "Coffee Shop",
+        status: "pending",
+      });
+
+      const result = await handlers["create_transaction"](
+        {
+          accountId: "a1",
+          amount: -50,
+          date: "2025-01-15",
+          payeeName: "Coffee Shop",
+          createPayeeIfMissing: false,
+          dryRun: false,
+        },
+        { sessionId: "s1" },
+      );
+
+      expect(transactionsService.create).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({
+          payeeName: "Coffee Shop",
+          payeeId: undefined,
+        }),
+        { createPayeeIfMissing: false },
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.payeeCreated).toBe(false);
+    });
+
+    it("reports payeeCreated when an unmatched payee is auto-created", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read,write" });
+      transactionsService.previewCreate.mockResolvedValue({
+        accountId: "a1",
+        accountName: "Checking",
+        amount: -50,
+        transactionDate: "2025-01-15",
+        payeeId: null,
+        payeeName: "Coffee Shop",
+        payeeMatched: false,
+        payeeWillBeCreated: true,
+        categoryId: null,
+        categoryName: null,
+        description: null,
+        currencyCode: "USD",
+      });
+      // create() resolves the name to a freshly created payee and links it.
+      transactionsService.create.mockResolvedValue({
+        id: "t1",
+        transactionDate: "2025-01-15",
+        amount: "-50.0000",
+        payeeId: "new-payee-1",
+        payeeName: "Coffee Shop",
+        status: "pending",
+      });
+
+      const result = await handlers["create_transaction"](
+        {
+          accountId: "a1",
+          amount: -50,
+          date: "2025-01-15",
+          payeeName: "Coffee Shop",
+          dryRun: false,
+        },
+        { sessionId: "s1" },
+      );
+
+      expect(transactionsService.create).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({ payeeName: "Coffee Shop" }),
+        { createPayeeIfMissing: true },
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.payeeCreated).toBe(true);
+      expect(parsed.payeeId).toBe("new-payee-1");
     });
 
     it("should enforce daily write rate limit", async () => {

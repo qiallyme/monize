@@ -354,6 +354,10 @@ export class ToolExecutorService {
     const payeeName = input.payeeName as string | undefined;
     const categoryName = input.categoryName as string | undefined;
     const description = input.description as string | undefined;
+    // Default to creating a payee for an unmatched name; the user can opt out
+    // ("don't create a payee for this one-time transaction") to keep it free text.
+    const createPayeeIfMissing =
+      (input.createPayeeIfMissing as boolean | undefined) ?? true;
 
     const account = await this.resolveAccountByName(userId, accountName);
     if (!account) {
@@ -382,31 +386,13 @@ export class ToolExecutorService {
         payeeName,
         categoryId,
         description,
+        createPayeeIfMissing,
       });
     } catch (err) {
       return this.toolErrorFromException(
         err,
         "Could not prepare the transaction.",
       );
-    }
-
-    // Verify the payee exists before preparing the confirmation card. When a
-    // payee name was given but matches no existing payee, prepare nothing and
-    // ask the user to either pick an existing payee or create a new one --
-    // mirroring how unknown accounts and categories fail loudly above instead
-    // of silently recording a detached free-text name.
-    if (preview.payeeName && !preview.payeeMatched) {
-      const unmatched = preview.payeeName;
-      return {
-        data: {
-          status: "payee_not_found",
-          unmatchedPayeeName: unmatched,
-          message: `No existing payee matches "${unmatched}", so no confirmation card was shown and nothing was created. Ask the user to either (1) use a different existing payee -- then call create_transaction again with that name -- or (2) create a new payee named "${unmatched}" with create_payee, and after they approve it call create_transaction again. Do not record the transaction with an unmatched payee.`,
-        },
-        summary: `No existing payee matches "${unmatched}". Asking the user to pick an existing payee or create a new one.`,
-        sources: [],
-        isError: true,
-      };
     }
 
     const { actionId, expiresAt } = this.newActionEnvelope();
@@ -420,6 +406,7 @@ export class ToolExecutorService {
       transactionDate: preview.transactionDate,
       payeeId: preview.payeeId,
       payeeName: preview.payeeName,
+      createPayee: preview.payeeWillBeCreated,
       categoryId: preview.categoryId,
       description: preview.description,
       currencyCode: preview.currencyCode,
@@ -436,14 +423,28 @@ export class ToolExecutorService {
         currencyCode: preview.currencyCode,
         transactionDate: preview.transactionDate,
         payeeName: preview.payeeName,
+        payeeWillBeCreated: preview.payeeWillBeCreated,
         categoryName: preview.categoryName,
         description: preview.description,
       },
     };
 
+    // When the name does not match an existing payee, tell the model whether a
+    // new payee will be created (default) or it will be stored as free text so
+    // it can describe the card accurately without leaking the signature.
+    const data =
+      preview.payeeName && !preview.payeeMatched
+        ? {
+            ...PENDING_ACTION_TOOL_RESULT,
+            payeeNote: preview.payeeWillBeCreated
+              ? `"${preview.payeeName}" is not an existing payee; a new payee will be created and linked when the user approves the card.`
+              : `"${preview.payeeName}" is not an existing payee; it will be recorded as a free-text payee name (no payee record created) because createPayeeIfMissing was disabled.`,
+          }
+        : PENDING_ACTION_TOOL_RESULT;
+
     return {
-      data: PENDING_ACTION_TOOL_RESULT,
-      summary: `Prepared a transaction for ${preview.accountName} (${preview.amount} ${preview.currencyCode}) dated ${preview.transactionDate}. Awaiting user confirmation.`,
+      data,
+      summary: `Prepared a transaction for ${preview.accountName} (${preview.amount} ${preview.currencyCode}) dated ${preview.transactionDate}.${preview.payeeWillBeCreated ? ` A new payee "${preview.payeeName}" will be created on approval.` : ""} Awaiting user confirmation.`,
       sources: [],
       pendingAction,
     };

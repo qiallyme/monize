@@ -95,6 +95,12 @@ export interface CreateTransactionPreview {
   payeeName: string | null;
   /** True when payeeName matched an existing payee; false for a new name. */
   payeeMatched: boolean;
+  /**
+   * True when confirming this transaction will create a new payee: an unmatched
+   * name with createPayeeIfMissing left enabled. False when the name matched an
+   * existing payee, no name was given, or the name will be stored as free text.
+   */
+  payeeWillBeCreated: boolean;
   categoryId: string | null;
   categoryName: string | null;
   description: string | null;
@@ -146,6 +152,7 @@ export class TransactionsService {
   async create(
     userId: string,
     createTransactionDto: CreateTransactionDto,
+    options?: { createPayeeIfMissing?: boolean },
   ): Promise<Transaction> {
     await this.accountsService.findOne(userId, createTransactionDto.accountId);
 
@@ -156,9 +163,26 @@ export class TransactionsService {
       this.splitService.validateSplits(splits, createTransactionDto.amount);
     }
 
-    // Validate ownership of referenced payee and category
+    // Validate ownership of a referenced payee, or -- when the caller opts in
+    // (createPayeeIfMissing) and only a free-text name was given -- find or
+    // create a reusable payee from that name so the transaction links to a
+    // payee record. Callers that want a one-off free-text payee leave the
+    // option unset, in which case the name is stored verbatim.
+    let resolvedPayeeId = transactionData.payeeId;
+    let resolvedPayeeName = transactionData.payeeName;
     if (transactionData.payeeId) {
       await this.payeesService.findOne(userId, transactionData.payeeId);
+    } else if (
+      options?.createPayeeIfMissing &&
+      typeof transactionData.payeeName === "string" &&
+      transactionData.payeeName.trim().length > 0
+    ) {
+      const payee = await this.payeesService.findOrCreate(
+        userId,
+        transactionData.payeeName.trim(),
+      );
+      resolvedPayeeId = payee.id;
+      resolvedPayeeName = payee.name;
     }
     if (transactionData.categoryId) {
       const cat = await this.categoriesRepository.findOne({
@@ -172,12 +196,9 @@ export class TransactionsService {
     }
 
     let categoryId = transactionData.categoryId;
-    if (!hasSplits && !categoryId && transactionData.payeeId) {
+    if (!hasSplits && !categoryId && resolvedPayeeId) {
       try {
-        const payee = await this.payeesService.findOne(
-          userId,
-          transactionData.payeeId,
-        );
+        const payee = await this.payeesService.findOne(userId, resolvedPayeeId);
         if (payee.defaultCategoryId) {
           categoryId = payee.defaultCategoryId;
         }
@@ -195,6 +216,8 @@ export class TransactionsService {
     try {
       const transaction = queryRunner.manager.create(Transaction, {
         ...transactionData,
+        payeeId: resolvedPayeeId,
+        payeeName: resolvedPayeeName,
         categoryId: hasSplits ? null : categoryId,
         isSplit: hasSplits,
         userId,
@@ -289,6 +312,8 @@ export class TransactionsService {
       payeeName?: string;
       categoryId?: string;
       description?: string;
+      /** Auto-create a payee for an unmatched name. Defaults to true. */
+      createPayeeIfMissing?: boolean;
     },
   ): Promise<CreateTransactionPreview> {
     const account = await this.accountsService.findOne(userId, input.accountId);
@@ -336,6 +361,12 @@ export class TransactionsService {
       }
     }
 
+    // An unmatched name becomes a new payee on confirm unless the caller
+    // explicitly opted out (createPayeeIfMissing === false), in which case it is
+    // recorded as a free-text name.
+    const payeeWillBeCreated =
+      !!payeeName && !payeeMatched && input.createPayeeIfMissing !== false;
+
     return {
       accountId: input.accountId,
       accountName: account.name,
@@ -344,6 +375,7 @@ export class TransactionsService {
       payeeId,
       payeeName,
       payeeMatched,
+      payeeWillBeCreated,
       categoryId,
       categoryName,
       description: stripHtml(input.description) || null,

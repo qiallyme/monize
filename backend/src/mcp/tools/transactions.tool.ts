@@ -420,7 +420,7 @@ export class McpTransactionsTools {
         title: "Create transaction",
         annotations: CREATE,
         description:
-          "Create a new transaction. The payee name is matched to an existing payee (by name, case-insensitive, or alias) and the transaction is linked to it, inheriting its default category when no category is given. If no payee matches, the name is still recorded as free text -- offer to create a reusable payee with create_payee first when the user wants one. Set dryRun=true to preview (the preview reports payeeMatched) without saving. When dryRun is false, the user is asked to confirm before the transaction is saved (clients that support it show a confirmation dialog).",
+          "Create a new transaction. The payee name is matched to an existing payee (by name, case-insensitive, or alias) and the transaction is linked to it, inheriting its default category when no category is given. If no payee matches, a new payee is created by default; set createPayeeIfMissing=false to instead record the name as free text without creating a payee (e.g. for a one-time payee). Set dryRun=true to preview (the preview reports payeeMatched and payeeWillBeCreated) without saving. When dryRun is false, the user is asked to confirm before the transaction is saved (clients that support it show a confirmation dialog).",
         inputSchema: {
           accountId: z.string().uuid().describe("Account ID"),
           amount: z
@@ -442,6 +442,13 @@ export class McpTransactionsTools {
             .max(500)
             .optional()
             .describe("Description or memo"),
+          createPayeeIfMissing: z
+            .boolean()
+            .optional()
+            .default(true)
+            .describe(
+              "When the payee name matches no existing payee, create a new payee (true, the default) or record the name as free text without creating a payee (false). Ignored when the name matches an existing payee.",
+            ),
           dryRun: z
             .boolean()
             .optional()
@@ -467,6 +474,10 @@ export class McpTransactionsTools {
         }
 
         try {
+          // Default to creating a payee for an unmatched name (the SDK applies
+          // the same schema default; this keeps direct callers/tests consistent).
+          const createPayeeIfMissing = args.createPayeeIfMissing ?? true;
+
           // Shared preview: validates account + category ownership, resolves
           // names, and sanitizes strings (matches @SanitizeHtml() DTO behavior)
           // identically to the AI Assistant confirmation flow.
@@ -479,14 +490,18 @@ export class McpTransactionsTools {
               payeeName: args.payeeName,
               categoryId: args.categoryId,
               description: args.description,
+              createPayeeIfMissing,
             },
           );
 
-          // Surface whether the payee resolved to an existing record so the
-          // model can offer to create one when it did not.
+          // Surface whether the payee resolved to an existing record and, when
+          // it did not, whether a new payee will be created or the name kept as
+          // free text -- so the model can describe what will happen.
           const payeeMessage =
             preview.payeeName && !preview.payeeMatched
-              ? ` No existing payee matches "${preview.payeeName}" -- it will be recorded as a free-text name. Use create_payee first if the user wants a reusable payee.`
+              ? preview.payeeWillBeCreated
+                ? ` No existing payee matches "${preview.payeeName}" -- a new payee will be created and linked. Pass createPayeeIfMissing=false to keep it as a free-text name instead.`
+                : ` No existing payee matches "${preview.payeeName}" -- it will be recorded as a free-text name (no payee created).`
               : "";
 
           // Dry-run mode: return preview without persisting
@@ -501,6 +516,7 @@ export class McpTransactionsTools {
                 payeeId: preview.payeeId,
                 payeeName: preview.payeeName,
                 payeeMatched: preview.payeeMatched,
+                payeeWillBeCreated: preview.payeeWillBeCreated,
                 categoryId: preview.categoryId,
                 categoryName: preview.categoryName,
                 description: preview.description,
@@ -521,9 +537,12 @@ export class McpTransactionsTools {
             `Date: ${preview.transactionDate}`,
           ];
           if (preview.payeeName) {
-            confirmLines.push(
-              `Payee: ${preview.payeeName}${preview.payeeMatched ? "" : " (new)"}`,
-            );
+            const payeeSuffix = preview.payeeMatched
+              ? ""
+              : preview.payeeWillBeCreated
+                ? " (new payee)"
+                : " (free text)";
+            confirmLines.push(`Payee: ${preview.payeeName}${payeeSuffix}`);
           }
           if (preview.categoryName) {
             confirmLines.push(`Category: ${preview.categoryName}`);
@@ -550,6 +569,7 @@ export class McpTransactionsTools {
               description: preview.description ?? undefined,
               currencyCode: preview.currencyCode,
             },
+            { createPayeeIfMissing },
           );
 
           this.writeLimiter.record(ctx.userId, "create_transaction");
@@ -564,6 +584,8 @@ export class McpTransactionsTools {
             payeeId: transaction.payeeId,
             payeeName: transaction.payeeName,
             payeeMatched: preview.payeeMatched,
+            // True when an unmatched name resulted in a newly linked payee.
+            payeeCreated: !preview.payeeMatched && Boolean(transaction.payeeId),
             status: transaction.status,
           });
         } catch (err: unknown) {

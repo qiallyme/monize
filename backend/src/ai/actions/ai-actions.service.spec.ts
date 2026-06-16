@@ -59,6 +59,7 @@ describe("AiActionsService", () => {
       transactionDate: "2026-01-15",
       payeeId: null,
       payeeName: "Starbucks",
+      createPayee: false,
       categoryId: CAT,
       description: null,
       currencyCode: "USD",
@@ -91,6 +92,7 @@ describe("AiActionsService", () => {
         currencyCode: "USD",
         transactionDate: "2026-01-15",
       }),
+      { createPayeeIfMissing: false },
     );
     expect(result).toEqual({ type: "create_transaction", id: "tx-new" });
   });
@@ -102,6 +104,22 @@ describe("AiActionsService", () => {
     expect(transactions.create).toHaveBeenCalledWith(
       USER,
       expect.objectContaining({ payeeId: PAYEE }),
+      { createPayeeIfMissing: false },
+    );
+  });
+
+  it("creates a payee for an unmatched name when the descriptor sets createPayee", async () => {
+    const descriptor = createTxDescriptor({
+      payeeId: null,
+      payeeName: "Brand New Store",
+      createPayee: true,
+    });
+    await service.confirm(USER, dtoFor(descriptor));
+
+    expect(transactions.create).toHaveBeenCalledWith(
+      USER,
+      expect.objectContaining({ payeeName: "Brand New Store" }),
+      { createPayeeIfMissing: true },
     );
   });
 

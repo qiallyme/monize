@@ -104,6 +104,7 @@ describe("TransactionsService", () => {
     payeesService = {
       findOne: jest.fn(),
       resolveByName: jest.fn().mockResolvedValue(null),
+      findOrCreate: jest.fn(),
     };
 
     netWorthService = {
@@ -339,6 +340,73 @@ describe("TransactionsService", () => {
         "account-1",
         -50,
         expect.anything(),
+      );
+    });
+
+    it("creates a payee from a free-text name when createPayeeIfMissing is set", async () => {
+      payeesService.findOrCreate.mockResolvedValue({
+        id: "payee-new",
+        name: "Brand New Store",
+        defaultCategoryId: null,
+      });
+      transactionsRepository.findOne.mockResolvedValue({
+        id: "tx-1",
+        userId: "user-1",
+        accountId: "account-1",
+        amount: -50,
+        status: TransactionStatus.UNRECONCILED,
+        splits: [],
+      });
+
+      await service.create(
+        "user-1",
+        {
+          accountId: "account-1",
+          transactionDate: "2026-01-15",
+          amount: -50,
+          currencyCode: "USD",
+          payeeName: "Brand New Store",
+        } as any,
+        { createPayeeIfMissing: true },
+      );
+
+      expect(payeesService.findOrCreate).toHaveBeenCalledWith(
+        "user-1",
+        "Brand New Store",
+      );
+      // The persisted entity links to the new payee id and canonical name.
+      expect(transactionsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payeeId: "payee-new",
+          payeeName: "Brand New Store",
+        }),
+      );
+    });
+
+    it("keeps a free-text payee name when createPayeeIfMissing is not set", async () => {
+      transactionsRepository.findOne.mockResolvedValue({
+        id: "tx-1",
+        userId: "user-1",
+        accountId: "account-1",
+        amount: -50,
+        status: TransactionStatus.UNRECONCILED,
+        splits: [],
+      });
+
+      await service.create("user-1", {
+        accountId: "account-1",
+        transactionDate: "2026-01-15",
+        amount: -50,
+        currencyCode: "USD",
+        payeeName: "One Off Shop",
+      } as any);
+
+      expect(payeesService.findOrCreate).not.toHaveBeenCalled();
+      expect(transactionsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payeeName: "One Off Shop",
+          payeeId: undefined,
+        }),
       );
     });
 
@@ -5558,11 +5626,26 @@ describe("TransactionsService", () => {
       });
       expect(preview.payeeName).not.toContain("<");
       expect(preview.description).toBeNull();
-      // No matching payee -> not linked, caller can offer to create one.
+      // No matching payee -> not linked; by default it will be created on confirm.
       expect(preview.payeeId).toBeNull();
       expect(preview.payeeMatched).toBe(false);
+      expect(preview.payeeWillBeCreated).toBe(true);
       // Never writes.
       expect(transactionsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it("does not flag payee creation when createPayeeIfMissing is false", async () => {
+      const preview = await service.previewCreate("user-1", {
+        accountId: "account-1",
+        amount: -12.5,
+        transactionDate: "2026-01-15",
+        payeeName: "One Off Shop",
+        createPayeeIfMissing: false,
+      });
+
+      expect(preview.payeeId).toBeNull();
+      expect(preview.payeeMatched).toBe(false);
+      expect(preview.payeeWillBeCreated).toBe(false);
     });
 
     it("links an existing payee, adopts its category, and uses its canonical name", async () => {
@@ -5588,6 +5671,7 @@ describe("TransactionsService", () => {
       );
       expect(preview.payeeId).toBe("payee-9");
       expect(preview.payeeMatched).toBe(true);
+      expect(preview.payeeWillBeCreated).toBe(false);
       expect(preview.payeeName).toBe("Whole Foods Market");
       expect(preview.categoryId).toBe("cat-default");
       expect(preview.categoryName).toBe("Groceries");
