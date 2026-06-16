@@ -10,6 +10,21 @@
   "delete": "Verwijderen",
   "edit": "Bewerken",
   "close": "Sluiten",
+  "actions": {
+    "edit": "Bewerken",
+    "delete": "Verwijderen",
+    "view": "Bekijken",
+    "duplicate": "Dupliceren",
+    "merge": "Samenvoegen",
+    "reactivate": "Heractiveren",
+    "reconcile": "Afstemmen",
+    "post": "Boeken",
+    "skip": "Overslaan",
+    "close": "Sluiten",
+    "reopen": "Heropenen",
+    "scheduleRecurring": "Terugkerend maken",
+    "more": "Meer acties"
+  },
   "loading": "Laden...",
   "pagination": {
     "showing": "Weergeven",
@@ -146,7 +161,7 @@
   "weekdaysMin": ["zo", "ma", "di", "wo", "do", "vr", "za"],
   "weekdaysNarrow": ["Z", "M", "D", "W", "D", "V", "Z"],
   "dateFormat": {
-    "browserAuto": "Browserinstelling gebruiken (automatisch)",
+    "browserAuto": "Browserinstelling gebruiken (automatisch gedetecteerd als {sample})",
     "custom": "Aangepast..."
   },
   "emailInvalid": "Voer een geldig e-mailadres in",

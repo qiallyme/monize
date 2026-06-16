@@ -52,7 +52,7 @@
     "he": "^1.2.0",
     "helmet": "^8.1.0",
     "nestjs-i18n": "^10.8.4",
-    "nodemailer": "^8.0.1",
+    "nodemailer": "^8.0.9",
     "oidc-provider": "^9.8.3",
     "openai": "^6.22.0",
     "openid-client": "^6.8.2",
@@ -65,7 +65,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "typeorm": "^0.3.28",
-    "ua-parser-js": "^2.0.9",
+    "ua-parser-js": "^2.0.10",
     "undici": "^8.0.2",
     "zod": "^4.3.6"
   },
@@ -106,7 +106,19 @@
     "picomatch": "4.0.4",
     "path-to-regexp": "8.4.0",
     "uuid": "^14.0.0",
-    "fast-uri": "^3.1.2"
+    "fast-uri": "^3.1.2",
+    "typeorm": {
+      "glob": "13.0.0"
+    },
+    "jest-config": {
+      "glob": "13.0.0"
+    },
+    "jest-runtime": {
+      "glob": "13.0.0"
+    },
+    "@jest/reporters": {
+      "glob": "13.0.0"
+    }
   },
   "jest": {
     "moduleFileExtensions": [

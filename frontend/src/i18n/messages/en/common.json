@@ -10,6 +10,21 @@
   "delete": "Delete",
   "edit": "Edit",
   "close": "Close",
+  "actions": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View",
+    "duplicate": "Duplicate",
+    "merge": "Merge",
+    "reactivate": "Reactivate",
+    "reconcile": "Reconcile",
+    "post": "Post",
+    "skip": "Skip",
+    "close": "Close",
+    "reopen": "Reopen",
+    "scheduleRecurring": "Make recurring",
+    "more": "More actions"
+  },
   "loading": "Loading...",
   "pagination": {
     "showing": "Showing",
@@ -146,7 +161,7 @@
   "weekdaysMin": ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
   "weekdaysNarrow": ["S", "M", "T", "W", "T", "F", "S"],
   "dateFormat": {
-    "browserAuto": "Use browser locale (auto-detect)",
+    "browserAuto": "Use browser locale (auto-detected as {sample})",
     "custom": "Custom..."
   },
   "emailInvalid": "Please enter a valid email address",
