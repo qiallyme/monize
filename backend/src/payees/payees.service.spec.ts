@@ -1493,9 +1493,11 @@ describe("PayeesService", () => {
 
     it("returns null when neither name nor alias matches", async () => {
       queryBuilderMock.getOne = jest.fn().mockResolvedValue(null);
-      queryBuilderMock.getMany = jest.fn().mockResolvedValue([]);
       payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
       aliasRepository.manager.find = jest.fn().mockResolvedValue([]);
+      payeesRepository.find.mockResolvedValue([
+        { ...mockPayee, name: "Amazon" },
+      ]);
 
       const result = await service.resolveByName(userId, "Unknown Vendor");
 
@@ -1505,27 +1507,57 @@ describe("PayeesService", () => {
     it("matches a single active payee by partial name (abbreviation)", async () => {
       const fullPayee = { ...mockPayee, name: "Buon Gusto Restaurant" };
       queryBuilderMock.getOne = jest.fn().mockResolvedValue(null);
-      queryBuilderMock.getMany = jest.fn().mockResolvedValue([fullPayee]);
       payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
       aliasRepository.manager.find = jest.fn().mockResolvedValue([]);
+      payeesRepository.find.mockResolvedValue([
+        fullPayee,
+        { ...mockPayee, id: "payee-z", name: "Amazon" },
+      ]);
 
       const result = await service.resolveByName(userId, "Buon Gusto");
 
       expect(result).toEqual(fullPayee);
-      expect(queryBuilderMock.andWhere).toHaveBeenCalledWith(
-        "LOWER(payee.name) LIKE LOWER(:pattern)",
-        { pattern: "%Buon Gusto%" },
-      );
+      expect(payeesRepository.find).toHaveBeenCalledWith({
+        where: { userId, isActive: true },
+        relations: ["defaultCategory"],
+      });
+    });
+
+    it("matches across apostrophe differences (Zehrs -> Zehr's Supermarket)", async () => {
+      const zehrs = { ...mockPayee, name: "Zehr's Supermarket" };
+      queryBuilderMock.getOne = jest.fn().mockResolvedValue(null);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+      aliasRepository.manager.find = jest.fn().mockResolvedValue([]);
+      payeesRepository.find.mockResolvedValue([zehrs]);
+
+      const result = await service.resolveByName(userId, "Zehrs");
+
+      expect(result).toEqual(zehrs);
+    });
+
+    it("prefers an exact normalized match over a longer sibling", async () => {
+      const exact = { ...mockPayee, name: "Zehr's Supermarket" };
+      queryBuilderMock.getOne = jest.fn().mockResolvedValue(null);
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+      aliasRepository.manager.find = jest.fn().mockResolvedValue([]);
+      payeesRepository.find.mockResolvedValue([
+        exact,
+        { ...mockPayee, id: "payee-y", name: "Zehr's Supermarket Pharmacy" },
+      ]);
+
+      const result = await service.resolveByName(userId, "Zehrs Supermarket");
+
+      expect(result).toEqual(exact);
     });
 
     it("does not guess when multiple payees match a partial name", async () => {
       queryBuilderMock.getOne = jest.fn().mockResolvedValue(null);
-      queryBuilderMock.getMany = jest.fn().mockResolvedValue([
+      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
+      aliasRepository.manager.find = jest.fn().mockResolvedValue([]);
+      payeesRepository.find.mockResolvedValue([
         { ...mockPayee, name: "Buon Gusto Restaurant" },
         { ...mockPayee, id: "payee-x", name: "Buon Gusto Pizzeria" },
       ]);
-      payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
-      aliasRepository.manager.find = jest.fn().mockResolvedValue([]);
 
       const result = await service.resolveByName(userId, "Buon Gusto");
 
@@ -1534,17 +1566,14 @@ describe("PayeesService", () => {
 
     it("does not partial-match input shorter than 3 characters", async () => {
       queryBuilderMock.getOne = jest.fn().mockResolvedValue(null);
-      // Even if a payee would match, a 2-char term must not auto-link.
-      queryBuilderMock.getMany = jest
-        .fn()
-        .mockResolvedValue([{ ...mockPayee, name: "AB Store" }]);
       payeesRepository.createQueryBuilder.mockReturnValue(queryBuilderMock);
       aliasRepository.manager.find = jest.fn().mockResolvedValue([]);
 
       const result = await service.resolveByName(userId, "AB");
 
       expect(result).toBeNull();
-      expect(queryBuilderMock.getMany).not.toHaveBeenCalled();
+      // A 2-char term must not even scan the payee list.
+      expect(payeesRepository.find).not.toHaveBeenCalled();
     });
 
     it("returns null for a blank name without querying", async () => {

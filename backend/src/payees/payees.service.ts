@@ -45,6 +45,20 @@ function escapeLikeWildcards(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/[%_]/g, "\\$&");
 }
 
+/**
+ * Normalize a payee name for tolerant matching. Apostrophes are dropped so
+ * "Zehr's" and "Zehrs" collapse together; any other punctuation or whitespace
+ * run folds to a single space. Lower-cased and trimmed. Used only for the
+ * fuzzy resolveByName fallback -- never for persistence.
+ */
+function normalizePayeeName(value: string): string {
+  return value
+    .replace(/['’]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 @Injectable()
 export class PayeesService {
   private readonly logger = new Logger(PayeesService.name);
@@ -312,10 +326,11 @@ export class PayeesService {
    * storing a detached name. Resolution is tiered, most-specific first:
    *   1. exact name match (case-insensitive),
    *   2. alias pattern match (the same matching the importer uses),
-   *   3. a single active payee whose name contains the text -- handles the
-   *      common case where the caller abbreviates ("Buon Gusto" ->
-   *      "Buon Gusto Restaurant"). Requires 3+ characters and exactly one
-   *      candidate so we never guess between payees.
+   *   3. punctuation-insensitive match: normalize both sides (drop apostrophes,
+   *      fold other punctuation/whitespace) so "Zehrs" resolves to
+   *      "Zehr's Supermarket" and "Buon Gusto" to "Buon Gusto Restaurant".
+   *      Prefer a single payee whose normalized name equals the input, else a
+   *      single payee that contains it; anything ambiguous returns null.
    * Returns null when nothing matches so the caller can offer to create one.
    */
   async resolveByName(userId: string, name: string): Promise<Payee | null> {
@@ -339,22 +354,29 @@ export class PayeesService {
       return byAlias;
     }
 
-    // Partial match: only auto-link when a single active payee matches, so an
-    // abbreviation resolves but an ambiguous term does not silently pick one.
-    if (trimmed.length < 3) {
+    // Require a few significant characters so a 1-2 char term can't auto-link.
+    const normalizedInput = normalizePayeeName(trimmed);
+    if (normalizedInput.length < 3) {
       return null;
     }
-    const partialMatches = await this.payeesRepository
-      .createQueryBuilder("payee")
-      .leftJoinAndSelect("payee.defaultCategory", "defaultCategory")
-      .where("payee.user_id = :userId", { userId })
-      .andWhere("payee.is_active = true")
-      .andWhere("LOWER(payee.name) LIKE LOWER(:pattern)", {
-        pattern: `%${escapeLikeWildcards(trimmed)}%`,
-      })
-      .take(2)
-      .getMany();
-    return partialMatches.length === 1 ? partialMatches[0] : null;
+
+    // Normalize in JS over the user's active payees (the exact + alias tiers
+    // already handled the common cases) so apostrophes and other punctuation
+    // never block a match regardless of how the database collates them.
+    const activePayees = await this.payeesRepository.find({
+      where: { userId, isActive: true },
+      relations: ["defaultCategory"],
+    });
+    const containing = activePayees.filter((payee) =>
+      normalizePayeeName(payee.name).includes(normalizedInput),
+    );
+    const exactNormalized = containing.filter(
+      (payee) => normalizePayeeName(payee.name) === normalizedInput,
+    );
+    if (exactNormalized.length === 1) {
+      return exactNormalized[0];
+    }
+    return containing.length === 1 ? containing[0] : null;
   }
 
   async findOrCreate(
