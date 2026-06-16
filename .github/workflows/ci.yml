@@ -640,7 +640,7 @@ jobs:
           cd backend  && npm version "$VERSION" --no-git-tag-version --allow-same-version && cd ..
           cd frontend && npm version "$VERSION" --no-git-tag-version --allow-same-version && cd ..
 
-      - name: Commit version bump and create PR checklist check run
+      - name: Commit version bump
         env:
           VERSION: ${{ needs.prepare-release.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -650,8 +650,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add backend/package.json backend/package-lock.json frontend/package.json frontend/package-lock.json
           git commit -m "chore: bump version to ${VERSION} [skip ci]"
-          git push
           git pull --rebase
+          git push
           SHA=$(git rev-parse HEAD)
           gh api repos/$REPO/check-runs \
             --method POST \
