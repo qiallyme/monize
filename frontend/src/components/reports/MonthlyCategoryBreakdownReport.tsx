@@ -71,12 +71,6 @@ const TRANSFER_GROUP_CLASS =
 
 const OTHER_INCOME_KEY = '__other_income__';
 const OTHER_EXPENSE_KEY = '__other_expense__';
-
-// Synthetic category id the backend assigns to brokerage income (interest,
-// dividends, capital gains) cash legs; kept in sync with the backend's
-// INVESTMENT_INCOME_PSEUDO_CATEGORY. The label is localized here rather than
-// server-side, mirroring how the report translates its other synthetic buckets.
-const INVESTMENT_INCOME_CATEGORY_ID = 'investment-income';
 const isOtherKey = (key: string): boolean =>
   key === OTHER_INCOME_KEY || key === OTHER_EXPENSE_KEY;
 
@@ -316,7 +310,6 @@ export function MonthlyCategoryBreakdownReport() {
   const { formatMonth } = useDateFormat();
   const otherExpensesLabel = t('monthlyCategoryBreakdown.otherExpenses');
   const otherIncomeLabel = t('monthlyCategoryBreakdown.otherIncome');
-  const investmentIncomeLabel = t('monthlyCategoryBreakdown.investmentIncome');
   const [showPercentages, setShowPercentages] = useLocalStorage<boolean>(
     PERCENTAGES_STORAGE_KEY,
     false,
@@ -389,13 +382,7 @@ export function MonthlyCategoryBreakdownReport() {
       ? data.months
       : data.months.filter((m) => m !== currentMonth);
     const monthCount = months.length || 1;
-    // Localize the synthetic investment-income bucket's label; the backend ships
-    // a stable English fallback that we replace with the translated string.
-    const rows = data.data.map((row) =>
-      row.categoryId === INVESTMENT_INCOME_CATEGORY_ID
-        ? { ...row, categoryName: investmentIncomeLabel }
-        : row,
-    );
+    const rows = data.data;
 
     // Group categories by parent. A category with a parent forms (or joins) a
     // section keyed by that parent; parentless categories collect into the
@@ -567,7 +554,6 @@ export function MonthlyCategoryBreakdownReport() {
     data,
     otherExpensesLabel,
     otherIncomeLabel,
-    investmentIncomeLabel,
     sortColumn,
     sortDir,
     includeCurrentMonth,

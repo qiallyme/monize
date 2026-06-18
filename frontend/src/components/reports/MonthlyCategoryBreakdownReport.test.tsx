@@ -261,43 +261,6 @@ describe('MonthlyCategoryBreakdownReport', () => {
     expect(url).toContain('categoryIds=uncategorized');
   });
 
-  it('renders the synthetic investment-income bucket and drills into it', async () => {
-    mockGetMonthlyCategoryBreakdown.mockResolvedValue({
-      currency: 'USD',
-      months: ['2025-01', '2025-02', '2025-03'],
-      data: [
-        {
-          categoryId: 'investment-income',
-          // Backend ships an English fallback; the component localizes it.
-          categoryName: 'Investment Income',
-          parentId: null,
-          parentName: null,
-          parentIsIncome: null,
-          isIncome: true,
-          valuesByMonth: { '2025-01': 42.5, '2025-02': 0, '2025-03': 10 },
-          depositTotal: 52.5,
-          withdrawalTotal: 0,
-        },
-      ],
-      transfers: [],
-    });
-    render(<MonthlyCategoryBreakdownReport />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Investment Income')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText('Investment Income'));
-    });
-
-    expect(mockPush).toHaveBeenCalledTimes(1);
-    const url = mockPush.mock.calls[0][0] as string;
-    expect(url).toContain('/transactions?');
-    // Drills through the dedicated pseudo-filter, not a UUID.
-    expect(url).toContain('categoryIds=investment-income');
-  });
-
   it('drills down into every child category when a section header is clicked', async () => {
     mockGetMonthlyCategoryBreakdown.mockResolvedValue(sampleResponse);
     render(<MonthlyCategoryBreakdownReport />);
