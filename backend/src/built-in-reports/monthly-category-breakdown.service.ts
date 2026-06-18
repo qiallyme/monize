@@ -5,7 +5,6 @@ import { Transaction } from "../transactions/entities/transaction.entity";
 import { Category } from "../categories/entities/category.entity";
 import { ReportCurrencyService } from "./report-currency.service";
 import { roundMoney, toMoneyNumber } from "../common/round.util";
-import { INVESTMENT_INCOME_PSEUDO_CATEGORY } from "../common/query-param-utils";
 import {
   MonthlyCategoryBreakdownResponse,
   MonthlyBreakdownCategoryRow,
@@ -54,45 +53,6 @@ interface CategoryAccumulator {
 
 @Injectable()
 export class MonthlyCategoryBreakdownService {
-  /**
-   * SQL predicate (correlated on the `transactions t` alias) that matches the
-   * cash leg of a brokerage income event -- interest, dividends or capital
-   * gains paid into a linked cash account. The investment importer records both
-   * sides of such an event as `is_transfer = true` (a cash leg plus a synthetic
-   * brokerage-side offset), even though, unlike a buy or sell, this is new money
-   * entering the books rather than a movement between the user's own accounts.
-   * Either leg is recognised here -- the cash leg via its `linked_transaction_id`
-   * pointing at the brokerage leg, the brokerage leg via its own id -- so the
-   * breakdown can surface the cash leg as income and drop both legs from the
-   * transfers section. Buys and sells are genuine cash<->holdings transfers and
-   * are deliberately excluded.
-   */
-  private static readonly INVESTMENT_INCOME_LEG_PREDICATE = `
-    EXISTS (
-      SELECT 1 FROM investment_transactions it
-      WHERE it.action IN ('INTEREST', 'DIVIDEND', 'CAPITAL_GAIN')
-        AND (it.transaction_id = t.id
-             OR it.transaction_id = t.linked_transaction_id)
-    )`;
-
-  /**
-   * Category id expression for the income aggregate: a recognised brokerage
-   * income leg collapses to the synthetic INVESTMENT_INCOME_PSEUDO_CATEGORY
-   * bucket (it carries no real category), otherwise the row keeps its own
-   * category (split category first, then the transaction's). Used identically in
-   * the SELECT list and GROUP BY so the grouping key matches the projection.
-   */
-  private static readonly INVESTMENT_INCOME_CATEGORY_EXPR = `
-    COALESCE(
-      (SELECT '${INVESTMENT_INCOME_PSEUDO_CATEGORY}'
-         FROM investment_transactions it
-        WHERE it.action IN ('INTEREST', 'DIVIDEND', 'CAPITAL_GAIN')
-          AND (it.transaction_id = t.id
-               OR it.transaction_id = t.linked_transaction_id)
-        LIMIT 1),
-      ts.category_id::text, t.category_id::text
-    )`;
-
   constructor(
     @InjectRepository(Transaction)
     private transactionsRepository: Repository<Transaction>,
@@ -117,7 +77,7 @@ export class MonthlyCategoryBreakdownService {
     let query = `
       SELECT
         TO_CHAR(t.transaction_date, 'YYYY-MM') as month,
-        ${MonthlyCategoryBreakdownService.INVESTMENT_INCOME_CATEGORY_EXPR} as category_id,
+        COALESCE(ts.category_id, t.category_id) as category_id,
         t.currency_code,
         SUM(CASE WHEN COALESCE(ts.amount, t.amount) > 0
               THEN COALESCE(ts.amount, t.amount) ELSE 0 END) as deposits,
@@ -128,13 +88,10 @@ export class MonthlyCategoryBreakdownService {
       LEFT JOIN accounts a ON a.id = t.account_id
       WHERE t.user_id = $1
         AND t.transaction_date <= $2
-        AND (t.is_transfer = false
-             OR ${MonthlyCategoryBreakdownService.INVESTMENT_INCOME_LEG_PREDICATE})
+        AND t.is_transfer = false
         AND (t.status IS NULL OR t.status != 'VOID')
         AND t.parent_transaction_id IS NULL
-        AND (a.account_type != 'INVESTMENT'
-             OR (a.account_sub_type = 'INVESTMENT_CASH'
-                 AND ${MonthlyCategoryBreakdownService.INVESTMENT_INCOME_LEG_PREDICATE}))
+        AND a.account_type != 'INVESTMENT'
         AND (ts.transfer_account_id IS NULL OR ts.id IS NULL)
         AND NOT EXISTS (
           SELECT 1 FROM accounts ax
@@ -152,7 +109,8 @@ export class MonthlyCategoryBreakdownService {
     }
 
     query += `
-      GROUP BY 1, 2, t.currency_code
+      GROUP BY TO_CHAR(t.transaction_date, 'YYYY-MM'),
+               COALESCE(ts.category_id, t.category_id), t.currency_code
       ORDER BY month
     `;
 
@@ -184,15 +142,12 @@ export class MonthlyCategoryBreakdownService {
         rateMap,
       );
 
-      // Keep the synthetic investment-income bucket as its own row; otherwise
-      // treat an unknown category_id (e.g. the row references a category that
+      // Treat an unknown category_id (e.g. the row references a category that
       // no longer exists) the same as no category at all.
       const categoryId =
-        row.category_id === INVESTMENT_INCOME_PSEUDO_CATEGORY
-          ? INVESTMENT_INCOME_PSEUDO_CATEGORY
-          : row.category_id && categoryMap.has(row.category_id)
-            ? row.category_id
-            : null;
+        row.category_id && categoryMap.has(row.category_id)
+          ? row.category_id
+          : null;
       const key = categoryId ?? "uncategorized";
 
       let acc = accumulators.get(key);
@@ -267,7 +222,6 @@ export class MonthlyCategoryBreakdownService {
       WHERE t.user_id = $1
         AND t.transaction_date <= $2
         AND t.is_transfer = true
-        AND NOT ${MonthlyCategoryBreakdownService.INVESTMENT_INCOME_LEG_PREDICATE}
         AND (t.status IS NULL OR t.status != 'VOID')
         AND t.parent_transaction_id IS NULL
     `;
@@ -383,24 +337,16 @@ export class MonthlyCategoryBreakdownService {
     acc: CategoryAccumulator,
     categoryMap: Map<string, Category>,
   ): MonthlyBreakdownCategoryRow {
-    const isInvestmentIncome =
-      acc.categoryId === INVESTMENT_INCOME_PSEUDO_CATEGORY;
-    const category =
-      acc.categoryId && !isInvestmentIncome
-        ? (categoryMap.get(acc.categoryId) ?? null)
-        : null;
+    const category = acc.categoryId
+      ? (categoryMap.get(acc.categoryId) ?? null)
+      : null;
     const parent = category?.parentId
       ? (categoryMap.get(category.parentId) ?? null)
       : null;
 
-    // Brokerage interest, dividends and capital gains are always income; a real
-    // category goes by its own flag, and a bare uncategorized bucket falls back
-    // to whichever side dominates.
-    const isIncome = isInvestmentIncome
-      ? true
-      : category
-        ? category.isIncome
-        : acc.depositTotal > acc.withdrawalTotal;
+    const isIncome = category
+      ? category.isIncome
+      : acc.depositTotal > acc.withdrawalTotal;
 
     const valuesByMonth: Record<string, number> = {};
     const allMonths = new Set<string>([
@@ -416,9 +362,7 @@ export class MonthlyCategoryBreakdownService {
 
     return {
       categoryId: acc.categoryId,
-      categoryName: isInvestmentIncome
-        ? "Investment Income"
-        : (category?.name ?? "Uncategorized"),
+      categoryName: category?.name ?? "Uncategorized",
       parentId: parent?.id ?? null,
       parentName: parent?.name ?? null,
       parentIsIncome: parent?.isIncome ?? null,
