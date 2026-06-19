@@ -31,14 +31,19 @@ describe("McpInvestmentsTools", () => {
       getLlmInvestmentTransactions: jest.fn(),
       getLlmCapitalGains: jest.fn(),
       previewCreateInvestmentTransaction: jest.fn(),
+      previewUpdateInvestmentTransaction: jest.fn(),
+      previewDeleteInvestmentTransaction: jest.fn(),
       create: jest.fn(),
       createBulk: jest.fn(),
+      update: jest.fn(),
+      remove: jest.fn().mockResolvedValue(undefined),
     };
 
     // Default: not serving a relayed prompt, so the tool uses its normal
     // (direct MCP-client) confirmation path and the existing assertions hold.
     securitiesService = {
       previewCreateSecurity: jest.fn(),
+      lookupSecuritiesForLlm: jest.fn(),
       create: jest.fn(),
     };
 
@@ -47,6 +52,8 @@ describe("McpInvestmentsTools", () => {
       buildCreateInvestmentTransaction: jest.fn().mockReturnValue({}),
       buildCreateInvestmentTransactions: jest.fn().mockReturnValue({}),
       buildCreateSecurity: jest.fn().mockReturnValue({}),
+      buildUpdateInvestmentTransaction: jest.fn().mockReturnValue({}),
+      buildDeleteInvestmentTransaction: jest.fn().mockReturnValue({}),
     };
 
     tool = new McpInvestmentsTools(
@@ -76,8 +83,8 @@ describe("McpInvestmentsTools", () => {
     tool.register(server as any, resolve);
   });
 
-  it("should register 7 tools", () => {
-    expect(server.registerTool).toHaveBeenCalledTimes(7);
+  it("should register 10 tools", () => {
+    expect(server.registerTool).toHaveBeenCalledTimes(10);
   });
 
   describe("get_portfolio_summary", () => {
@@ -804,6 +811,192 @@ describe("McpInvestmentsTools", () => {
       );
       expect(result.isError).toBe(true);
       expect(investmentTransactionsService.createBulk).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("lookup_securities", () => {
+    it("returns matches for a read-scoped caller without writing", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      securitiesService.lookupSecuritiesForLlm.mockResolvedValue({
+        query: "apple",
+        count: 1,
+        candidates: [
+          {
+            symbol: "AAPL",
+            name: "Apple Inc.",
+            exchange: "NASDAQ",
+            securityType: "STOCK",
+            currencyCode: "USD",
+            provider: "yahoo",
+            alreadyAdded: false,
+          },
+        ],
+      });
+
+      const result = await handlers["lookup_securities"](
+        { query: "apple" },
+        { sessionId: "s1" },
+      );
+
+      expect(securitiesService.lookupSecuritiesForLlm).toHaveBeenCalledWith(
+        "u1",
+        { query: "apple", exchange: undefined, provider: undefined },
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(1);
+      expect(parsed.candidates[0].symbol).toBe("AAPL");
+      expect(securitiesService.create).not.toHaveBeenCalled();
+    });
+
+    it("requires read scope", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "" });
+      const result = await handlers["lookup_securities"](
+        { query: "apple" },
+        { sessionId: "s1" },
+      );
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe("update_investment_transaction", () => {
+    const preview = {
+      transactionId: "it1",
+      accountId: "a1",
+      accountName: "Brokerage",
+      accountCurrency: "USD",
+      action: "SELL",
+      transactionDate: "2025-02-01",
+      securityId: "s1",
+      symbol: "VTI",
+      securityName: "Vanguard Total",
+      securityCurrency: "USD",
+      quantity: 5,
+      price: 210,
+      commission: 1,
+      totalAmount: 1049,
+      exchangeRate: 1,
+      fundingAccountId: null,
+      cashAccountName: "Brokerage Cash",
+      cashCurrency: "USD",
+      cashAmount: 1049,
+      description: null,
+    };
+
+    it("previews without writing when dryRun is true", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      investmentTransactionsService.previewUpdateInvestmentTransaction.mockResolvedValue(
+        preview,
+      );
+
+      const result = await handlers["update_investment_transaction"](
+        { transactionId: "it1", action: "SELL", quantity: 5, dryRun: true },
+        { sessionId: "s1" },
+      );
+
+      expect(investmentTransactionsService.update).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.dryRun).toBe(true);
+      expect(parsed.preview.action).toBe("SELL");
+    });
+
+    it("applies the edit when the client cannot elicit", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      investmentTransactionsService.previewUpdateInvestmentTransaction.mockResolvedValue(
+        preview,
+      );
+      investmentTransactionsService.update.mockResolvedValue({
+        id: "it1",
+        action: "SELL",
+        transactionDate: "2025-02-01",
+        quantity: "5.00000000",
+        price: "210.000000",
+        totalAmount: "1049.0000",
+      });
+
+      const result = await handlers["update_investment_transaction"](
+        { transactionId: "it1", action: "SELL", quantity: 5 },
+        { sessionId: "s1" },
+      );
+
+      expect(investmentTransactionsService.update).toHaveBeenCalledWith(
+        "u1",
+        "it1",
+        expect.objectContaining({ action: "SELL", securityId: "s1" }),
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.id).toBe("it1");
+    });
+
+    it("shows one relay card and does not write when a relay prompt is in flight", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      relayService.emitPendingAction.mockReturnValue(true);
+      investmentTransactionsService.previewUpdateInvestmentTransaction.mockResolvedValue(
+        preview,
+      );
+
+      const result = await handlers["update_investment_transaction"](
+        { transactionId: "it1", action: "SELL" },
+        { sessionId: "s1" },
+      );
+
+      expect(relayService.emitPendingAction).toHaveBeenCalledTimes(1);
+      expect(investmentTransactionsService.update).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.status).toBeDefined();
+    });
+  });
+
+  describe("delete_investment_transaction", () => {
+    const preview = {
+      transactionId: "it1",
+      accountName: "Brokerage",
+      action: "BUY",
+      transactionDate: "2025-02-01",
+      symbol: "VTI",
+      securityName: "Vanguard Total",
+      securityCurrency: "USD",
+      quantity: 10,
+      price: 200,
+      commission: 1,
+      totalAmount: 2001,
+      description: null,
+    };
+
+    it("previews without deleting when dryRun is true", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      investmentTransactionsService.previewDeleteInvestmentTransaction.mockResolvedValue(
+        preview,
+      );
+
+      const result = await handlers["delete_investment_transaction"](
+        { transactionId: "it1", dryRun: true },
+        { sessionId: "s1" },
+      );
+
+      expect(investmentTransactionsService.remove).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.dryRun).toBe(true);
+      expect(parsed.preview.symbol).toBe("VTI");
+    });
+
+    it("deletes when the client cannot elicit", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      investmentTransactionsService.previewDeleteInvestmentTransaction.mockResolvedValue(
+        preview,
+      );
+
+      const result = await handlers["delete_investment_transaction"](
+        { transactionId: "it1" },
+        { sessionId: "s1" },
+      );
+
+      expect(investmentTransactionsService.remove).toHaveBeenCalledWith(
+        "u1",
+        "it1",
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.id).toBe("it1");
+      expect(parsed.deleted).toBe(true);
     });
   });
 });

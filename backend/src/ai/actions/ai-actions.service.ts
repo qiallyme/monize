@@ -15,6 +15,7 @@ import { CreateTransactionDto } from "../../transactions/dto/create-transaction.
 import { UpdateTransactionDto } from "../../transactions/dto/update-transaction.dto";
 import { CreatePayeeDto } from "../../payees/dto/create-payee.dto";
 import { CreateInvestmentTransactionDto } from "../../securities/dto/create-investment-transaction.dto";
+import { UpdateInvestmentTransactionDto } from "../../securities/dto/update-investment-transaction.dto";
 import { CreateSecurityDto } from "../../securities/dto/create-security.dto";
 import { tr } from "../../i18n/translate";
 import { AiActionSigningService } from "./ai-action-signing.service";
@@ -29,6 +30,10 @@ import {
   CreateInvestmentTransactionDescriptor,
   CreateTransactionsDescriptor,
   CreateInvestmentTransactionsDescriptor,
+  UpdateTransactionDescriptor,
+  DeleteTransactionDescriptor,
+  UpdateInvestmentTransactionDescriptor,
+  DeleteInvestmentTransactionDescriptor,
   MAX_BULK_ACTION_ROWS,
 } from "./ai-action.types";
 import { BulkCreateSkip } from "../../common/bulk-create.types";
@@ -187,7 +192,85 @@ export class AiActionsService {
         return this.executeCreateTransactions(userId, descriptor);
       case "create_investment_transactions":
         return this.executeCreateInvestmentTransactions(userId, descriptor);
+      case "update_transaction":
+        return this.executeUpdateTransaction(userId, descriptor);
+      case "delete_transaction":
+        return this.executeDeleteTransaction(userId, descriptor);
+      case "update_investment_transaction":
+        return this.executeUpdateInvestmentTransaction(userId, descriptor);
+      case "delete_investment_transaction":
+        return this.executeDeleteInvestmentTransaction(userId, descriptor);
     }
+  }
+
+  private async executeUpdateTransaction(
+    userId: string,
+    descriptor: UpdateTransactionDescriptor,
+  ): Promise<ConfirmActionResult> {
+    const dto = await this.toValidatedDto(UpdateTransactionDto, {
+      accountId: descriptor.accountId,
+      transactionDate: descriptor.transactionDate,
+      amount: descriptor.amount,
+      currencyCode: descriptor.currencyCode,
+      payeeId: descriptor.payeeId ?? undefined,
+      payeeName: descriptor.payeeName ?? undefined,
+      categoryId: descriptor.categoryId ?? undefined,
+      description: descriptor.description ?? undefined,
+    });
+    const transaction = await this.transactionsService.update(
+      userId,
+      descriptor.transactionId,
+      dto,
+      { createPayeeIfMissing: descriptor.createPayee === true },
+    );
+    return { type: "update_transaction", id: transaction.id };
+  }
+
+  private async executeDeleteTransaction(
+    userId: string,
+    descriptor: DeleteTransactionDescriptor,
+  ): Promise<ConfirmActionResult> {
+    await this.transactionsService.remove(userId, descriptor.transactionId);
+    return { type: "delete_transaction", id: descriptor.transactionId };
+  }
+
+  private async executeUpdateInvestmentTransaction(
+    userId: string,
+    descriptor: UpdateInvestmentTransactionDescriptor,
+  ): Promise<ConfirmActionResult> {
+    // accountId is omitted: the edit keeps the transaction on its account, and
+    // passing it could trigger the account-move path in update().
+    const dto = await this.toValidatedDto(UpdateInvestmentTransactionDto, {
+      action: descriptor.action,
+      transactionDate: descriptor.transactionDate,
+      securityId: descriptor.securityId ?? undefined,
+      fundingAccountId: descriptor.fundingAccountId ?? undefined,
+      quantity: descriptor.quantity ?? undefined,
+      price: descriptor.price ?? undefined,
+      commission: descriptor.commission,
+      exchangeRate: descriptor.exchangeRate,
+      description: descriptor.description ?? undefined,
+    });
+    const transaction = await this.investmentTransactionsService.update(
+      userId,
+      descriptor.transactionId,
+      dto,
+    );
+    return { type: "update_investment_transaction", id: transaction.id };
+  }
+
+  private async executeDeleteInvestmentTransaction(
+    userId: string,
+    descriptor: DeleteInvestmentTransactionDescriptor,
+  ): Promise<ConfirmActionResult> {
+    await this.investmentTransactionsService.remove(
+      userId,
+      descriptor.transactionId,
+    );
+    return {
+      type: "delete_investment_transaction",
+      id: descriptor.transactionId,
+    };
   }
 
   private async executeCreateTransaction(

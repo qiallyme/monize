@@ -5751,6 +5751,125 @@ describe("TransactionsService", () => {
     });
   });
 
+  describe("previewUpdate", () => {
+    const baseTx = {
+      id: "tx-1",
+      userId: "user-1",
+      accountId: "account-1",
+      amount: -12.5,
+      transactionDate: "2026-01-15",
+      payeeId: "payee-1",
+      payeeName: "Starbucks",
+      categoryId: "cat-old",
+      description: "old",
+      currencyCode: "USD",
+      isTransfer: false,
+      isSplit: false,
+      account: { name: "Checking" },
+      category: { name: "Coffee" },
+    };
+
+    it("returns the resulting state, only changing the provided fields", async () => {
+      transactionsRepository.findOne.mockResolvedValueOnce({ ...baseTx });
+      categoriesRepository.findOne.mockResolvedValueOnce({
+        id: "cat-1",
+        userId: "user-1",
+        name: "Dining",
+      });
+
+      const preview = await service.previewUpdate("user-1", "tx-1", {
+        amount: -30,
+        categoryId: "cat-1",
+      });
+
+      expect(preview).toMatchObject({
+        transactionId: "tx-1",
+        accountId: "account-1",
+        accountName: "Checking",
+        amount: -30,
+        // unchanged fields preserved from the stored transaction
+        transactionDate: "2026-01-15",
+        categoryId: "cat-1",
+        categoryName: "Dining",
+        description: "old",
+        currencyCode: "USD",
+      });
+      expect(transactionsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it("resolves a changed payee name to an existing payee", async () => {
+      transactionsRepository.findOne.mockResolvedValueOnce({ ...baseTx });
+      payeesService.resolveByName.mockResolvedValueOnce({
+        id: "payee-9",
+        name: "Whole Foods Market",
+      });
+
+      const preview = await service.previewUpdate("user-1", "tx-1", {
+        payeeName: "Whole Foods",
+      });
+
+      expect(preview.payeeId).toBe("payee-9");
+      expect(preview.payeeMatched).toBe(true);
+      expect(preview.payeeName).toBe("Whole Foods Market");
+      expect(preview.payeeWillBeCreated).toBe(false);
+    });
+
+    it("rejects editing a transfer", async () => {
+      transactionsRepository.findOne.mockResolvedValueOnce({
+        ...baseTx,
+        isTransfer: true,
+      });
+      await expect(
+        service.previewUpdate("user-1", "tx-1", { amount: -5 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("rejects editing a split transaction", async () => {
+      transactionsRepository.findOne.mockResolvedValueOnce({
+        ...baseTx,
+        isSplit: true,
+      });
+      await expect(
+        service.previewUpdate("user-1", "tx-1", { amount: -5 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("rejects when no field is provided", async () => {
+      transactionsRepository.findOne.mockResolvedValueOnce({ ...baseTx });
+      await expect(
+        service.previewUpdate("user-1", "tx-1", {}),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe("previewDelete", () => {
+    it("returns a display preview without persisting", async () => {
+      transactionsRepository.findOne.mockResolvedValueOnce({
+        id: "tx-1",
+        userId: "user-1",
+        amount: -12.5,
+        transactionDate: "2026-01-15",
+        payeeName: "Starbucks",
+        description: null,
+        currencyCode: "USD",
+        account: { name: "Checking" },
+        category: { name: "Coffee" },
+      });
+
+      const preview = await service.previewDelete("user-1", "tx-1");
+
+      expect(preview).toMatchObject({
+        transactionId: "tx-1",
+        accountName: "Checking",
+        amount: -12.5,
+        payeeName: "Starbucks",
+        categoryName: "Coffee",
+        currencyCode: "USD",
+      });
+      expect(transactionsRepository.remove).not.toHaveBeenCalled();
+    });
+  });
+
   describe("createBulk", () => {
     const row = (amount: number) => ({
       dto: {

@@ -641,6 +641,34 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
     },
   },
   {
+    name: "lookup_securities",
+    description:
+      "Look up a ticker symbol or company name against the user's configured price provider (Yahoo/MSN) and return the list of matching securities (symbol, name, exchange, type, currency) WITHOUT adding anything. This is read-only and does not change the user's data. Use it when the user wants to add a security but the reference is ambiguous, or to confirm the exact symbol/exchange before calling create_security: present the matches and ask the user which one they mean. Each candidate is flagged with alreadyAdded=true when a security with that symbol is already in the user's list.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Ticker symbol (e.g. 'AAPL') or company/security name (e.g. 'Apple') to search for. Required.",
+        },
+        exchange: {
+          type: "string",
+          enum: [...SECURITY_EXCHANGES],
+          description:
+            "Optional exchange to narrow the search when a symbol trades on more than one exchange. MUST be exactly one of the listed values; omit to search across exchanges.",
+        },
+        provider: {
+          type: "string",
+          enum: ["yahoo", "msn", "auto"],
+          description:
+            "Optional quote provider to query: 'yahoo', 'msn', or 'auto' (the user's configured default, the recommended choice). Omit for 'auto'.",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "create_security",
     description:
       "Propose adding a new security (stock, ETF, mutual fund, etc.) to the user's security list so it can later be traded or held. This does NOT create anything immediately: it shows the user a confirmation card they must explicitly approve before the security is saved. Use it only when the user clearly asks to add a security in their latest message. The security is looked up and validated automatically by ticker symbol or name against the user's configured price provider, which fills in the official symbol, name, exchange, type, and currency -- do not invent those. Provide the optional `exchange` only to disambiguate a symbol that trades on several exchanges (e.g. a dual-listed ticker); if the lookup is ambiguous the tool returns an error listing the candidates so you can re-call with an exchange. Only ever pass `exchange`/`securityType` values from the enumerated lists below; never guess a value outside them. One security per call -- call the tool again for each additional security. After calling this tool, briefly tell the user to review and approve the card; never claim the security was created.",
@@ -668,6 +696,11 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
           type: "boolean",
           description:
             "Optional: pin the new security to the dashboard Favourite Securities widget. Defaults to false.",
+        },
+        currencyCode: {
+          type: "string",
+          description:
+            "Optional ISO 4217 currency code (e.g. 'USD', 'CAD') for the security. Overrides the currency the lookup determines, and lets creation proceed when the lookup can't determine one. Omit to use the looked-up currency.",
         },
       },
       required: ["query"],
@@ -871,6 +904,142 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
         },
       },
       required: ["rows"],
+    },
+  },
+  {
+    name: "update_transaction",
+    description:
+      "Propose editing an existing transaction. This does NOT change anything immediately: it shows the user a confirmation card they must explicitly approve before the change is saved. First call search_transactions to obtain the transactionId. Provide ONLY the fields you want to change -- omitted fields keep their current value. Amount is positive for income and negative for expenses. Transfers and split transactions cannot be edited here (the tool returns an error pointing the user to the Transactions screen). After calling this tool, briefly tell the user to review and approve the card; never claim the change was applied. To delete a transaction, use delete_transaction instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        transactionId: {
+          type: "string",
+          description:
+            "ID of the transaction to edit, obtained from search_transactions.",
+        },
+        amount: {
+          type: "number",
+          description:
+            "New signed amount: positive for income/inflow, negative for an expense/outflow. Up to 4 decimal places. Omit to keep the current amount.",
+        },
+        date: {
+          type: "string",
+          description: "New transaction date (YYYY-MM-DD). Omit to keep.",
+        },
+        payeeName: {
+          type: "string",
+          description:
+            "New payee name. Matched to an existing payee when one exists; otherwise handled per createPayeeIfMissing. Omit to keep the current payee.",
+        },
+        categoryName: {
+          type: "string",
+          description:
+            'New category. Use an exact name from the user\'s category list ("Parent: Child" for a subcategory). Omit to keep the current category.',
+        },
+        description: {
+          type: "string",
+          description: "New description or memo. Omit to keep.",
+        },
+        createPayeeIfMissing: {
+          type: "boolean",
+          description:
+            "When a new payee name matches no existing payee, create a new payee on approval (true, the default) or record the name as free text (false). Ignored when the name matches an existing payee or no payee change is requested.",
+        },
+      },
+      required: ["transactionId"],
+    },
+  },
+  {
+    name: "delete_transaction",
+    description:
+      "Propose deleting an existing transaction. This does NOT delete anything immediately: it shows the user a confirmation card they must explicitly approve before the transaction is removed. First call search_transactions to obtain the transactionId. Deleting a transfer or split transaction removes its linked legs/children too. After calling this tool, briefly tell the user to review and approve the card; never claim the transaction was deleted.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        transactionId: {
+          type: "string",
+          description:
+            "ID of the transaction to delete, obtained from search_transactions.",
+        },
+      },
+      required: ["transactionId"],
+    },
+  },
+  {
+    name: "update_investment_transaction",
+    description:
+      "Propose editing an existing brokerage/investment-account transaction. This does NOT change anything immediately: it shows the user a confirmation card they must explicitly approve before the change is saved. First call query_investment_transactions or search the investments to obtain the transactionId. Provide ONLY the fields you want to change -- omitted fields keep their current value. The security, when changed, is matched automatically by ticker symbol or name. The total and cash impact are recomputed from the resulting state. After calling this tool, briefly tell the user to review and approve the card; never claim the change was applied. To delete one, use delete_investment_transaction instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        transactionId: {
+          type: "string",
+          description: "ID of the investment transaction to edit.",
+        },
+        action: {
+          type: "string",
+          enum: [
+            "BUY",
+            "SELL",
+            "DIVIDEND",
+            "INTEREST",
+            "CAPITAL_GAIN",
+            "SPLIT",
+            "TRANSFER_IN",
+            "TRANSFER_OUT",
+            "REINVEST",
+            "ADD_SHARES",
+            "REMOVE_SHARES",
+          ],
+          description:
+            "New transaction type. Values must be UPPER_SNAKE_CASE exactly as listed. Omit to keep.",
+        },
+        date: {
+          type: "string",
+          description: "New transaction date (YYYY-MM-DD). Omit to keep.",
+        },
+        security: {
+          type: "string",
+          description:
+            "New security ticker symbol or name. Matched automatically to one of the user's securities. Omit to keep the current security.",
+        },
+        quantity: {
+          type: "number",
+          description:
+            "New number of shares (up to 8 decimal places). For a SPLIT, the post-split-to-pre-split ratio. Omit to keep.",
+        },
+        price: {
+          type: "number",
+          description:
+            "New price per share (up to 6 decimal places). For DIVIDEND/INTEREST/CAPITAL_GAIN with no quantity, the total cash amount. Omit to keep.",
+        },
+        commission: {
+          type: "number",
+          description:
+            "New commission or fee (up to 4 decimal places). Omit to keep.",
+        },
+        description: {
+          type: "string",
+          description: "New description or memo. Omit to keep.",
+        },
+      },
+      required: ["transactionId"],
+    },
+  },
+  {
+    name: "delete_investment_transaction",
+    description:
+      "Propose deleting an existing brokerage/investment-account transaction. This does NOT delete anything immediately: it shows the user a confirmation card they must explicitly approve before the transaction is removed. First call query_investment_transactions to obtain the transactionId. Deleting one leg of a security transfer removes the paired leg too, and any linked cash impact is reversed. After calling this tool, briefly tell the user to review and approve the card; never claim the transaction was deleted.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        transactionId: {
+          type: "string",
+          description: "ID of the investment transaction to delete.",
+        },
+      },
+      required: ["transactionId"],
     },
   },
 ];

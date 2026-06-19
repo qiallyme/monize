@@ -1,8 +1,8 @@
 import { FINANCIAL_TOOLS } from "./tool-definitions";
 
 describe("FINANCIAL_TOOLS", () => {
-  it("defines exactly 24 tools", () => {
-    expect(FINANCIAL_TOOLS).toHaveLength(24);
+  it("defines exactly 29 tools", () => {
+    expect(FINANCIAL_TOOLS).toHaveLength(29);
   });
 
   it("has unique tool names", () => {
@@ -33,6 +33,11 @@ describe("FINANCIAL_TOOLS", () => {
     "create_payee",
     "create_security",
     "create_investment_transaction",
+    "lookup_securities",
+    "update_transaction",
+    "delete_transaction",
+    "update_investment_transaction",
+    "delete_investment_transaction",
   ];
 
   it.each(expectedTools)("includes the %s tool", (toolName) => {

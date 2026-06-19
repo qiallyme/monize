@@ -41,10 +41,13 @@ import {
   getCapitalGainsOutput,
   getHoldingDetailsOutput,
   createSecurityOutput,
+  lookupSecuritiesOutput,
   createInvestmentTransactionOutput,
   createInvestmentTransactionsOutput,
+  updateInvestmentTransactionOutput,
+  deleteInvestmentTransactionOutput,
 } from "../tool-output-schemas";
-import { READ_ONLY, CREATE } from "../mcp-annotations";
+import { READ_ONLY, CREATE, UPDATE, DELETE } from "../mcp-annotations";
 
 @Injectable()
 export class McpInvestmentsTools {
@@ -264,6 +267,58 @@ export class McpInvestmentsTools {
     );
 
     server.registerTool(
+      "lookup_securities",
+      {
+        title: "Look up securities",
+        annotations: READ_ONLY,
+        description:
+          "Look up a ticker symbol or company name against the user's configured price provider (Yahoo/MSN) and return the matching securities WITHOUT adding anything. Read-only: use it to resolve an ambiguous reference or confirm the exact symbol/exchange before calling create_security. Each candidate is flagged with alreadyAdded=true when a security with that symbol is already in the user's list. Shares the lookup logic with the AI Assistant's lookup_securities tool.",
+        inputSchema: {
+          query: z
+            .string()
+            .min(1)
+            .max(100)
+            .describe(
+              "Ticker symbol (e.g. 'AAPL') or company/security name to search for.",
+            ),
+          exchange: z
+            .enum(SECURITY_EXCHANGES)
+            .optional()
+            .describe(
+              "Optional exchange to narrow the search. Omit to search across exchanges.",
+            ),
+          provider: z
+            .enum(["yahoo", "msn", "auto"])
+            .optional()
+            .describe(
+              "Optional quote provider: 'yahoo', 'msn', or 'auto' (the user's default). Omit for 'auto'.",
+            ),
+        },
+        outputSchema: lookupSecuritiesOutput,
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "read");
+        if (check.error) return check.result;
+
+        try {
+          const result = await this.securitiesService.lookupSecuritiesForLlm(
+            ctx.userId,
+            {
+              query: args.query,
+              exchange: args.exchange,
+              provider: args.provider,
+            },
+          );
+          return toolResult(result);
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
       "create_security",
       {
         title: "Create security",
@@ -295,6 +350,13 @@ export class McpInvestmentsTools {
             .optional()
             .describe(
               "Pin the new security to the dashboard Favourite Securities widget. Defaults to false.",
+            ),
+          currencyCode: z
+            .string()
+            .regex(/^[A-Za-z]{3}$/)
+            .optional()
+            .describe(
+              "Optional ISO 4217 currency code (e.g. 'USD'). Overrides the looked-up currency and lets creation proceed when the lookup can't determine one. Omit to use the looked-up currency.",
             ),
           dryRun: z
             .boolean()
@@ -330,6 +392,7 @@ export class McpInvestmentsTools {
               exchange: args.exchange,
               securityType: args.securityType,
               isFavourite: args.isFavourite,
+              currencyCode: args.currencyCode,
             },
           );
 
@@ -807,6 +870,323 @@ export class McpInvestmentsTools {
             ids: result.created.map((t) => t.id),
             count: result.created.length,
             skipped,
+          });
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "update_investment_transaction",
+      {
+        title: "Update investment transaction",
+        annotations: UPDATE,
+        description:
+          "Edit an existing brokerage/investment-account transaction. Pass only the fields to change; omitted fields keep their current value. A changed security is matched automatically by ticker symbol or name. The total and cash impact are recomputed from the resulting state. Set dryRun=true to preview without saving. When dryRun is false, the user is asked to confirm before the change is saved (clients that support it show a confirmation dialog). Shares the edit logic with the AI Assistant's update_investment_transaction tool.",
+        inputSchema: {
+          transactionId: z
+            .string()
+            .uuid()
+            .describe("ID of the investment transaction to edit"),
+          action: z
+            .nativeEnum(InvestmentAction)
+            .optional()
+            .describe("New transaction type (e.g. BUY, SELL). Omit to keep."),
+          date: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("New transaction date (YYYY-MM-DD). Omit to keep."),
+          security: z
+            .string()
+            .min(1)
+            .max(100)
+            .optional()
+            .describe(
+              "New security ticker symbol or name. Omit to keep the current security.",
+            ),
+          quantity: z
+            .number()
+            .min(0)
+            .max(999999999999)
+            .optional()
+            .describe(
+              "New number of shares (8 dp). For SPLIT, the split ratio (>0). Omit to keep.",
+            ),
+          price: z
+            .number()
+            .min(0)
+            .max(999999999999)
+            .optional()
+            .describe(
+              "New price per share (6 dp). For DIVIDEND/INTEREST/CAPITAL_GAIN with no quantity, the total cash amount. Omit to keep.",
+            ),
+          commission: z
+            .number()
+            .min(0)
+            .max(999999999999)
+            .optional()
+            .describe("New commission or fee (4 dp). Omit to keep."),
+          description: z
+            .string()
+            .max(500)
+            .optional()
+            .describe("New description or memo. Omit to keep."),
+          dryRun: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe(
+              "If true, validate and return a preview of the resulting transaction without saving.",
+            ),
+        },
+        outputSchema: updateInvestmentTransactionOutput,
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "write");
+        if (check.error) return check.result;
+
+        const limitCheck = this.writeLimiter.checkLimit(ctx.userId);
+        if (!limitCheck.allowed) {
+          return toolError(
+            `Daily write limit reached (${limitCheck.limit} operations per day). Try again tomorrow.`,
+          );
+        }
+
+        try {
+          const preview =
+            await this.investmentTransactionsService.previewUpdateInvestmentTransaction(
+              ctx.userId,
+              args.transactionId,
+              {
+                action: args.action,
+                transactionDate: args.date,
+                securityQuery: args.security,
+                quantity: args.quantity,
+                price: args.price,
+                commission: args.commission,
+                description: args.description,
+              },
+            );
+
+          if (args.dryRun) {
+            return toolResult({
+              dryRun: true,
+              preview: {
+                transactionId: preview.transactionId,
+                accountId: preview.accountId,
+                accountName: preview.accountName,
+                action: preview.action,
+                date: preview.transactionDate,
+                securityId: preview.securityId,
+                symbol: preview.symbol,
+                securityName: preview.securityName,
+                securityCurrency: preview.securityCurrency,
+                quantity: preview.quantity,
+                price: preview.price,
+                commission: preview.commission,
+                totalAmount: preview.totalAmount,
+                exchangeRate: preview.exchangeRate,
+                cashAccountName: preview.cashAccountName,
+                cashCurrency: preview.cashCurrency,
+                cashAmount: preview.cashAmount,
+                description: preview.description,
+              },
+              message:
+                "This is a preview. Call again with dryRun=false to apply the change.",
+            });
+          }
+
+          const pendingAction =
+            this.actionBuilder.buildUpdateInvestmentTransaction(
+              ctx.userId,
+              preview,
+            );
+          if (this.relayService.emitPendingAction(ctx.userId, pendingAction)) {
+            return toolResult(RELAY_PREVIEW_SHOWN);
+          }
+
+          const confirmLines = [
+            "Apply this investment transaction edit?",
+            `Account: ${preview.accountName}`,
+            `Type: ${preview.action}`,
+            `Date: ${preview.transactionDate}`,
+          ];
+          if (preview.symbol) {
+            confirmLines.push(
+              `Security: ${preview.symbol}${preview.securityName ? ` (${preview.securityName})` : ""}`,
+            );
+          }
+          if (preview.quantity !== null) {
+            confirmLines.push(`Quantity: ${preview.quantity}`);
+          }
+          if (preview.price !== null) {
+            confirmLines.push(`Price: ${preview.price}`);
+          }
+          if (preview.commission) {
+            confirmLines.push(`Commission: ${preview.commission}`);
+          }
+          if (preview.cashAccountName && preview.cashAmount !== null) {
+            confirmLines.push(
+              `Cash: ${preview.cashAmount} ${preview.cashCurrency} in ${preview.cashAccountName}`,
+            );
+          }
+          const confirmation = await confirmWrite(
+            server,
+            confirmLines.join("\n"),
+            extra.requestId,
+          );
+          if (confirmation === "declined") {
+            return toolError(
+              "Cancelled: the confirmation was declined, so the investment transaction was not changed. Do not retry unless the user asks again.",
+            );
+          }
+
+          const transaction = await this.investmentTransactionsService.update(
+            ctx.userId,
+            args.transactionId,
+            {
+              action: preview.action,
+              transactionDate: preview.transactionDate,
+              securityId: preview.securityId ?? undefined,
+              fundingAccountId: preview.fundingAccountId ?? undefined,
+              quantity: preview.quantity ?? undefined,
+              price: preview.price ?? undefined,
+              commission: preview.commission,
+              exchangeRate: preview.exchangeRate,
+              description: preview.description ?? undefined,
+            },
+          );
+
+          this.writeLimiter.record(ctx.userId, "update_investment_transaction");
+
+          return toolResult({
+            id: transaction.id,
+            action: transaction.action,
+            date: transaction.transactionDate,
+            symbol: preview.symbol,
+            quantity:
+              transaction.quantity !== null
+                ? Number(transaction.quantity)
+                : null,
+            price:
+              transaction.price !== null ? Number(transaction.price) : null,
+            totalAmount: Number(transaction.totalAmount),
+          });
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "delete_investment_transaction",
+      {
+        title: "Delete investment transaction",
+        annotations: DELETE,
+        description:
+          "Delete an existing brokerage/investment-account transaction. Deleting one leg of a security transfer removes the paired leg too, and any linked cash impact is reversed. Set dryRun=true to preview what would be deleted without removing it. When dryRun is false, the user is asked to confirm before the transaction is removed (clients that support it show a confirmation dialog). Shares the delete logic with the AI Assistant's delete_investment_transaction tool.",
+        inputSchema: {
+          transactionId: z
+            .string()
+            .uuid()
+            .describe("ID of the investment transaction to delete"),
+          dryRun: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe(
+              "If true, return a preview of the transaction without deleting it.",
+            ),
+        },
+        outputSchema: deleteInvestmentTransactionOutput,
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "write");
+        if (check.error) return check.result;
+
+        const limitCheck = this.writeLimiter.checkLimit(ctx.userId);
+        if (!limitCheck.allowed) {
+          return toolError(
+            `Daily write limit reached (${limitCheck.limit} operations per day). Try again tomorrow.`,
+          );
+        }
+
+        try {
+          const preview =
+            await this.investmentTransactionsService.previewDeleteInvestmentTransaction(
+              ctx.userId,
+              args.transactionId,
+            );
+
+          if (args.dryRun) {
+            return toolResult({
+              dryRun: true,
+              preview: {
+                transactionId: preview.transactionId,
+                accountName: preview.accountName,
+                action: preview.action,
+                date: preview.transactionDate,
+                symbol: preview.symbol,
+                securityName: preview.securityName,
+                securityCurrency: preview.securityCurrency,
+                quantity: preview.quantity,
+                price: preview.price,
+                commission: preview.commission,
+                totalAmount: preview.totalAmount,
+                description: preview.description,
+              },
+              message:
+                "This is a preview. Call again with dryRun=false to delete the transaction.",
+            });
+          }
+
+          const pendingAction =
+            this.actionBuilder.buildDeleteInvestmentTransaction(
+              ctx.userId,
+              preview,
+            );
+          if (this.relayService.emitPendingAction(ctx.userId, pendingAction)) {
+            return toolResult(RELAY_PREVIEW_SHOWN);
+          }
+
+          const confirmLines = [
+            "Delete this investment transaction?",
+            `Account: ${preview.accountName}`,
+            `Type: ${preview.action}`,
+            `Date: ${preview.transactionDate}`,
+          ];
+          if (preview.symbol) {
+            confirmLines.push(
+              `Security: ${preview.symbol}${preview.securityName ? ` (${preview.securityName})` : ""}`,
+            );
+          }
+          const confirmation = await confirmWrite(
+            server,
+            confirmLines.join("\n"),
+            extra.requestId,
+          );
+          if (confirmation === "declined") {
+            return toolError(
+              "Cancelled: the confirmation was declined, so the investment transaction was not deleted. Do not retry unless the user asks again.",
+            );
+          }
+
+          await this.investmentTransactionsService.remove(
+            ctx.userId,
+            args.transactionId,
+          );
+
+          this.writeLimiter.record(ctx.userId, "delete_investment_transaction");
+
+          return toolResult({
+            id: args.transactionId,
+            deleted: true,
           });
         } catch (err: unknown) {
           return safeToolError(err);

@@ -33,21 +33,40 @@ export function TransactionConfirmationCard({
     useNumberFormat();
   const { preview, type, status } = action;
 
-  const title =
-    type === 'create_transaction'
-      ? t('confirmAction.createTransactionTitle')
-      : type === 'categorize_transaction'
-        ? t('confirmAction.categorizeTitle')
-        : type === 'create_investment_transaction'
-          ? t('confirmAction.createInvestmentTransactionTitle')
-          : type === 'create_security'
-            ? t('confirmAction.createSecurityTitle')
-            : t('confirmAction.createPayeeTitle');
+  // Create, update, and delete share the same field layout per domain (cash vs
+  // investment); only the title and success copy differ.
+  const isCashTxType =
+    type === 'create_transaction' ||
+    type === 'update_transaction' ||
+    type === 'delete_transaction';
+  const isInvestmentTxType =
+    type === 'create_investment_transaction' ||
+    type === 'update_investment_transaction' ||
+    type === 'delete_investment_transaction';
+
+  const titleByType: Partial<Record<typeof type, string>> = {
+    create_transaction: t('confirmAction.createTransactionTitle'),
+    update_transaction: t('confirmAction.updateTransactionTitle'),
+    delete_transaction: t('confirmAction.deleteTransactionTitle'),
+    categorize_transaction: t('confirmAction.categorizeTitle'),
+    create_investment_transaction: t(
+      'confirmAction.createInvestmentTransactionTitle',
+    ),
+    update_investment_transaction: t(
+      'confirmAction.updateInvestmentTransactionTitle',
+    ),
+    delete_investment_transaction: t(
+      'confirmAction.deleteInvestmentTransactionTitle',
+    ),
+    create_security: t('confirmAction.createSecurityTitle'),
+    create_payee: t('confirmAction.createPayeeTitle'),
+  };
+  const title = titleByType[type] ?? t('confirmAction.createPayeeTitle');
 
   const none = t('confirmAction.none');
   const rows: Array<{ label: string; value: string }> = [];
 
-  if (type === 'create_transaction') {
+  if (isCashTxType) {
     if (preview.accountName)
       rows.push({ label: t('confirmAction.account'), value: preview.accountName });
     if (preview.amount !== undefined)
@@ -92,7 +111,7 @@ export function TransactionConfirmationCard({
       label: t('confirmAction.newCategory'),
       value: preview.newCategoryName || none,
     });
-  } else if (type === 'create_investment_transaction') {
+  } else if (isInvestmentTxType) {
     if (preview.accountName)
       rows.push({ label: t('confirmAction.account'), value: preview.accountName });
     if (preview.investmentAction)
@@ -183,28 +202,39 @@ export function TransactionConfirmationCard({
     });
   }
 
-  const isInvestmentResult = type === 'create_investment_transaction';
-  const isTransactionResult =
-    type === 'create_transaction' || type === 'categorize_transaction';
   const isSecurityResult = type === 'create_security';
-  // The created/updated record's home, surfaced as a "view" link on success.
-  const viewLink = isInvestmentResult
-    ? { href: '/investments', label: t('confirmAction.viewInvestments') }
-    : isSecurityResult
-      ? { href: '/securities', label: t('confirmAction.viewSecurities') }
-      : isTransactionResult
-        ? { href: '/transactions', label: t('confirmAction.viewTransaction') }
-        : null;
+  // A deletion removes the record, so there is nothing to navigate to.
+  const isDeletion =
+    type === 'delete_transaction' || type === 'delete_investment_transaction';
+  // The affected record's home, surfaced as a "view" link on success.
+  const viewLink = isDeletion
+    ? null
+    : isInvestmentTxType
+      ? { href: '/investments', label: t('confirmAction.viewInvestments') }
+      : isSecurityResult
+        ? { href: '/securities', label: t('confirmAction.viewSecurities') }
+        : isCashTxType || type === 'categorize_transaction'
+          ? { href: '/transactions', label: t('confirmAction.viewTransaction') }
+          : null;
+  const successByType: Partial<Record<typeof type, string>> = {
+    create_transaction: t('confirmAction.createdTransaction'),
+    update_transaction: t('confirmAction.updatedTransaction'),
+    delete_transaction: t('confirmAction.deletedTransaction'),
+    categorize_transaction: t('confirmAction.categorized'),
+    create_investment_transaction: t(
+      'confirmAction.createdInvestmentTransaction',
+    ),
+    update_investment_transaction: t(
+      'confirmAction.updatedInvestmentTransaction',
+    ),
+    delete_investment_transaction: t(
+      'confirmAction.deletedInvestmentTransaction',
+    ),
+    create_security: t('confirmAction.createdSecurity'),
+    create_payee: t('confirmAction.createdPayee'),
+  };
   const successMessage =
-    type === 'create_transaction'
-      ? t('confirmAction.createdTransaction')
-      : type === 'categorize_transaction'
-        ? t('confirmAction.categorized')
-        : type === 'create_investment_transaction'
-          ? t('confirmAction.createdInvestmentTransaction')
-          : type === 'create_security'
-            ? t('confirmAction.createdSecurity')
-            : t('confirmAction.createdPayee');
+    successByType[type] ?? t('confirmAction.createdPayee');
 
   return (
     <div className="rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-900/20 overflow-hidden">

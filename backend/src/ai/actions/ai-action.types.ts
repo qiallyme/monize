@@ -24,7 +24,11 @@ export type AiActionType =
   | "create_security"
   | "create_investment_transaction"
   | "create_transactions"
-  | "create_investment_transactions";
+  | "create_investment_transactions"
+  | "update_transaction"
+  | "delete_transaction"
+  | "update_investment_transaction"
+  | "delete_investment_transaction";
 
 export const AI_ACTION_TYPES: AiActionType[] = [
   "create_transaction",
@@ -34,6 +38,10 @@ export const AI_ACTION_TYPES: AiActionType[] = [
   "create_investment_transaction",
   "create_transactions",
   "create_investment_transactions",
+  "update_transaction",
+  "delete_transaction",
+  "update_investment_transaction",
+  "delete_investment_transaction",
 ];
 
 /**
@@ -166,6 +174,56 @@ export interface CreateInvestmentTransactionsDescriptor extends BaseDescriptor {
   rows: InvestmentTransactionRowDescriptor[];
 }
 
+/**
+ * Edit an existing transaction. Carries the full resulting state (every field
+ * as it will be persisted), so confirm applies an idempotent overwrite of the
+ * identified transaction -- mirroring `CreateTransactionDescriptor` plus the id.
+ */
+export interface UpdateTransactionDescriptor extends BaseDescriptor {
+  type: "update_transaction";
+  transactionId: string;
+  accountId: string;
+  amount: number;
+  transactionDate: string;
+  payeeId: string | null;
+  payeeName: string | null;
+  createPayee: boolean;
+  categoryId: string | null;
+  description: string | null;
+  currencyCode: string;
+}
+
+/** Delete an existing transaction (identified only; confirm re-checks ownership). */
+export interface DeleteTransactionDescriptor extends BaseDescriptor {
+  type: "delete_transaction";
+  transactionId: string;
+}
+
+/**
+ * Edit an existing investment transaction. Carries the full resolved resulting
+ * state (mirroring `CreateInvestmentTransactionDescriptor`) plus the id.
+ */
+export interface UpdateInvestmentTransactionDescriptor extends BaseDescriptor {
+  type: "update_investment_transaction";
+  transactionId: string;
+  accountId: string;
+  action: InvestmentAction;
+  transactionDate: string;
+  securityId: string | null;
+  fundingAccountId: string | null;
+  quantity: number | null;
+  price: number | null;
+  commission: number;
+  exchangeRate: number;
+  description: string | null;
+}
+
+/** Delete an existing investment transaction. */
+export interface DeleteInvestmentTransactionDescriptor extends BaseDescriptor {
+  type: "delete_investment_transaction";
+  transactionId: string;
+}
+
 export type AiActionDescriptor =
   | CreateTransactionDescriptor
   | CategorizeTransactionDescriptor
@@ -173,7 +231,11 @@ export type AiActionDescriptor =
   | CreateSecurityDescriptor
   | CreateInvestmentTransactionDescriptor
   | CreateTransactionsDescriptor
-  | CreateInvestmentTransactionsDescriptor;
+  | CreateInvestmentTransactionsDescriptor
+  | UpdateTransactionDescriptor
+  | DeleteTransactionDescriptor
+  | UpdateInvestmentTransactionDescriptor
+  | DeleteInvestmentTransactionDescriptor;
 
 /**
  * Human-readable preview shown on the confirmation card. Display-only (not part

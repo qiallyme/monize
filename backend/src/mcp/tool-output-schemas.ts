@@ -269,6 +269,61 @@ export const categorizeTransactionOutput = {
   status: str.optional(),
 };
 
+export const updateTransactionOutput = {
+  // Dry-run preview branch.
+  dryRun: bool.optional(),
+  preview: z
+    .object({
+      transactionId: str.optional(),
+      accountId: str.optional(),
+      accountName: str.optional(),
+      amount: num.optional(),
+      date: str.optional(),
+      payeeId: strNull.optional(),
+      payeeName: strNull.optional(),
+      payeeMatched: bool.optional(),
+      payeeWillBeCreated: bool.optional(),
+      categoryId: strNull.optional(),
+      categoryName: strNull.optional(),
+      description: strNull.optional(),
+      currencyCode: str.optional(),
+    })
+    .optional(),
+  message: str.optional(),
+  // Updated-transaction branch.
+  id: str.optional(),
+  date: str.optional(),
+  amount: num.optional(),
+  payeeId: strNull.optional(),
+  payeeName: strNull.optional(),
+  categoryId: strNull.optional(),
+  // Relay branch: a confirmation card was shown in the web chat instead.
+  status: str.optional(),
+};
+
+export const deleteTransactionOutput = {
+  // Dry-run preview branch.
+  dryRun: bool.optional(),
+  preview: z
+    .object({
+      transactionId: str.optional(),
+      accountName: str.optional(),
+      amount: num.optional(),
+      date: str.optional(),
+      payeeName: strNull.optional(),
+      categoryName: strNull.optional(),
+      description: strNull.optional(),
+      currencyCode: str.optional(),
+    })
+    .optional(),
+  message: str.optional(),
+  // Deleted branch.
+  id: str.optional(),
+  deleted: bool.optional(),
+  // Relay branch: a confirmation card was shown in the web chat instead.
+  status: str.optional(),
+};
+
 // ---------------------------------------------------------------------------
 // categories.tool.ts
 // ---------------------------------------------------------------------------
@@ -478,6 +533,22 @@ export const getHoldingDetailsOutput = {
   ),
 };
 
+export const lookupSecuritiesOutput = {
+  query: str,
+  count: num,
+  candidates: z.array(
+    looseObject({
+      symbol: str,
+      name: str,
+      exchange: strNull,
+      securityType: strNull,
+      currencyCode: strNull,
+      provider: strNull,
+      alreadyAdded: bool,
+    }),
+  ),
+};
+
 export const createSecurityOutput = {
   // Dry-run preview branch.
   dryRun: bool.optional(),
@@ -538,6 +609,71 @@ export const createInvestmentTransactionOutput = {
   quantity: numNull.optional(),
   price: numNull.optional(),
   totalAmount: num.optional(),
+  // Relay branch: a confirmation card was shown in the web chat instead.
+  status: str.optional(),
+};
+
+export const updateInvestmentTransactionOutput = {
+  // Dry-run preview branch.
+  dryRun: bool.optional(),
+  preview: z
+    .object({
+      transactionId: str.optional(),
+      accountId: str.optional(),
+      accountName: str.optional(),
+      action: str.optional(),
+      date: str.optional(),
+      securityId: strNull.optional(),
+      symbol: strNull.optional(),
+      securityName: strNull.optional(),
+      securityCurrency: strNull.optional(),
+      quantity: numNull.optional(),
+      price: numNull.optional(),
+      commission: num.optional(),
+      totalAmount: num.optional(),
+      exchangeRate: num.optional(),
+      cashAccountName: strNull.optional(),
+      cashCurrency: strNull.optional(),
+      cashAmount: numNull.optional(),
+      description: strNull.optional(),
+    })
+    .optional(),
+  message: str.optional(),
+  // Updated-transaction branch.
+  id: str.optional(),
+  action: str.optional(),
+  date: str.optional(),
+  symbol: strNull.optional(),
+  quantity: numNull.optional(),
+  price: numNull.optional(),
+  totalAmount: num.optional(),
+  // Relay branch: a confirmation card was shown in the web chat instead.
+  status: str.optional(),
+};
+
+export const deleteInvestmentTransactionOutput = {
+  // Dry-run preview branch.
+  dryRun: bool.optional(),
+  preview: z
+    .object({
+      transactionId: str.optional(),
+      accountName: str.optional(),
+      action: str.optional(),
+      date: str.optional(),
+      symbol: strNull.optional(),
+      securityName: strNull.optional(),
+      securityCurrency: strNull.optional(),
+      quantity: numNull.optional(),
+      price: numNull.optional(),
+      commission: num.optional(),
+      totalAmount: num.optional(),
+      description: strNull.optional(),
+    })
+    .optional(),
+  message: str.optional(),
+  // Deleted branch.
+  id: str.optional(),
+  deleted: bool.optional(),
   // Relay branch: a confirmation card was shown in the web chat instead.
   status: str.optional(),
 };

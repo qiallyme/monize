@@ -342,7 +342,10 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
       <Select
         label={t('form.currencyLabel')}
         options={currencyOptions}
-        {...register('currencyCode')}
+        value={watch('currencyCode') || ''}
+        onChange={(e) =>
+          setValue('currencyCode', e.target.value, { shouldDirty: true })
+        }
         error={errors.currencyCode?.message}
       />
 

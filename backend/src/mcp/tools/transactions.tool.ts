@@ -39,8 +39,10 @@ import {
   createTransactionOutput,
   createTransactionsOutput,
   categorizeTransactionOutput,
+  updateTransactionOutput,
+  deleteTransactionOutput,
 } from "../tool-output-schemas";
-import { READ_ONLY, CREATE, UPDATE } from "../mcp-annotations";
+import { READ_ONLY, CREATE, UPDATE, DELETE } from "../mcp-annotations";
 
 @Injectable()
 export class McpTransactionsTools {
@@ -883,6 +885,283 @@ export class McpTransactionsTools {
             id: transaction.id,
             categoryId: transaction.categoryId,
             message: "Transaction categorized successfully",
+          });
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "update_transaction",
+      {
+        title: "Update transaction",
+        annotations: UPDATE,
+        description:
+          "Edit an existing transaction. Pass only the fields to change; omitted fields keep their current value. Amount is positive for income, negative for expenses. A changed payee name is matched to an existing payee, otherwise created (createPayeeIfMissing=true, default) or kept as free text (false). Transfers and split transactions cannot be edited here. Set dryRun=true to preview the resulting state without saving. When dryRun is false, the user is asked to confirm before the change is saved (clients that support it show a confirmation dialog). Shares the edit logic with the AI Assistant's update_transaction tool.",
+        inputSchema: {
+          transactionId: z
+            .string()
+            .uuid()
+            .describe("ID of the transaction to edit"),
+          amount: z
+            .number()
+            .min(-999999999999)
+            .max(999999999999)
+            .optional()
+            .describe(
+              "New amount (positive for income, negative for expenses). Omit to keep.",
+            ),
+          date: z
+            .string()
+            .max(10)
+            .optional()
+            .describe("New transaction date (YYYY-MM-DD). Omit to keep."),
+          payeeName: z
+            .string()
+            .max(100)
+            .optional()
+            .describe("New payee name. Omit to keep the current payee."),
+          categoryId: z
+            .string()
+            .uuid()
+            .optional()
+            .describe("New category ID. Omit to keep the current category."),
+          description: z
+            .string()
+            .max(500)
+            .optional()
+            .describe("New description or memo. Omit to keep."),
+          createPayeeIfMissing: z
+            .boolean()
+            .optional()
+            .default(true)
+            .describe(
+              "When a new payee name matches no existing payee, create a new payee (true, default) or record it as free text (false). Ignored when the name matches or no payee change is requested.",
+            ),
+          dryRun: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe(
+              "If true, validate and return a preview of the resulting transaction without saving.",
+            ),
+        },
+        outputSchema: updateTransactionOutput,
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "write");
+        if (check.error) return check.result;
+
+        const limitCheck = this.writeLimiter.checkLimit(ctx.userId);
+        if (!limitCheck.allowed) {
+          return toolError(
+            `Daily write limit reached (${limitCheck.limit} operations per day). Try again tomorrow.`,
+          );
+        }
+
+        try {
+          const createPayeeIfMissing = args.createPayeeIfMissing ?? true;
+
+          const preview = await this.transactionsService.previewUpdate(
+            ctx.userId,
+            args.transactionId,
+            {
+              amount: args.amount,
+              transactionDate: args.date,
+              payeeName: args.payeeName,
+              categoryId: args.categoryId,
+              description: args.description,
+              createPayeeIfMissing,
+            },
+          );
+
+          if (args.dryRun) {
+            return toolResult({
+              dryRun: true,
+              preview: {
+                transactionId: preview.transactionId,
+                accountId: preview.accountId,
+                accountName: preview.accountName,
+                amount: preview.amount,
+                date: preview.transactionDate,
+                payeeId: preview.payeeId,
+                payeeName: preview.payeeName,
+                payeeMatched: preview.payeeMatched,
+                payeeWillBeCreated: preview.payeeWillBeCreated,
+                categoryId: preview.categoryId,
+                categoryName: preview.categoryName,
+                description: preview.description,
+                currencyCode: preview.currencyCode,
+              },
+              message:
+                "This is a preview. Call again with dryRun=false to apply the change.",
+            });
+          }
+
+          const pendingAction = this.actionBuilder.buildUpdateTransaction(
+            ctx.userId,
+            preview,
+          );
+          if (this.relayService.emitPendingAction(ctx.userId, pendingAction)) {
+            return toolResult(RELAY_PREVIEW_SHOWN);
+          }
+
+          const confirmLines = [
+            "Apply this transaction edit?",
+            `Account: ${preview.accountName}`,
+            `Amount: ${preview.amount} ${preview.currencyCode}`,
+            `Date: ${preview.transactionDate}`,
+          ];
+          if (preview.payeeName) {
+            const payeeSuffix = preview.payeeMatched
+              ? ""
+              : preview.payeeWillBeCreated
+                ? " (new payee)"
+                : " (free text)";
+            confirmLines.push(`Payee: ${preview.payeeName}${payeeSuffix}`);
+          }
+          if (preview.categoryName) {
+            confirmLines.push(`Category: ${preview.categoryName}`);
+          }
+          const confirmation = await confirmWrite(
+            server,
+            confirmLines.join("\n"),
+            extra.requestId,
+          );
+          if (confirmation === "declined") {
+            return toolError(
+              "Cancelled: the confirmation was declined, so the transaction was not changed. Do not retry unless the user asks again.",
+            );
+          }
+
+          const transaction = await this.transactionsService.update(
+            ctx.userId,
+            args.transactionId,
+            {
+              amount: preview.amount,
+              transactionDate: preview.transactionDate,
+              payeeId: preview.payeeId ?? undefined,
+              payeeName: preview.payeeName ?? undefined,
+              categoryId: preview.categoryId ?? undefined,
+              description: preview.description ?? undefined,
+              currencyCode: preview.currencyCode,
+            },
+            { createPayeeIfMissing },
+          );
+
+          this.writeLimiter.record(ctx.userId, "update_transaction");
+
+          return toolResult({
+            id: transaction.id,
+            date: transaction.transactionDate,
+            amount: Number(transaction.amount),
+            payeeId: transaction.payeeId,
+            payeeName: transaction.payeeName,
+            categoryId: transaction.categoryId,
+          });
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "delete_transaction",
+      {
+        title: "Delete transaction",
+        annotations: DELETE,
+        description:
+          "Delete an existing transaction. Deleting a transfer or split transaction removes its linked legs/children too. Set dryRun=true to preview what would be deleted without removing it. When dryRun is false, the user is asked to confirm before the transaction is removed (clients that support it show a confirmation dialog). Shares the delete logic with the AI Assistant's delete_transaction tool.",
+        inputSchema: {
+          transactionId: z
+            .string()
+            .uuid()
+            .describe("ID of the transaction to delete"),
+          dryRun: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe(
+              "If true, return a preview of the transaction without deleting it.",
+            ),
+        },
+        outputSchema: deleteTransactionOutput,
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "write");
+        if (check.error) return check.result;
+
+        const limitCheck = this.writeLimiter.checkLimit(ctx.userId);
+        if (!limitCheck.allowed) {
+          return toolError(
+            `Daily write limit reached (${limitCheck.limit} operations per day). Try again tomorrow.`,
+          );
+        }
+
+        try {
+          const preview = await this.transactionsService.previewDelete(
+            ctx.userId,
+            args.transactionId,
+          );
+
+          if (args.dryRun) {
+            return toolResult({
+              dryRun: true,
+              preview: {
+                transactionId: preview.transactionId,
+                accountName: preview.accountName,
+                amount: preview.amount,
+                date: preview.transactionDate,
+                payeeName: preview.payeeName,
+                categoryName: preview.categoryName,
+                description: preview.description,
+                currencyCode: preview.currencyCode,
+              },
+              message:
+                "This is a preview. Call again with dryRun=false to delete the transaction.",
+            });
+          }
+
+          const pendingAction = this.actionBuilder.buildDeleteTransaction(
+            ctx.userId,
+            preview,
+          );
+          if (this.relayService.emitPendingAction(ctx.userId, pendingAction)) {
+            return toolResult(RELAY_PREVIEW_SHOWN);
+          }
+
+          const confirmLines = [
+            "Delete this transaction?",
+            `Account: ${preview.accountName}`,
+            `Amount: ${preview.amount} ${preview.currencyCode}`,
+            `Date: ${preview.transactionDate}`,
+          ];
+          if (preview.payeeName) {
+            confirmLines.push(`Payee: ${preview.payeeName}`);
+          }
+          const confirmation = await confirmWrite(
+            server,
+            confirmLines.join("\n"),
+            extra.requestId,
+          );
+          if (confirmation === "declined") {
+            return toolError(
+              "Cancelled: the confirmation was declined, so the transaction was not deleted. Do not retry unless the user asks again.",
+            );
+          }
+
+          await this.transactionsService.remove(ctx.userId, args.transactionId);
+
+          this.writeLimiter.record(ctx.userId, "delete_transaction");
+
+          return toolResult({
+            id: args.transactionId,
+            deleted: true,
           });
         } catch (err: unknown) {
           return safeToolError(err);

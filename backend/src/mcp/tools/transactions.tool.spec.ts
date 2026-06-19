@@ -33,6 +33,9 @@ describe("McpTransactionsTools", () => {
       create: jest.fn(),
       createBulk: jest.fn(),
       update: jest.fn(),
+      remove: jest.fn().mockResolvedValue(undefined),
+      previewUpdate: jest.fn(),
+      previewDelete: jest.fn(),
     };
 
     analyticsService = {
@@ -50,6 +53,8 @@ describe("McpTransactionsTools", () => {
       buildCreateTransaction: jest.fn().mockReturnValue({}),
       buildCreateTransactions: jest.fn().mockReturnValue({}),
       buildCategorizeTransaction: jest.fn().mockReturnValue({}),
+      buildUpdateTransaction: jest.fn().mockReturnValue({}),
+      buildDeleteTransaction: jest.fn().mockReturnValue({}),
     };
 
     tool = new McpTransactionsTools(
@@ -77,8 +82,8 @@ describe("McpTransactionsTools", () => {
     tool.register(server as any, resolve);
   });
 
-  it("should register 9 tools", () => {
-    expect(server.registerTool).toHaveBeenCalledTimes(9);
+  it("should register 11 tools", () => {
+    expect(server.registerTool).toHaveBeenCalledTimes(11);
   });
 
   describe("query_transactions", () => {
@@ -1077,6 +1082,152 @@ describe("McpTransactionsTools", () => {
 
       expect(relayService.emitPendingAction).toHaveBeenCalledTimes(1);
       expect(transactionsService.createBulk).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.status).toBeDefined();
+    });
+  });
+
+  describe("update_transaction", () => {
+    const preview = {
+      transactionId: "t1",
+      accountId: "a1",
+      accountName: "Checking",
+      amount: -75,
+      transactionDate: "2025-02-01",
+      payeeId: "p1",
+      payeeName: "Store",
+      payeeMatched: true,
+      payeeWillBeCreated: false,
+      categoryId: "c1",
+      categoryName: "Groceries",
+      description: null,
+      currencyCode: "USD",
+    };
+
+    it("previews without writing when dryRun is true", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      transactionsService.previewUpdate.mockResolvedValue(preview);
+
+      const result = await handlers["update_transaction"](
+        { transactionId: "t1", amount: -75, dryRun: true },
+        { sessionId: "s1" },
+      );
+
+      expect(transactionsService.update).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.dryRun).toBe(true);
+      expect(parsed.preview.amount).toBe(-75);
+    });
+
+    it("applies the resulting state when the client cannot elicit", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      transactionsService.previewUpdate.mockResolvedValue(preview);
+      transactionsService.update.mockResolvedValue({
+        id: "t1",
+        transactionDate: "2025-02-01",
+        amount: "-75.0000",
+        payeeId: "p1",
+        payeeName: "Store",
+        categoryId: "c1",
+      });
+
+      const result = await handlers["update_transaction"](
+        { transactionId: "t1", amount: -75 },
+        { sessionId: "s1" },
+      );
+
+      expect(transactionsService.update).toHaveBeenCalledWith(
+        "u1",
+        "t1",
+        expect.objectContaining({ amount: -75, currencyCode: "USD" }),
+        { createPayeeIfMissing: true },
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.id).toBe("t1");
+      expect(parsed.amount).toBe(-75);
+    });
+
+    it("shows one relay card and does not write when a relay prompt is in flight", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      relayService.emitPendingAction.mockReturnValue(true);
+      transactionsService.previewUpdate.mockResolvedValue(preview);
+
+      const result = await handlers["update_transaction"](
+        { transactionId: "t1", amount: -75 },
+        { sessionId: "s1" },
+      );
+
+      expect(relayService.emitPendingAction).toHaveBeenCalledTimes(1);
+      expect(transactionsService.update).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.status).toBeDefined();
+    });
+
+    it("requires write scope", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "read" });
+      const result = await handlers["update_transaction"](
+        { transactionId: "t1", amount: -75 },
+        { sessionId: "s1" },
+      );
+      expect(result.isError).toBe(true);
+      expect(transactionsService.previewUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("delete_transaction", () => {
+    const preview = {
+      transactionId: "t1",
+      accountName: "Checking",
+      amount: -75,
+      transactionDate: "2025-02-01",
+      payeeName: "Store",
+      categoryName: "Groceries",
+      description: null,
+      currencyCode: "USD",
+    };
+
+    it("previews without deleting when dryRun is true", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      transactionsService.previewDelete.mockResolvedValue(preview);
+
+      const result = await handlers["delete_transaction"](
+        { transactionId: "t1", dryRun: true },
+        { sessionId: "s1" },
+      );
+
+      expect(transactionsService.remove).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.dryRun).toBe(true);
+      expect(parsed.preview.transactionId).toBe("t1");
+    });
+
+    it("deletes when the client cannot elicit", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      transactionsService.previewDelete.mockResolvedValue(preview);
+
+      const result = await handlers["delete_transaction"](
+        { transactionId: "t1" },
+        { sessionId: "s1" },
+      );
+
+      expect(transactionsService.remove).toHaveBeenCalledWith("u1", "t1");
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.id).toBe("t1");
+      expect(parsed.deleted).toBe(true);
+    });
+
+    it("shows one relay card and does not delete when a relay prompt is in flight", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      relayService.emitPendingAction.mockReturnValue(true);
+      transactionsService.previewDelete.mockResolvedValue(preview);
+
+      const result = await handlers["delete_transaction"](
+        { transactionId: "t1" },
+        { sessionId: "s1" },
+      );
+
+      expect(relayService.emitPendingAction).toHaveBeenCalledTimes(1);
+      expect(transactionsService.remove).not.toHaveBeenCalled();
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.status).toBeDefined();
     });

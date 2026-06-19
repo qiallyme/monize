@@ -202,6 +202,32 @@ export interface CreateInvestmentTransactionPreview {
   description: string | null;
 }
 
+/**
+ * Resolved preview of an edit to an existing investment transaction. Carries
+ * the full resulting state (computed exactly like a create) plus the id being
+ * edited, so the confirmation card matches the create flow and the signed
+ * descriptor can apply an idempotent overwrite.
+ */
+export interface UpdateInvestmentTransactionPreview extends CreateInvestmentTransactionPreview {
+  transactionId: string;
+}
+
+/** Display-only preview of a proposed investment-transaction deletion. */
+export interface DeleteInvestmentTransactionPreview {
+  transactionId: string;
+  accountName: string;
+  action: InvestmentAction;
+  transactionDate: string;
+  symbol: string | null;
+  securityName: string | null;
+  securityCurrency: string | null;
+  quantity: number | null;
+  price: number | null;
+  commission: number;
+  totalAmount: number;
+  description: string | null;
+}
+
 @Injectable()
 export class InvestmentTransactionsService {
   private readonly logger = new Logger(InvestmentTransactionsService.name);
@@ -871,6 +897,102 @@ export class InvestmentTransactionsService {
       cashCurrency,
       cashAmount,
       description: stripHtml(input.description) || null,
+    };
+  }
+
+  /**
+   * Validate and resolve a proposed edit to an existing investment transaction
+   * WITHOUT persisting it. Only the provided fields change; every other field
+   * (account, action, date, security, quantity, price, commission, funding
+   * account, description) is kept from the stored transaction. The resulting
+   * state is run back through the same validation/total/cash computation as a
+   * create so the preview equals what `update()` will persist.
+   */
+  async previewUpdateInvestmentTransaction(
+    userId: string,
+    transactionId: string,
+    input: {
+      action?: InvestmentAction;
+      transactionDate?: string;
+      securityQuery?: string;
+      quantity?: number;
+      price?: number;
+      commission?: number;
+      description?: string;
+    },
+  ): Promise<UpdateInvestmentTransactionPreview> {
+    const existing = await this.findOne(userId, transactionId);
+
+    const hasChange =
+      input.action !== undefined ||
+      input.transactionDate !== undefined ||
+      input.securityQuery !== undefined ||
+      input.quantity !== undefined ||
+      input.price !== undefined ||
+      input.commission !== undefined ||
+      input.description !== undefined;
+    if (!hasChange) {
+      throw new BadRequestException(
+        tr(
+          "errors.securities.noUpdateFields",
+          "Provide at least one field to change.",
+        ),
+      );
+    }
+
+    const preview = await this.previewCreateInvestmentTransaction(userId, {
+      accountId: existing.accountId,
+      action: input.action ?? existing.action,
+      transactionDate: input.transactionDate ?? existing.transactionDate,
+      securityQuery: input.securityQuery ?? existing.security?.symbol,
+      quantity:
+        input.quantity ??
+        (existing.quantity !== null && existing.quantity !== undefined
+          ? Number(existing.quantity)
+          : undefined),
+      price:
+        input.price ??
+        (existing.price !== null && existing.price !== undefined
+          ? Number(existing.price)
+          : undefined),
+      commission: input.commission ?? Number(existing.commission ?? 0),
+      fundingAccountId: existing.fundingAccountId ?? undefined,
+      description: input.description ?? existing.description ?? undefined,
+    });
+
+    return { ...preview, transactionId };
+  }
+
+  /**
+   * Validate ownership of an investment transaction the assistant proposes to
+   * delete and return a display-only preview of what will be removed. The
+   * actual deletion (including any linked transfer leg and cash impact) is
+   * handled by `remove()`.
+   */
+  async previewDeleteInvestmentTransaction(
+    userId: string,
+    transactionId: string,
+  ): Promise<DeleteInvestmentTransactionPreview> {
+    const existing = await this.findOne(userId, transactionId);
+    return {
+      transactionId,
+      accountName: existing.account?.name ?? "",
+      action: existing.action,
+      transactionDate: existing.transactionDate,
+      symbol: existing.security?.symbol ?? null,
+      securityName: existing.security?.name ?? null,
+      securityCurrency: existing.security?.currencyCode ?? null,
+      quantity:
+        existing.quantity !== null && existing.quantity !== undefined
+          ? Number(existing.quantity)
+          : null,
+      price:
+        existing.price !== null && existing.price !== undefined
+          ? Number(existing.price)
+          : null,
+      commission: Number(existing.commission ?? 0),
+      totalAmount: Number(existing.totalAmount ?? 0),
+      description: existing.description ?? null,
     };
   }
 

@@ -19,11 +19,26 @@ const WRITE_TOOLS = new Set([
   "categorize_transaction",
   "create_investment_transaction",
   "create_investment_transactions",
+  "update_transaction",
+  "delete_transaction",
+  "update_investment_transaction",
+  "delete_investment_transaction",
 ]);
 // Write tools whose repeated calls converge to the same state.
-const IDEMPOTENT_WRITES = new Set(["categorize_transaction"]);
+const IDEMPOTENT_WRITES = new Set([
+  "categorize_transaction",
+  "update_transaction",
+  "delete_transaction",
+  "update_investment_transaction",
+  "delete_investment_transaction",
+]);
+// Write tools that remove data (destructiveHint: true).
+const DESTRUCTIVE_TOOLS = new Set([
+  "delete_transaction",
+  "delete_investment_transaction",
+]);
 
-const EXPECTED_TOOL_COUNT = 34;
+const EXPECTED_TOOL_COUNT = 39;
 
 interface ToolProvider {
   register: (server: unknown, resolve?: unknown) => void;
@@ -103,15 +118,31 @@ describe("MCP tool spec compliance", () => {
       expect(config.annotations.openWorldHint).toBe(false);
     });
 
+    it("explicitly declares all four behavioural hints (no implicit defaults)", () => {
+      // Every tool must spell out all four hints rather than relying on the
+      // SDK's implicit defaults (destructiveHint defaults to true, which is
+      // wrong for our read-only tools).
+      expect(typeof config.annotations.readOnlyHint).toBe("boolean");
+      expect(typeof config.annotations.destructiveHint).toBe("boolean");
+      expect(typeof config.annotations.idempotentHint).toBe("boolean");
+      expect(typeof config.annotations.openWorldHint).toBe("boolean");
+    });
+
     it("sets read/write hints matching the tool's effect", () => {
       if (WRITE_TOOLS.has(name)) {
         expect(config.annotations.readOnlyHint).toBe(false);
-        expect(config.annotations.destructiveHint).toBe(false);
+        expect(config.annotations.destructiveHint).toBe(
+          DESTRUCTIVE_TOOLS.has(name),
+        );
         expect(config.annotations.idempotentHint).toBe(
           IDEMPOTENT_WRITES.has(name),
         );
       } else {
+        // Read-only tools never mutate state, so they are non-destructive and
+        // idempotent by definition.
         expect(config.annotations.readOnlyHint).toBe(true);
+        expect(config.annotations.destructiveHint).toBe(false);
+        expect(config.annotations.idempotentHint).toBe(true);
       }
     });
   });
