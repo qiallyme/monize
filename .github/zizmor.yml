@@ -13,7 +13,7 @@ rules:
     # type=gha buildx cache -- so it carries the same documented suppression.
     ignore:
       - ci.yml:486:9
-      - ci.yml:854:9
+      - ci.yml:862:9
 
   artipacked:
     # The release job intentionally keeps the GITHUB_TOKEN persisted on the

@@ -768,6 +768,7 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       platforms: ${{ steps.resolve.outputs.platforms }}
+      annotation_level: ${{ steps.resolve.outputs.annotation_level }}
       build_date: ${{ steps.meta.outputs.build_date }}
       git_sha: ${{ steps.meta.outputs.git_sha }}
     steps:
@@ -797,15 +798,22 @@ jobs:
             TAG="pr-${PR_NUMBER}"
             VERSION="${NEXT}-pr.${PR_NUMBER}"
             PLATFORMS="linux/amd64"
+            # Single-platform export has no image index, so index-level
+            # annotations are rejected ("index annotations not supported for
+            # single platform export"). Annotate the manifest instead.
+            ANNOTATION_LEVEL="manifest"
           else
             TAG="beta"
             VERSION="${NEXT}-beta"
             PLATFORMS="linux/amd64,linux/arm64"
+            # Multi-arch export builds an image index; annotate that.
+            ANNOTATION_LEVEL="index"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "platforms=$PLATFORMS" >> "$GITHUB_OUTPUT"
-          echo "Resolved: event=$EVENT tag=$TAG version=$VERSION platforms=$PLATFORMS"
+          echo "annotation_level=$ANNOTATION_LEVEL" >> "$GITHUB_OUTPUT"
+          echo "Resolved: event=$EVENT tag=$TAG version=$VERSION platforms=$PLATFORMS level=$ANNOTATION_LEVEL"
 
       - name: Set build metadata
         id: meta
@@ -900,16 +908,19 @@ jobs:
             GIT_SHA=${{ needs.prepare-preview.outputs.git_sha }}
             BUILD_DATE=${{ needs.prepare-preview.outputs.build_date }}
             VERSION=${{ needs.prepare-preview.outputs.version }}
+          # Annotation level matches the export: `index` for the multi-arch
+          # :beta build, `manifest` for the single-arch :pr-<n> build (an index
+          # only exists when multiple platforms are exported).
           annotations: |
-            index:org.opencontainers.image.title=${{ matrix.title }}
-            index:org.opencontainers.image.description=${{ matrix.description }}
-            index:org.opencontainers.image.source=https://github.com/kenlasko/monize
-            index:org.opencontainers.image.url=https://github.com/kenlasko/monize
-            index:org.opencontainers.image.authors=ken.lasko@gmail.com
-            index:org.opencontainers.image.vendor=Ken Lasko
-            index:org.opencontainers.image.revision=${{ needs.prepare-preview.outputs.git_sha }}
-            index:org.opencontainers.image.created=${{ needs.prepare-preview.outputs.build_date }}
-            index:org.opencontainers.image.version=${{ needs.prepare-preview.outputs.version }}
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.title=${{ matrix.title }}
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.description=${{ matrix.description }}
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.source=https://github.com/kenlasko/monize
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.url=https://github.com/kenlasko/monize
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.authors=ken.lasko@gmail.com
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.vendor=Ken Lasko
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.revision=${{ needs.prepare-preview.outputs.git_sha }}
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.created=${{ needs.prepare-preview.outputs.build_date }}
+            ${{ needs.prepare-preview.outputs.annotation_level }}:org.opencontainers.image.version=${{ needs.prepare-preview.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
