@@ -24,12 +24,23 @@ import {
   CreatePayeeDescriptor,
   CreateTransactionDescriptor,
   CreateInvestmentTransactionDescriptor,
+  CreateTransactionsDescriptor,
+  CreateInvestmentTransactionsDescriptor,
+  MAX_BULK_ACTION_ROWS,
 } from "./ai-action.types";
+import { BulkCreateSkip } from "../../common/bulk-create.types";
 import { ConfirmAiActionDto } from "./dto/confirm-ai-action.dto";
 
 export interface ConfirmActionResult {
   type: AiActionDescriptor["type"];
+  /** First created id; empty when a bulk batch created nothing. */
   id: string;
+  /** Ids of every created entity (bulk actions); omitted for singular actions. */
+  ids?: string[];
+  /** Number of entities actually created (bulk actions). */
+  count?: number;
+  /** Rows that were skipped best-effort (bulk actions), by input index. */
+  skipped?: BulkCreateSkip[];
 }
 
 @Injectable()
@@ -101,8 +112,14 @@ export class AiActionsService {
       );
     }
 
+    // A bulk action counts as one write per row it would create, so a large
+    // batch cannot slip past the daily cap. The pre-check uses the proposed row
+    // count; the actual recorded writes (below) reflect only rows created.
+    const writeCount = this.proposedWriteCount(
+      descriptor as AiActionDescriptor,
+    );
     const limit = this.writeLimiter.checkLimit(userId);
-    if (!limit.allowed) {
+    if (limit.currentCount + writeCount > limit.limit) {
       throw new BadRequestException(
         tr(
           "errors.ai.actionWriteLimit",
@@ -120,12 +137,31 @@ export class AiActionsService {
         userId,
         descriptor as AiActionDescriptor,
       );
-      this.writeLimiter.record(userId, descriptor.type);
+      // Record one write per entity actually created (bulk actions create
+      // best-effort, so this may be fewer than the proposed count).
+      const recorded = result.count ?? 1;
+      for (let i = 0; i < recorded; i++) {
+        this.writeLimiter.record(userId, descriptor.type);
+      }
       return result;
     } catch (err) {
       this.consumed.delete(descriptor.actionId);
       throw err;
     }
+  }
+
+  /**
+   * How many writes a descriptor proposes: the row count for bulk actions, one
+   * for singular actions. Used to pre-check the daily write cap.
+   */
+  private proposedWriteCount(descriptor: AiActionDescriptor): number {
+    if (
+      descriptor.type === "create_transactions" ||
+      descriptor.type === "create_investment_transactions"
+    ) {
+      return descriptor.rows.length;
+    }
+    return 1;
   }
 
   private async execute(
@@ -141,6 +177,10 @@ export class AiActionsService {
         return this.executeCreatePayee(userId, descriptor);
       case "create_investment_transaction":
         return this.executeCreateInvestmentTransaction(userId, descriptor);
+      case "create_transactions":
+        return this.executeCreateTransactions(userId, descriptor);
+      case "create_investment_transactions":
+        return this.executeCreateInvestmentTransactions(userId, descriptor);
     }
   }
 
@@ -212,6 +252,146 @@ export class AiActionsService {
       dto,
     );
     return { type: "create_investment_transaction", id: transaction.id };
+  }
+
+  private async executeCreateTransactions(
+    userId: string,
+    descriptor: CreateTransactionsDescriptor,
+  ): Promise<ConfirmActionResult> {
+    this.assertBulkRowCount(descriptor.rows.length);
+
+    // Re-validate every row best-effort; a row that fails re-validation is
+    // skipped (recorded by its original index) rather than failing the batch.
+    const toCreate: Array<{
+      dto: CreateTransactionDto;
+      createPayeeIfMissing: boolean;
+    }> = [];
+    const originalIndex: number[] = [];
+    const skipped: BulkCreateSkip[] = [];
+    for (let i = 0; i < descriptor.rows.length; i++) {
+      const row = descriptor.rows[i];
+      const validated = await this.tryValidatedDto(CreateTransactionDto, {
+        accountId: row.accountId,
+        transactionDate: row.transactionDate,
+        amount: row.amount,
+        currencyCode: row.currencyCode,
+        payeeId: row.payeeId ?? undefined,
+        payeeName: row.payeeName ?? undefined,
+        categoryId: row.categoryId ?? undefined,
+        description: row.description ?? undefined,
+      });
+      if (validated) {
+        toCreate.push({
+          dto: validated,
+          createPayeeIfMissing: row.createPayee,
+        });
+        originalIndex.push(i);
+      } else {
+        skipped.push({ index: i, reason: this.bulkRowInvalidReason() });
+      }
+    }
+
+    const result = await this.transactionsService.createBulk(userId, toCreate);
+    for (const s of result.skipped) {
+      skipped.push({ index: originalIndex[s.index], reason: s.reason });
+    }
+
+    return this.toBulkResult(
+      "create_transactions",
+      result.created.map((t) => t.id),
+      skipped,
+    );
+  }
+
+  private async executeCreateInvestmentTransactions(
+    userId: string,
+    descriptor: CreateInvestmentTransactionsDescriptor,
+  ): Promise<ConfirmActionResult> {
+    this.assertBulkRowCount(descriptor.rows.length);
+
+    const toCreate: CreateInvestmentTransactionDto[] = [];
+    const originalIndex: number[] = [];
+    const skipped: BulkCreateSkip[] = [];
+    for (let i = 0; i < descriptor.rows.length; i++) {
+      const row = descriptor.rows[i];
+      const validated = await this.tryValidatedDto(
+        CreateInvestmentTransactionDto,
+        {
+          accountId: row.accountId,
+          action: row.action,
+          transactionDate: row.transactionDate,
+          securityId: row.securityId ?? undefined,
+          fundingAccountId: row.fundingAccountId ?? undefined,
+          quantity: row.quantity ?? undefined,
+          price: row.price ?? undefined,
+          commission: row.commission,
+          exchangeRate: row.exchangeRate,
+          description: row.description ?? undefined,
+        },
+      );
+      if (validated) {
+        toCreate.push(validated);
+        originalIndex.push(i);
+      } else {
+        skipped.push({ index: i, reason: this.bulkRowInvalidReason() });
+      }
+    }
+
+    const result = await this.investmentTransactionsService.createBulk(
+      userId,
+      toCreate,
+    );
+    for (const s of result.skipped) {
+      skipped.push({ index: originalIndex[s.index], reason: s.reason });
+    }
+
+    return this.toBulkResult(
+      "create_investment_transactions",
+      result.created.map((t) => t.id),
+      skipped,
+    );
+  }
+
+  /**
+   * Defensive guard: the bulk row count is bounded at the tool schema and the
+   * builder, so a descriptor outside the range means tampering or a stale
+   * client -- reject it the same way an invalid signature is rejected.
+   */
+  private assertBulkRowCount(count: number): void {
+    if (count < 1 || count > MAX_BULK_ACTION_ROWS) {
+      throw new BadRequestException(this.invalidSignatureMessage());
+    }
+  }
+
+  private toBulkResult(
+    type: AiActionDescriptor["type"],
+    ids: string[],
+    skipped: BulkCreateSkip[],
+  ): ConfirmActionResult {
+    return { type, id: ids[0] ?? "", ids, count: ids.length, skipped };
+  }
+
+  private bulkRowInvalidReason(): string {
+    return tr(
+      "errors.ai.actionConfirmFailed",
+      "This action could not be confirmed.",
+    );
+  }
+
+  /**
+   * Best-effort variant of {@link toValidatedDto}: returns the validated DTO or
+   * undefined when validation fails, so a single bad row in a bulk batch can be
+   * skipped instead of aborting the whole confirmation.
+   */
+  private async tryValidatedDto<T extends object>(
+    cls: new () => T,
+    plain: Record<string, unknown>,
+  ): Promise<T | undefined> {
+    try {
+      return await this.toValidatedDto(cls, plain);
+    } catch {
+      return undefined;
+    }
   }
 
   /**

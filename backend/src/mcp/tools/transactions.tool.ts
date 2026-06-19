@@ -4,7 +4,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TransactionsService } from "../../transactions/transactions.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import { AiRelayService } from "../../ai/relay/ai-relay.service";
-import { AiActionBuilderService } from "../../ai/actions/ai-action-builder.service";
+import {
+  AiActionBuilderService,
+  transactionPreviewRow,
+} from "../../ai/actions/ai-action-builder.service";
+import {
+  AiActionPreviewRow,
+  MAX_BULK_ACTION_ROWS,
+} from "../../ai/actions/ai-action.types";
+import { BulkCreateSkip, bulkSkipReason } from "../../common/bulk-create.types";
+import { CreateTransactionPreview } from "../../transactions/transactions.service";
 import { RELAY_PREVIEW_SHOWN } from "../mcp-relay-confirm";
 import {
   UserContextResolver,
@@ -28,6 +37,7 @@ import {
   comparePeriodsOutput,
   getTransfersOutput,
   createTransactionOutput,
+  createTransactionsOutput,
   categorizeTransactionOutput,
 } from "../tool-output-schemas";
 import { READ_ONLY, CREATE, UPDATE } from "../mcp-annotations";
@@ -606,6 +616,190 @@ export class McpTransactionsTools {
             // True when an unmatched name resulted in a newly linked payee.
             payeeCreated: !preview.payeeMatched && Boolean(transaction.payeeId),
             status: transaction.status,
+          });
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "create_transactions",
+      {
+        title: "Create transactions (bulk)",
+        annotations: CREATE,
+        description:
+          "Create SEVERAL transactions at once from a list or pasted table (max 25 rows). Amount is positive for income, negative for expenses. Each payee name is matched to an existing payee or, per createPayeeIfMissing, created or kept as free text. Best-effort: rows that fail are reported in `skipped` and do not abort the rest. Set dryRun=true to preview every row without saving. When dryRun is false the user confirms once for the whole batch (web chat card via relay, or an MCP confirmation dialog). For a single transaction, use create_transaction. Shares the bulk logic with the AI Assistant's create_transactions tool.",
+        inputSchema: {
+          rows: z
+            .array(
+              z.object({
+                accountId: z.string().uuid().describe("Account ID"),
+                amount: z
+                  .number()
+                  .min(-999999999999)
+                  .max(999999999999)
+                  .describe(
+                    "Amount (positive for income, negative for expenses)",
+                  ),
+                date: z
+                  .string()
+                  .max(10)
+                  .describe("Transaction date (YYYY-MM-DD)"),
+                payeeName: z
+                  .string()
+                  .max(100)
+                  .optional()
+                  .describe("Payee name"),
+                categoryId: z
+                  .string()
+                  .uuid()
+                  .optional()
+                  .describe("Category ID"),
+                description: z.string().max(500).optional(),
+                createPayeeIfMissing: z.boolean().optional().default(true),
+              }),
+            )
+            .min(1)
+            .max(MAX_BULK_ACTION_ROWS)
+            .describe("The transactions to create (1-25 rows)."),
+          dryRun: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe(
+              "If true, validate and return a per-row preview without creating anything.",
+            ),
+        },
+        outputSchema: createTransactionsOutput,
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "write");
+        if (check.error) return check.result;
+
+        try {
+          const okPreviews: CreateTransactionPreview[] = [];
+          const okOriginalIndex: number[] = [];
+          const okCreatePayee: boolean[] = [];
+          const previewRows: AiActionPreviewRow[] = [];
+          const skipped: BulkCreateSkip[] = [];
+          for (let i = 0; i < args.rows.length; i++) {
+            const row = args.rows[i];
+            const createPayeeIfMissing = row.createPayeeIfMissing ?? true;
+            try {
+              const preview = await this.transactionsService.previewCreate(
+                ctx.userId,
+                {
+                  accountId: row.accountId,
+                  amount: row.amount,
+                  transactionDate: row.date,
+                  payeeName: row.payeeName,
+                  categoryId: row.categoryId,
+                  description: row.description,
+                  createPayeeIfMissing,
+                },
+              );
+              okPreviews.push(preview);
+              okOriginalIndex.push(i);
+              okCreatePayee.push(createPayeeIfMissing);
+              previewRows.push(transactionPreviewRow(preview));
+            } catch (err) {
+              const reason = bulkSkipReason(err);
+              skipped.push({ index: i, reason });
+              previewRows.push({
+                status: "error",
+                amount: row.amount,
+                transactionDate: row.date,
+                payeeName: row.payeeName ?? null,
+                description: row.description ?? null,
+                error: reason,
+              });
+            }
+          }
+
+          if (args.dryRun) {
+            return toolResult({
+              dryRun: true,
+              preview: { rows: previewRows, skipped },
+              message:
+                "This is a preview. Call again with dryRun=false to create the transactions.",
+            });
+          }
+
+          if (okPreviews.length === 0) {
+            return toolError(
+              "None of the transactions could be prepared. Check the account, category, and date for each row.",
+            );
+          }
+
+          const limitCheck = this.writeLimiter.checkLimit(ctx.userId);
+          if (limitCheck.currentCount + okPreviews.length > limitCheck.limit) {
+            return toolError(
+              `Daily write limit reached (${limitCheck.limit} operations per day). Try again tomorrow.`,
+            );
+          }
+
+          // Relay first: show one approve/reject card in the web chat.
+          const pendingAction = this.actionBuilder.buildCreateTransactions(
+            ctx.userId,
+            okPreviews,
+            previewRows,
+          );
+          if (this.relayService.emitPendingAction(ctx.userId, pendingAction)) {
+            return toolResult(RELAY_PREVIEW_SHOWN);
+          }
+
+          const skippedNote = skipped.length
+            ? ` (${skipped.length} row(s) could not be prepared and will be skipped)`
+            : "";
+          const confirmation = await confirmWrite(
+            server,
+            `Create ${okPreviews.length} transaction(s)?${skippedNote}`,
+            extra.requestId,
+          );
+          if (confirmation === "declined") {
+            return toolError(
+              "Cancelled: the confirmation was declined, so no transactions were created. Do not retry unless the user asks again.",
+            );
+          }
+
+          const result = await this.transactionsService.createBulk(
+            ctx.userId,
+            okPreviews.map((preview, i) => ({
+              dto: {
+                accountId: preview.accountId,
+                amount: preview.amount,
+                transactionDate: preview.transactionDate,
+                payeeId: preview.payeeId ?? undefined,
+                payeeName: preview.payeeName ?? undefined,
+                categoryId: preview.categoryId ?? undefined,
+                description: preview.description ?? undefined,
+                currencyCode: preview.currencyCode,
+              },
+              createPayeeIfMissing: okCreatePayee[i],
+            })),
+          );
+          for (const s of result.skipped) {
+            skipped.push({
+              index: okOriginalIndex[s.index],
+              reason: s.reason,
+            });
+          }
+          for (let i = 0; i < result.created.length; i++) {
+            this.writeLimiter.record(ctx.userId, "create_transaction");
+          }
+
+          return toolResult({
+            created: result.created.map((t) => ({
+              id: t.id,
+              date: t.transactionDate,
+              amount: Number(t.amount),
+            })),
+            ids: result.created.map((t) => t.id),
+            count: result.created.length,
+            skipped,
           });
         } catch (err: unknown) {
           return safeToolError(err);

@@ -8,6 +8,11 @@ import {
   CreatePayeeDescriptor,
   CreateTransactionDescriptor,
   CreateInvestmentTransactionDescriptor,
+  CreateTransactionsDescriptor,
+  CreateInvestmentTransactionsDescriptor,
+  TransactionRowDescriptor,
+  InvestmentTransactionRowDescriptor,
+  AiActionDescriptor,
 } from "./ai-action.types";
 import { InvestmentAction } from "../../securities/entities/investment-transaction.entity";
 import { ConfirmAiActionDto } from "./dto/confirm-ai-action.dto";
@@ -38,12 +43,14 @@ describe("AiActionsService", () => {
     transactions = {
       create: jest.fn().mockResolvedValue({ id: "tx-new" }),
       update: jest.fn().mockResolvedValue({ id: TX }),
+      createBulk: jest.fn(),
     };
     payees = {
       create: jest.fn().mockResolvedValue({ id: "payee-new" }),
     };
     investments = {
       create: jest.fn().mockResolvedValue({ id: "inv-tx-new" }),
+      createBulk: jest.fn(),
     };
     service = new AiActionsService(
       transactions as never,
@@ -97,13 +104,7 @@ describe("AiActionsService", () => {
     };
   }
 
-  function dtoFor(
-    descriptor:
-      | CreateTransactionDescriptor
-      | CategorizeTransactionDescriptor
-      | CreatePayeeDescriptor
-      | CreateInvestmentTransactionDescriptor,
-  ): ConfirmAiActionDto {
+  function dtoFor(descriptor: AiActionDescriptor): ConfirmAiActionDto {
     return {
       actionId: descriptor.actionId,
       signature: signing.sign(descriptor),
@@ -294,5 +295,153 @@ describe("AiActionsService", () => {
       service.confirm(USER, dtoFor(descriptor)),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(transactions.create).not.toHaveBeenCalled();
+  });
+
+  describe("bulk create_transactions", () => {
+    function bulkTxDescriptor(
+      overrides: Partial<CreateTransactionsDescriptor> = {},
+    ): CreateTransactionsDescriptor {
+      const row = (amount: number): TransactionRowDescriptor => ({
+        accountId: ACC,
+        amount,
+        transactionDate: "2026-01-15",
+        payeeId: null,
+        payeeName: "Store",
+        createPayee: false,
+        categoryId: CAT,
+        description: null,
+        currencyCode: "USD",
+      });
+      return {
+        type: "create_transactions",
+        userId: USER,
+        actionId: "act-bulk",
+        expiresAt: Date.now() + 60_000,
+        rows: [row(-10), row(-20)],
+        ...overrides,
+      };
+    }
+
+    it("creates all valid rows best-effort and returns ids/count/skipped", async () => {
+      transactions.createBulk.mockResolvedValue({
+        created: [{ id: "tx-1" }, { id: "tx-2" }],
+        skipped: [],
+      });
+      const descriptor = bulkTxDescriptor();
+      const result = await service.confirm(USER, dtoFor(descriptor));
+
+      expect(transactions.createBulk).toHaveBeenCalledTimes(1);
+      const passedRows = transactions.createBulk.mock.calls[0][1];
+      expect(passedRows).toHaveLength(2);
+      expect(passedRows[0]).toMatchObject({ createPayeeIfMissing: false });
+      expect(result).toEqual({
+        type: "create_transactions",
+        id: "tx-1",
+        ids: ["tx-1", "tx-2"],
+        count: 2,
+        skipped: [],
+      });
+    });
+
+    it("reports rows the service skipped, remapped to original indices", async () => {
+      // Row 1 (index 1) fails inside createBulk.
+      transactions.createBulk.mockResolvedValue({
+        created: [{ id: "tx-1" }],
+        skipped: [{ index: 1, reason: "Insufficient funds" }],
+      });
+      const result = await service.confirm(USER, dtoFor(bulkTxDescriptor()));
+      expect(result.count).toBe(1);
+      expect(result.skipped).toEqual([
+        { index: 1, reason: "Insufficient funds" },
+      ]);
+    });
+
+    it("skips a row that fails re-validation without aborting the batch", async () => {
+      transactions.createBulk.mockResolvedValue({
+        created: [{ id: "tx-1" }],
+        skipped: [],
+      });
+      // Second row has an invalid currency -> dropped before createBulk.
+      const descriptor = bulkTxDescriptor();
+      descriptor.rows[1] = {
+        ...descriptor.rows[1],
+        currencyCode: "not-a-currency",
+      };
+      const result = await service.confirm(USER, dtoFor(descriptor));
+
+      // Only the valid row reaches the service.
+      expect(transactions.createBulk.mock.calls[0][1]).toHaveLength(1);
+      expect(result.count).toBe(1);
+      expect(result.skipped?.some((s) => s.index === 1)).toBe(true);
+    });
+
+    it("records one write per created row against the daily cap", async () => {
+      transactions.createBulk.mockResolvedValue({
+        created: [{ id: "tx-1" }, { id: "tx-2" }],
+        skipped: [],
+      });
+      await service.confirm(USER, dtoFor(bulkTxDescriptor()));
+      expect(limiter.checkLimit(USER).currentCount).toBe(2);
+    });
+
+    it("rejects the batch when it would exceed the daily cap", async () => {
+      for (let i = 0; i < AI_DAILY_WRITE_LIMIT - 1; i++) {
+        limiter.record(USER, "create_transaction");
+      }
+      // Two rows + 49 existing = 51 > 50 cap.
+      await expect(
+        service.confirm(USER, dtoFor(bulkTxDescriptor())),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(transactions.createBulk).not.toHaveBeenCalled();
+    });
+
+    it("cannot be replayed after a best-effort confirm", async () => {
+      transactions.createBulk.mockResolvedValue({
+        created: [{ id: "tx-1" }, { id: "tx-2" }],
+        skipped: [],
+      });
+      const descriptor = bulkTxDescriptor();
+      await service.confirm(USER, dtoFor(descriptor));
+      await expect(
+        service.confirm(USER, dtoFor(descriptor)),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(transactions.createBulk).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("bulk create_investment_transactions", () => {
+    it("creates all valid rows and returns ids/count", async () => {
+      investments.createBulk.mockResolvedValue({
+        created: [{ id: "inv-1" }, { id: "inv-2" }],
+        skipped: [],
+      });
+      const row = (): InvestmentTransactionRowDescriptor => ({
+        accountId: ACC,
+        action: InvestmentAction.BUY,
+        transactionDate: "2026-01-15",
+        securityId: SEC,
+        fundingAccountId: null,
+        quantity: 10,
+        price: 150,
+        commission: 0,
+        exchangeRate: 1,
+        description: null,
+      });
+      const descriptor: CreateInvestmentTransactionsDescriptor = {
+        type: "create_investment_transactions",
+        userId: USER,
+        actionId: "act-bulk-inv",
+        expiresAt: Date.now() + 60_000,
+        rows: [row(), row()],
+      };
+      const result = await service.confirm(USER, dtoFor(descriptor));
+      expect(investments.createBulk).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        type: "create_investment_transactions",
+        id: "inv-1",
+        ids: ["inv-1", "inv-2"],
+        count: 2,
+      });
+    });
   });
 });

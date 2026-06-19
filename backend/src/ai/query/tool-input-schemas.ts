@@ -4,6 +4,7 @@ import {
   isoDateSchema,
   positiveIntSchema,
 } from "../../common/tool-schemas";
+import { MAX_BULK_ACTION_ROWS } from "../actions/ai-action.types";
 
 /**
  * LLM07-F1: Zod schemas for validating AI tool inputs server-side.
@@ -247,6 +248,23 @@ export const createInvestmentTransactionSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
+/**
+ * Bulk variants: an array of the singular row schema, capped at
+ * MAX_BULK_ACTION_ROWS so a pasted table cannot blow past the provider's
+ * tool-call output-token budget. The singular schemas are reused directly so
+ * the row shapes can never drift from their single-row counterparts.
+ */
+export const createTransactionsSchema = z.object({
+  rows: z.array(createTransactionSchema).min(1).max(MAX_BULK_ACTION_ROWS),
+});
+
+export const createInvestmentTransactionsSchema = z.object({
+  rows: z
+    .array(createInvestmentTransactionSchema)
+    .min(1)
+    .max(MAX_BULK_ACTION_ROWS),
+});
+
 export const toolInputSchemas: Record<string, z.ZodSchema> = {
   query_transactions: queryTransactionsSchema,
   get_account_balances: getAccountBalancesSchema,
@@ -269,6 +287,8 @@ export const toolInputSchemas: Record<string, z.ZodSchema> = {
   categorize_transaction: categorizeTransactionSchema,
   create_payee: createPayeeSchema,
   create_investment_transaction: createInvestmentTransactionSchema,
+  create_transactions: createTransactionsSchema,
+  create_investment_transactions: createInvestmentTransactionsSchema,
 };
 
 /**

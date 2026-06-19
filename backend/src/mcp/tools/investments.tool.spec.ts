@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { McpInvestmentsTools } from "./investments.tool";
 import { UserContextResolver } from "../mcp-context";
 
@@ -30,6 +31,7 @@ describe("McpInvestmentsTools", () => {
       getLlmCapitalGains: jest.fn(),
       previewCreateInvestmentTransaction: jest.fn(),
       create: jest.fn(),
+      createBulk: jest.fn(),
     };
 
     // Default: not serving a relayed prompt, so the tool uses its normal
@@ -37,6 +39,7 @@ describe("McpInvestmentsTools", () => {
     relayService = { emitPendingAction: jest.fn().mockReturnValue(false) };
     const actionBuilder = {
       buildCreateInvestmentTransaction: jest.fn().mockReturnValue({}),
+      buildCreateInvestmentTransactions: jest.fn().mockReturnValue({}),
     };
 
     tool = new McpInvestmentsTools(
@@ -65,8 +68,8 @@ describe("McpInvestmentsTools", () => {
     tool.register(server as any, resolve);
   });
 
-  it("should register 5 tools", () => {
-    expect(server.registerTool).toHaveBeenCalledTimes(5);
+  it("should register 6 tools", () => {
+    expect(server.registerTool).toHaveBeenCalledTimes(6);
   });
 
   describe("get_portfolio_summary", () => {
@@ -565,6 +568,114 @@ describe("McpInvestmentsTools", () => {
       );
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("No security matches");
+    });
+  });
+
+  describe("create_investment_transactions (bulk)", () => {
+    const preview = {
+      accountId: "a1",
+      accountName: "Brokerage",
+      accountCurrency: "USD",
+      action: "BUY",
+      transactionDate: "2026-01-15",
+      securityId: "sec-1",
+      symbol: "AAPL",
+      securityName: "Apple Inc.",
+      securityCurrency: "USD",
+      quantity: 10,
+      price: 150,
+      commission: 0,
+      totalAmount: 1500,
+      exchangeRate: 1,
+      fundingAccountId: null,
+      cashAccountName: "Brokerage Cash",
+      cashCurrency: "USD",
+      cashAmount: -1500,
+      description: null,
+    };
+    const rows = [
+      { accountId: "a1", action: "BUY", date: "2026-01-15", security: "AAPL" },
+      { accountId: "a1", action: "BUY", date: "2026-01-16", security: "AAPL" },
+    ];
+
+    it("previews every row on dryRun without persisting", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      investmentTransactionsService.previewCreateInvestmentTransaction.mockResolvedValue(
+        preview,
+      );
+
+      const result = await handlers["create_investment_transactions"](
+        { rows, dryRun: true },
+        { sessionId: "s1" },
+      );
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.dryRun).toBe(true);
+      expect(parsed.preview.rows).toHaveLength(2);
+      expect(investmentTransactionsService.createBulk).not.toHaveBeenCalled();
+    });
+
+    it("flags a row that fails to resolve but still creates the rest", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      investmentTransactionsService.previewCreateInvestmentTransaction
+        .mockResolvedValueOnce(preview)
+        .mockRejectedValueOnce(new BadRequestException("No security matches"));
+      investmentTransactionsService.createBulk.mockResolvedValue({
+        created: [
+          {
+            id: "inv-1",
+            action: "BUY",
+            transactionDate: "2026-01-15",
+            totalAmount: 1500,
+          },
+        ],
+        skipped: [],
+      });
+
+      const result = await handlers["create_investment_transactions"](
+        { rows },
+        { sessionId: "s1" },
+      );
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(1);
+      // The unresolved row is reported, remapped to its original index.
+      expect(parsed.skipped).toEqual([
+        { index: 1, reason: "No security matches" },
+      ]);
+      expect(investmentTransactionsService.createBulk).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows one relay card and does not write when a relay prompt is in flight", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      relayService.emitPendingAction.mockReturnValue(true);
+      investmentTransactionsService.previewCreateInvestmentTransaction.mockResolvedValue(
+        preview,
+      );
+
+      const result = await handlers["create_investment_transactions"](
+        { rows },
+        { sessionId: "s1" },
+      );
+
+      expect(relayService.emitPendingAction).toHaveBeenCalledTimes(1);
+      expect(investmentTransactionsService.createBulk).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.status).toBeDefined();
+    });
+
+    it("errors when no row resolves", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      investmentTransactionsService.previewCreateInvestmentTransaction.mockRejectedValue(
+        new BadRequestException("No security matches"),
+      );
+
+      const result = await handlers["create_investment_transactions"](
+        { rows },
+        { sessionId: "s1" },
+      );
+      expect(result.isError).toBe(true);
+      expect(investmentTransactionsService.createBulk).not.toHaveBeenCalled();
     });
   });
 });

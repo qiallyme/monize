@@ -549,6 +549,46 @@ describe('aiChatStore', () => {
       });
     });
 
+    it('confirmAction carries bulk count and skipped onto the confirmed card', async () => {
+      const bulkAction = {
+        actionId: 'b1',
+        type: 'create_transactions' as const,
+        expiresAt: Date.now() + 60_000,
+        signature: 'sig',
+        descriptor: { type: 'create_transactions' },
+        preview: { rows: [{ status: 'ok' as const, amount: -10 }] },
+      };
+      mockConfirmAction.mockResolvedValueOnce({
+        type: 'create_transactions',
+        id: 'tx-1',
+        ids: ['tx-1'],
+        count: 1,
+        skipped: [{ index: 1, reason: 'Unknown account' }],
+      });
+      useAiChatStore.getState().submit('add transactions');
+      capturedCallbacks?.onEvent({ type: 'pending_action', action: bulkAction });
+      capturedCallbacks?.onEvent({ type: 'content', text: 'Review.' });
+      capturedCallbacks?.onEvent({
+        type: 'done',
+        usage: { inputTokens: 1, outputTokens: 1, toolCalls: 1 },
+      });
+      const assistant = useAiChatStore
+        .getState()
+        .messages.find((m) => m.role === 'assistant')!;
+
+      await useAiChatStore.getState().confirmAction(assistant.id, 'b1');
+
+      const updated = useAiChatStore
+        .getState()
+        .messages.find((m) => m.id === assistant.id)!;
+      expect(updated.pendingActions![0]).toMatchObject({
+        status: 'confirmed',
+        resultId: 'tx-1',
+        resultCount: 1,
+        resultSkipped: [{ index: 1, reason: 'Unknown account' }],
+      });
+    });
+
     it('confirmAction records an error when the request fails', async () => {
       mockConfirmAction.mockRejectedValueOnce({
         response: { data: { message: 'Nope' } },

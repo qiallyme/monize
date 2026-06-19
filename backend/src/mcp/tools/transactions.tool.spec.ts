@@ -31,6 +31,7 @@ describe("McpTransactionsTools", () => {
         newCategoryName: "Groceries",
       }),
       create: jest.fn(),
+      createBulk: jest.fn(),
       update: jest.fn(),
     };
 
@@ -47,6 +48,7 @@ describe("McpTransactionsTools", () => {
     relayService = { emitPendingAction: jest.fn().mockReturnValue(false) };
     const actionBuilder = {
       buildCreateTransaction: jest.fn().mockReturnValue({}),
+      buildCreateTransactions: jest.fn().mockReturnValue({}),
       buildCategorizeTransaction: jest.fn().mockReturnValue({}),
     };
 
@@ -75,8 +77,8 @@ describe("McpTransactionsTools", () => {
     tool.register(server as any, resolve);
   });
 
-  it("should register 8 tools", () => {
-    expect(server.registerTool).toHaveBeenCalledTimes(8);
+  it("should register 9 tools", () => {
+    expect(server.registerTool).toHaveBeenCalledTimes(9);
   });
 
   describe("query_transactions", () => {
@@ -1003,6 +1005,80 @@ describe("McpTransactionsTools", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Daily write limit reached");
+    });
+  });
+
+  describe("create_transactions (bulk)", () => {
+    const preview = {
+      accountId: "a1",
+      accountName: "Checking",
+      amount: -50,
+      transactionDate: "2025-01-15",
+      payeeId: "p1",
+      payeeName: "Store",
+      payeeMatched: true,
+      payeeWillBeCreated: false,
+      categoryId: null,
+      categoryName: null,
+      description: null,
+      currencyCode: "USD",
+    };
+    const rows = [
+      { accountId: "a1", amount: -50, date: "2025-01-15" },
+      { accountId: "a1", amount: -20, date: "2025-01-16" },
+    ];
+
+    it("previews every row on dryRun without persisting", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      transactionsService.previewCreate.mockResolvedValue(preview);
+
+      const result = await handlers["create_transactions"](
+        { rows, dryRun: true },
+        { sessionId: "s1" },
+      );
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.dryRun).toBe(true);
+      expect(parsed.preview.rows).toHaveLength(2);
+      expect(transactionsService.createBulk).not.toHaveBeenCalled();
+    });
+
+    it("creates valid rows best-effort when the client cannot elicit", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      transactionsService.previewCreate.mockResolvedValue(preview);
+      transactionsService.createBulk.mockResolvedValue({
+        created: [
+          { id: "t1", transactionDate: "2025-01-15", amount: "-50.0000" },
+          { id: "t2", transactionDate: "2025-01-16", amount: "-20.0000" },
+        ],
+        skipped: [],
+      });
+
+      const result = await handlers["create_transactions"](
+        { rows },
+        { sessionId: "s1" },
+      );
+
+      expect(transactionsService.createBulk).toHaveBeenCalledTimes(1);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(2);
+      expect(parsed.ids).toEqual(["t1", "t2"]);
+    });
+
+    it("shows one relay card and does not write when a relay prompt is in flight", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      relayService.emitPendingAction.mockReturnValue(true);
+      transactionsService.previewCreate.mockResolvedValue(preview);
+
+      const result = await handlers["create_transactions"](
+        { rows },
+        { sessionId: "s1" },
+      );
+
+      expect(relayService.emitPendingAction).toHaveBeenCalledTimes(1);
+      expect(transactionsService.createBulk).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.status).toBeDefined();
     });
   });
 });

@@ -13,14 +13,16 @@ import { McpRelayTools } from "./tools/relay.tool";
 // Tools that mutate state; everything else must be read-only.
 const WRITE_TOOLS = new Set([
   "create_transaction",
+  "create_transactions",
   "create_payee",
   "categorize_transaction",
   "create_investment_transaction",
+  "create_investment_transactions",
 ]);
 // Write tools whose repeated calls converge to the same state.
 const IDEMPOTENT_WRITES = new Set(["categorize_transaction"]);
 
-const EXPECTED_TOOL_COUNT = 31;
+const EXPECTED_TOOL_COUNT = 33;
 
 interface ToolProvider {
   register: (server: unknown, resolve?: unknown) => void;

@@ -484,6 +484,8 @@ export const useAiChatStore = create<AiChatState>()(
             messages: patchPendingAction(state.messages, messageId, actionId, {
               status: 'confirmed',
               resultId: res.id,
+              resultCount: res.count,
+              resultSkipped: res.skipped,
             }),
           }));
         } catch (err) {

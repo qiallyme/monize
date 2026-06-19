@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { AssistantMarkdown } from './AssistantMarkdown';
 import { ResultChart } from './ResultChart';
 import { TransactionConfirmationCard } from './TransactionConfirmationCard';
+import { BulkConfirmationCard } from './BulkConfirmationCard';
 import { useAiChatStore } from '@/store/aiChatStore';
 import type { PendingAction } from '@/types/ai';
 
@@ -231,14 +232,22 @@ export function ChatMessage({
         {/* Human-in-the-loop write actions the assistant proposed */}
         {pendingActions && pendingActions.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
-            {pendingActions.map((action) => (
-              <TransactionConfirmationCard
-                key={action.actionId}
-                action={action}
-                onConfirm={() => confirmAction(id ?? '', action.actionId)}
-                onCancel={() => cancelAction(id ?? '', action.actionId)}
-              />
-            ))}
+            {pendingActions.map((action) => {
+              const isBulk =
+                action.type === 'create_transactions' ||
+                action.type === 'create_investment_transactions';
+              const Card = isBulk
+                ? BulkConfirmationCard
+                : TransactionConfirmationCard;
+              return (
+                <Card
+                  key={action.actionId}
+                  action={action}
+                  onConfirm={() => confirmAction(id ?? '', action.actionId)}
+                  onCancel={() => cancelAction(id ?? '', action.actionId)}
+                />
+              );
+            })}
           </div>
         )}
 

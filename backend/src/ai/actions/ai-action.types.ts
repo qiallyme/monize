@@ -21,14 +21,26 @@ export type AiActionType =
   | "create_transaction"
   | "categorize_transaction"
   | "create_payee"
-  | "create_investment_transaction";
+  | "create_investment_transaction"
+  | "create_transactions"
+  | "create_investment_transactions";
 
 export const AI_ACTION_TYPES: AiActionType[] = [
   "create_transaction",
   "categorize_transaction",
   "create_payee",
   "create_investment_transaction",
+  "create_transactions",
+  "create_investment_transactions",
 ];
+
+/**
+ * Largest batch a single bulk action may carry. Tool-call arguments count
+ * against the provider output-token budget (Anthropic completes tool use with a
+ * bounded `max_tokens`), so the parsed table is capped here, in the bulk tool's
+ * Zod schema, and again defensively at confirm time.
+ */
+export const MAX_BULK_ACTION_ROWS = 25;
 
 /** Fields common to every signed descriptor. */
 interface BaseDescriptor {
@@ -89,11 +101,60 @@ export interface CreateInvestmentTransactionDescriptor extends BaseDescriptor {
   description: string | null;
 }
 
+/**
+ * One resolved cash-transaction row inside a bulk `create_transactions` action.
+ * Identical to the singular `CreateTransactionDescriptor` minus the per-action
+ * envelope (the batch shares one `actionId`/`expiresAt`/`userId`/signature).
+ */
+export interface TransactionRowDescriptor {
+  accountId: string;
+  amount: number;
+  transactionDate: string;
+  payeeId: string | null;
+  payeeName: string | null;
+  createPayee: boolean;
+  categoryId: string | null;
+  description: string | null;
+  currencyCode: string;
+}
+
+export interface CreateTransactionsDescriptor extends BaseDescriptor {
+  type: "create_transactions";
+  /** Order is load-bearing: it is covered by the signature and preserved on confirm. */
+  rows: TransactionRowDescriptor[];
+}
+
+/**
+ * One resolved investment-transaction row inside a bulk
+ * `create_investment_transactions` action. Mirrors the singular
+ * `CreateInvestmentTransactionDescriptor` minus the envelope.
+ */
+export interface InvestmentTransactionRowDescriptor {
+  accountId: string;
+  action: InvestmentAction;
+  transactionDate: string;
+  securityId: string | null;
+  fundingAccountId: string | null;
+  quantity: number | null;
+  price: number | null;
+  commission: number;
+  exchangeRate: number;
+  description: string | null;
+}
+
+export interface CreateInvestmentTransactionsDescriptor extends BaseDescriptor {
+  type: "create_investment_transactions";
+  /** Order is load-bearing: it is covered by the signature and preserved on confirm. */
+  rows: InvestmentTransactionRowDescriptor[];
+}
+
 export type AiActionDescriptor =
   | CreateTransactionDescriptor
   | CategorizeTransactionDescriptor
   | CreatePayeeDescriptor
-  | CreateInvestmentTransactionDescriptor;
+  | CreateInvestmentTransactionDescriptor
+  | CreateTransactionsDescriptor
+  | CreateInvestmentTransactionsDescriptor;
 
 /**
  * Human-readable preview shown on the confirmation card. Display-only (not part
@@ -114,6 +175,46 @@ export interface AiActionPreview {
   description?: string | null;
   name?: string | null;
   // create_investment_transaction display fields.
+  investmentAction?: InvestmentAction;
+  symbol?: string | null;
+  securityName?: string | null;
+  securityCurrency?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  commission?: number;
+  totalAmount?: number;
+  cashAccountName?: string | null;
+  cashCurrency?: string | null;
+  cashAmount?: number | null;
+  /**
+   * Per-row previews for the bulk actions (`create_transactions`,
+   * `create_investment_transactions`). Carries every pasted row in order --
+   * both the valid rows that will be created and the flagged rows that were
+   * dropped -- so the confirmation card can show the whole table with badges.
+   */
+  rows?: AiActionPreviewRow[];
+}
+
+/**
+ * Display-only preview of a single row in a bulk action. Reuses the singular
+ * display fields and adds a `status` so the card can grey out and explain rows
+ * that failed to resolve (unknown security/account, validation error). Flagged
+ * rows are NOT part of the signed descriptor; only `status: "ok"` rows are.
+ */
+export interface AiActionPreviewRow {
+  status: "ok" | "error";
+  /** Human-readable reason the row was dropped, when status is "error". */
+  error?: string;
+  // Shared / cash-transaction display fields.
+  accountName?: string;
+  amount?: number;
+  currencyCode?: string;
+  transactionDate?: string;
+  payeeName?: string | null;
+  payeeWillBeCreated?: boolean;
+  categoryName?: string | null;
+  description?: string | null;
+  // Investment-transaction display fields.
   investmentAction?: InvestmentAction;
   symbol?: string | null;
   securityName?: string | null;

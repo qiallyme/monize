@@ -173,7 +173,9 @@ export type AiActionType =
   | 'create_transaction'
   | 'categorize_transaction'
   | 'create_payee'
-  | 'create_investment_transaction';
+  | 'create_investment_transaction'
+  | 'create_transactions'
+  | 'create_investment_transactions';
 
 export type PendingActionStatus =
   | 'pending'
@@ -208,6 +210,37 @@ export interface PendingActionPreview {
   cashAccountName?: string | null;
   cashCurrency?: string | null;
   cashAmount?: number | null;
+  /**
+   * Per-row previews for the bulk actions (`create_transactions`,
+   * `create_investment_transactions`). Every pasted row in order -- both the
+   * valid rows and the flagged ones the bulk card greys out.
+   */
+  rows?: PendingActionPreviewRow[];
+}
+
+/** One row in a bulk confirmation card; `status: 'error'` rows are flagged. */
+export interface PendingActionPreviewRow {
+  status: 'ok' | 'error';
+  error?: string;
+  accountName?: string;
+  amount?: number;
+  currencyCode?: string;
+  transactionDate?: string;
+  payeeName?: string | null;
+  payeeWillBeCreated?: boolean;
+  categoryName?: string | null;
+  description?: string | null;
+  investmentAction?: InvestmentAction;
+  symbol?: string | null;
+  securityName?: string | null;
+  securityCurrency?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  commission?: number;
+  totalAmount?: number;
+  cashAccountName?: string | null;
+  cashCurrency?: string | null;
+  cashAmount?: number | null;
 }
 
 /**
@@ -224,12 +257,22 @@ export interface PendingAction {
   expiresAt: number;
   status: PendingActionStatus;
   resultId?: string;
+  /** Number of entities created by a bulk action (set on success). */
+  resultCount?: number;
+  /** Rows the bulk confirm skipped, by input index (set on success). */
+  resultSkipped?: Array<{ index: number; reason: string }>;
   errorMessage?: string;
 }
 
 export interface ConfirmActionResponse {
   type: AiActionType;
   id: string;
+  /** Bulk actions: ids of every created entity. */
+  ids?: string[];
+  /** Bulk actions: number of entities created. */
+  count?: number;
+  /** Bulk actions: rows skipped best-effort, by input index. */
+  skipped?: Array<{ index: number; reason: string }>;
 }
 
 export interface StreamEvent {

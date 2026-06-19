@@ -10,7 +10,16 @@ import {
 } from "../../securities/investment-transactions.service";
 import { InvestmentAction } from "../../securities/entities/investment-transaction.entity";
 import { AiRelayService } from "../../ai/relay/ai-relay.service";
-import { AiActionBuilderService } from "../../ai/actions/ai-action-builder.service";
+import {
+  AiActionBuilderService,
+  investmentPreviewRow,
+} from "../../ai/actions/ai-action-builder.service";
+import {
+  AiActionPreviewRow,
+  MAX_BULK_ACTION_ROWS,
+} from "../../ai/actions/ai-action.types";
+import { BulkCreateSkip, bulkSkipReason } from "../../common/bulk-create.types";
+import { CreateInvestmentTransactionPreview } from "../../securities/investment-transactions.service";
 import { RELAY_PREVIEW_SHOWN } from "../mcp-relay-confirm";
 import {
   UserContextResolver,
@@ -27,6 +36,7 @@ import {
   getCapitalGainsOutput,
   getHoldingDetailsOutput,
   createInvestmentTransactionOutput,
+  createInvestmentTransactionsOutput,
 } from "../tool-output-schemas";
 import { READ_ONLY, CREATE } from "../mcp-annotations";
 
@@ -449,6 +459,195 @@ export class McpInvestmentsTools {
             price:
               transaction.price !== null ? Number(transaction.price) : null,
             totalAmount: Number(transaction.totalAmount),
+          });
+        } catch (err: unknown) {
+          return safeToolError(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "create_investment_transactions",
+      {
+        title: "Create investment transactions (bulk)",
+        annotations: CREATE,
+        description:
+          "Create SEVERAL brokerage/investment-account transactions at once from a list or pasted table of trades (max 25 rows). Each security is matched automatically by ticker symbol or name. Best-effort: rows that fail to resolve or save are reported in `skipped` and do not abort the rest. Set dryRun=true to preview every row (and see which would be skipped) without saving. When dryRun is false the user confirms once for the whole batch (web chat card via relay, or an MCP confirmation dialog). For a single transaction, use create_investment_transaction. Shares the bulk logic with the AI Assistant's create_investment_transactions tool.",
+        inputSchema: {
+          rows: z
+            .array(
+              z.object({
+                accountId: z.string().uuid().describe("Investment account ID"),
+                action: z
+                  .nativeEnum(InvestmentAction)
+                  .describe("Transaction type (e.g. BUY, SELL, DIVIDEND)"),
+                date: z
+                  .string()
+                  .max(10)
+                  .describe("Transaction date (YYYY-MM-DD)"),
+                security: z
+                  .string()
+                  .min(1)
+                  .max(100)
+                  .optional()
+                  .describe(
+                    "Security ticker symbol or name. Required for BUY, SELL, SPLIT, REINVEST, ADD_SHARES, REMOVE_SHARES.",
+                  ),
+                quantity: z.number().min(0).max(999999999999).optional(),
+                price: z.number().min(0).max(999999999999).optional(),
+                commission: z.number().min(0).max(999999999999).optional(),
+                fundingAccountId: z.string().uuid().optional(),
+                description: z.string().max(500).optional(),
+              }),
+            )
+            .min(1)
+            .max(MAX_BULK_ACTION_ROWS)
+            .describe("The investment transactions to create (1-25 rows)."),
+          dryRun: z
+            .boolean()
+            .optional()
+            .default(false)
+            .describe(
+              "If true, validate and return a per-row preview without creating anything.",
+            ),
+        },
+        outputSchema: createInvestmentTransactionsOutput,
+      },
+      async (args, extra) => {
+        const ctx = resolve(extra.sessionId);
+        if (!ctx) return toolError("No user context");
+        const check = requireScope(ctx.scopes, "write");
+        if (check.error) return check.result;
+
+        try {
+          // Best-effort preview of every row, preserving input order.
+          const okPreviews: CreateInvestmentTransactionPreview[] = [];
+          const okOriginalIndex: number[] = [];
+          const previewRows: AiActionPreviewRow[] = [];
+          const skipped: BulkCreateSkip[] = [];
+          for (let i = 0; i < args.rows.length; i++) {
+            const row = args.rows[i];
+            try {
+              const preview =
+                await this.investmentTransactionsService.previewCreateInvestmentTransaction(
+                  ctx.userId,
+                  {
+                    accountId: row.accountId,
+                    action: row.action,
+                    transactionDate: row.date,
+                    securityQuery: row.security,
+                    quantity: row.quantity,
+                    price: row.price,
+                    commission: row.commission,
+                    fundingAccountId: row.fundingAccountId,
+                    description: row.description,
+                  },
+                );
+              okPreviews.push(preview);
+              okOriginalIndex.push(i);
+              previewRows.push(investmentPreviewRow(preview));
+            } catch (err) {
+              const reason = bulkSkipReason(err);
+              skipped.push({ index: i, reason });
+              previewRows.push({
+                status: "error",
+                investmentAction: row.action,
+                transactionDate: row.date,
+                symbol: row.security ?? null,
+                quantity: row.quantity ?? null,
+                price: row.price ?? null,
+                error: reason,
+              });
+            }
+          }
+
+          if (args.dryRun) {
+            return toolResult({
+              dryRun: true,
+              preview: { rows: previewRows, skipped },
+              message:
+                "This is a preview. Call again with dryRun=false to create the transactions.",
+            });
+          }
+
+          if (okPreviews.length === 0) {
+            return toolError(
+              "None of the investment transactions could be prepared. Check the account, security, action, and date for each row.",
+            );
+          }
+
+          const limitCheck = this.writeLimiter.checkLimit(ctx.userId);
+          if (limitCheck.currentCount + okPreviews.length > limitCheck.limit) {
+            return toolError(
+              `Daily write limit reached (${limitCheck.limit} operations per day). Try again tomorrow.`,
+            );
+          }
+
+          // Relay first: show one approve/reject card in the web chat.
+          const pendingAction =
+            this.actionBuilder.buildCreateInvestmentTransactions(
+              ctx.userId,
+              okPreviews,
+              previewRows,
+            );
+          if (this.relayService.emitPendingAction(ctx.userId, pendingAction)) {
+            return toolResult(RELAY_PREVIEW_SHOWN);
+          }
+
+          const skippedNote = skipped.length
+            ? ` (${skipped.length} row(s) could not be prepared and will be skipped)`
+            : "";
+          const confirmation = await confirmWrite(
+            server,
+            `Create ${okPreviews.length} investment transaction(s)?${skippedNote}`,
+            extra.requestId,
+          );
+          if (confirmation === "declined") {
+            return toolError(
+              "Cancelled: the confirmation was declined, so no investment transactions were created. Do not retry unless the user asks again.",
+            );
+          }
+
+          const result = await this.investmentTransactionsService.createBulk(
+            ctx.userId,
+            okPreviews.map((preview) => ({
+              accountId: preview.accountId,
+              action: preview.action,
+              transactionDate: preview.transactionDate,
+              securityId: preview.securityId ?? undefined,
+              fundingAccountId: preview.fundingAccountId ?? undefined,
+              quantity: preview.quantity ?? undefined,
+              price: preview.price ?? undefined,
+              commission: preview.commission,
+              exchangeRate: preview.exchangeRate,
+              description: preview.description ?? undefined,
+            })),
+          );
+          // Map createBulk's skip indices (relative to okPreviews) back to the
+          // caller's original row indices.
+          for (const s of result.skipped) {
+            skipped.push({
+              index: okOriginalIndex[s.index],
+              reason: s.reason,
+            });
+          }
+          for (let i = 0; i < result.created.length; i++) {
+            this.writeLimiter.record(
+              ctx.userId,
+              "create_investment_transaction",
+            );
+          }
+
+          return toolResult({
+            created: result.created.map((t) => ({
+              id: t.id,
+              action: t.action,
+              date: t.transactionDate,
+              totalAmount: Number(t.totalAmount),
+            })),
+            ids: result.created.map((t) => t.id),
+            count: result.created.length,
+            skipped,
           });
         } catch (err: unknown) {
           return safeToolError(err);
