@@ -191,6 +191,9 @@ export class ToolExecutorService {
         case "create_security":
           result = await this.createSecurityAction(userId, validatedInput);
           break;
+        case "lookup_securities":
+          result = await this.lookupSecuritiesAction(userId, validatedInput);
+          break;
         case "create_investment_transaction":
           result = await this.createInvestmentTransactionAction(
             userId,
@@ -202,6 +205,24 @@ export class ToolExecutorService {
           break;
         case "create_investment_transactions":
           result = await this.createInvestmentTransactionsAction(
+            userId,
+            validatedInput,
+          );
+          break;
+        case "update_transaction":
+          result = await this.updateTransactionAction(userId, validatedInput);
+          break;
+        case "delete_transaction":
+          result = await this.deleteTransactionAction(userId, validatedInput);
+          break;
+        case "update_investment_transaction":
+          result = await this.updateInvestmentTransactionAction(
+            userId,
+            validatedInput,
+          );
+          break;
+        case "delete_investment_transaction":
+          result = await this.deleteInvestmentTransactionAction(
             userId,
             validatedInput,
           );
@@ -533,6 +554,7 @@ export class ToolExecutorService {
     const exchange = input.exchange as string | undefined;
     const securityType = input.securityType as string | undefined;
     const isFavourite = input.isFavourite as boolean | undefined;
+    const currencyCode = input.currencyCode as string | undefined;
 
     let preview;
     try {
@@ -541,6 +563,7 @@ export class ToolExecutorService {
         exchange,
         securityType,
         isFavourite,
+        currencyCode,
       });
     } catch (err) {
       return this.toolErrorFromException(
@@ -559,6 +582,37 @@ export class ToolExecutorService {
       summary: `Prepared to create security ${preview.symbol} (${preview.name})${preview.exchange ? ` on ${preview.exchange}` : ""}. Awaiting user confirmation.`,
       sources: [],
       pendingAction,
+    };
+  }
+
+  private async lookupSecuritiesAction(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const query = input.query as string;
+    const exchange = input.exchange as string | undefined;
+    const provider = input.provider as "yahoo" | "msn" | "auto" | undefined;
+
+    let data;
+    try {
+      data = await this.securitiesService.lookupSecuritiesForLlm(userId, {
+        query,
+        exchange,
+        provider,
+      });
+    } catch (err) {
+      return this.toolErrorFromException(err, "Could not look up securities.");
+    }
+
+    return {
+      data,
+      summary: `Found ${data.count} security match${data.count === 1 ? "" : "es"} for "${data.query}".${data.count > 1 ? " Ask the user which one to use before adding it." : ""}`,
+      sources: [
+        {
+          type: "security_lookup",
+          description: `Security lookup for "${data.query}"`,
+        },
+      ],
     };
   }
 
@@ -634,6 +688,188 @@ export class ToolExecutorService {
     return {
       data: PENDING_ACTION_TOOL_RESULT,
       summary: `Prepared a ${preview.action} investment transaction${securityLabel} in ${preview.accountName} dated ${preview.transactionDate}. Awaiting user confirmation.`,
+      sources: [],
+      pendingAction,
+    };
+  }
+
+  private async updateTransactionAction(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const transactionId = input.transactionId as string;
+    const amount = input.amount as number | undefined;
+    const date = input.date as string | undefined;
+    const payeeName = input.payeeName as string | undefined;
+    const categoryName = input.categoryName as string | undefined;
+    const description = input.description as string | undefined;
+    const createPayeeIfMissing =
+      (input.createPayeeIfMissing as boolean | undefined) ?? true;
+
+    let categoryId: string | undefined;
+    if (categoryName !== undefined) {
+      const resolved = await this.resolveSingleCategoryId(userId, categoryName);
+      if (!resolved) {
+        return this.toolError(
+          `Unknown category: ${categoryName}. Call get_categories to look up valid names; subcategories can be referenced as "Parent: Child".`,
+        );
+      }
+      categoryId = resolved;
+    }
+
+    let preview;
+    try {
+      preview = await this.transactionsService.previewUpdate(
+        userId,
+        transactionId,
+        {
+          amount,
+          transactionDate: date,
+          payeeName,
+          categoryId,
+          description,
+          createPayeeIfMissing,
+        },
+      );
+    } catch (err) {
+      return this.toolErrorFromException(
+        err,
+        "Could not prepare the transaction edit.",
+      );
+    }
+
+    const pendingAction = this.actionBuilder.buildUpdateTransaction(
+      userId,
+      preview,
+    );
+
+    return {
+      data: PENDING_ACTION_TOOL_RESULT,
+      summary: `Prepared an update to the transaction in ${preview.accountName} (${preview.amount} ${preview.currencyCode}) dated ${preview.transactionDate}.${preview.payeeWillBeCreated ? ` A new payee "${preview.payeeName}" will be created on approval.` : ""} Awaiting user confirmation.`,
+      sources: [],
+      pendingAction,
+    };
+  }
+
+  private async deleteTransactionAction(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const transactionId = input.transactionId as string;
+
+    let preview;
+    try {
+      preview = await this.transactionsService.previewDelete(
+        userId,
+        transactionId,
+      );
+    } catch (err) {
+      return this.toolErrorFromException(
+        err,
+        "Could not prepare the transaction deletion.",
+      );
+    }
+
+    const pendingAction = this.actionBuilder.buildDeleteTransaction(
+      userId,
+      preview,
+    );
+
+    return {
+      data: PENDING_ACTION_TOOL_RESULT,
+      summary: `Prepared to delete the transaction in ${preview.accountName} (${preview.amount} ${preview.currencyCode}) dated ${preview.transactionDate}${preview.payeeName ? ` for ${preview.payeeName}` : ""}. Awaiting user confirmation.`,
+      sources: [],
+      pendingAction,
+    };
+  }
+
+  private async updateInvestmentTransactionAction(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const transactionId = input.transactionId as string;
+    const action = input.action as InvestmentAction | undefined;
+    const date = input.date as string | undefined;
+    const securityQuery = input.security as string | undefined;
+    const quantity = input.quantity as number | undefined;
+    const price = input.price as number | undefined;
+    const commission = input.commission as number | undefined;
+    const description = input.description as string | undefined;
+
+    let preview;
+    try {
+      preview =
+        await this.investmentTransactionsService.previewUpdateInvestmentTransaction(
+          userId,
+          transactionId,
+          {
+            action,
+            transactionDate: date,
+            securityQuery,
+            quantity,
+            price,
+            commission,
+            description,
+          },
+        );
+    } catch (err) {
+      return this.toolErrorFromException(
+        err,
+        "Could not prepare the investment transaction edit.",
+      );
+    }
+
+    const pendingAction = this.actionBuilder.buildUpdateInvestmentTransaction(
+      userId,
+      preview,
+    );
+
+    const securityLabel = preview.symbol
+      ? ` of ${preview.symbol}`
+      : preview.securityName
+        ? ` of ${preview.securityName}`
+        : "";
+    return {
+      data: PENDING_ACTION_TOOL_RESULT,
+      summary: `Prepared an update to a ${preview.action} investment transaction${securityLabel} in ${preview.accountName} dated ${preview.transactionDate}. Awaiting user confirmation.`,
+      sources: [],
+      pendingAction,
+    };
+  }
+
+  private async deleteInvestmentTransactionAction(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const transactionId = input.transactionId as string;
+
+    let preview;
+    try {
+      preview =
+        await this.investmentTransactionsService.previewDeleteInvestmentTransaction(
+          userId,
+          transactionId,
+        );
+    } catch (err) {
+      return this.toolErrorFromException(
+        err,
+        "Could not prepare the investment transaction deletion.",
+      );
+    }
+
+    const pendingAction = this.actionBuilder.buildDeleteInvestmentTransaction(
+      userId,
+      preview,
+    );
+
+    const securityLabel = preview.symbol
+      ? ` of ${preview.symbol}`
+      : preview.securityName
+        ? ` of ${preview.securityName}`
+        : "";
+    return {
+      data: PENDING_ACTION_TOOL_RESULT,
+      summary: `Prepared to delete a ${preview.action} investment transaction${securityLabel} in ${preview.accountName} dated ${preview.transactionDate}. Awaiting user confirmation.`,
       sources: [],
       pendingAction,
     };

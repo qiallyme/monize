@@ -3,9 +3,15 @@ import { AiActionSigningService } from "./ai-action-signing.service";
 import {
   CategorizeTransactionPreview,
   CreateTransactionPreview,
+  UpdateTransactionPreview,
+  DeleteTransactionPreview,
 } from "../../transactions/transactions.service";
 import { CreatePayeePreview } from "../../payees/payees.service";
-import { CreateInvestmentTransactionPreview } from "../../securities/investment-transactions.service";
+import {
+  CreateInvestmentTransactionPreview,
+  UpdateInvestmentTransactionPreview,
+  DeleteInvestmentTransactionPreview,
+} from "../../securities/investment-transactions.service";
 import { InvestmentAction } from "../../securities/entities/investment-transaction.entity";
 
 describe("AiActionBuilderService", () => {
@@ -273,5 +279,146 @@ describe("AiActionBuilderService", () => {
       exchangeRate: 1,
     });
     expect(action.preview.rows).toHaveLength(1);
+  });
+
+  it("builds an update_transaction action carrying the full resulting state", () => {
+    const preview: UpdateTransactionPreview = {
+      transactionId: "t1",
+      accountId: "a1",
+      accountName: "Checking",
+      amount: -75,
+      transactionDate: "2025-04-01",
+      payeeId: "p1",
+      payeeName: "Store",
+      payeeMatched: true,
+      payeeWillBeCreated: false,
+      categoryId: "c1",
+      categoryName: "Groceries",
+      description: "edited",
+      currencyCode: "USD",
+    };
+
+    const action = builder.buildUpdateTransaction("u1", preview);
+
+    expect(action.type).toBe("update_transaction");
+    expect(action.descriptor).toMatchObject({
+      type: "update_transaction",
+      userId: "u1",
+      transactionId: "t1",
+      accountId: "a1",
+      amount: -75,
+      payeeId: "p1",
+      createPayee: false,
+      categoryId: "c1",
+      currencyCode: "USD",
+    });
+    expect(signing.sign).toHaveBeenCalledWith(action.descriptor);
+    expect(action.preview).toMatchObject({
+      accountName: "Checking",
+      amount: -75,
+      categoryName: "Groceries",
+      description: "edited",
+    });
+  });
+
+  it("builds a delete_transaction action with only the target id signed", () => {
+    const preview: DeleteTransactionPreview = {
+      transactionId: "t9",
+      accountName: "Checking",
+      amount: -20,
+      transactionDate: "2025-04-02",
+      payeeName: "Cafe",
+      categoryName: "Dining",
+      description: null,
+      currencyCode: "USD",
+    };
+
+    const action = builder.buildDeleteTransaction("u1", preview);
+
+    expect(action.type).toBe("delete_transaction");
+    expect(action.descriptor).toMatchObject({
+      type: "delete_transaction",
+      userId: "u1",
+      transactionId: "t9",
+    });
+    expect(action.preview).toMatchObject({
+      accountName: "Checking",
+      amount: -20,
+      payeeName: "Cafe",
+    });
+  });
+
+  it("builds an update_investment_transaction action", () => {
+    const preview: UpdateInvestmentTransactionPreview = {
+      transactionId: "it1",
+      accountId: "acc1",
+      accountName: "Brokerage",
+      accountCurrency: "USD",
+      action: InvestmentAction.SELL,
+      transactionDate: "2025-03-03",
+      securityId: "s1",
+      symbol: "VTI",
+      securityName: "Vanguard Total",
+      securityCurrency: "USD",
+      fundingAccountId: null,
+      quantity: 5,
+      price: 210,
+      commission: 1,
+      exchangeRate: 1,
+      totalAmount: 1049,
+      cashAccountName: "Brokerage Cash",
+      cashCurrency: "USD",
+      cashAmount: 1049,
+      description: null,
+    };
+
+    const action = builder.buildUpdateInvestmentTransaction("u1", preview);
+
+    expect(action.type).toBe("update_investment_transaction");
+    expect(action.descriptor).toMatchObject({
+      type: "update_investment_transaction",
+      userId: "u1",
+      transactionId: "it1",
+      accountId: "acc1",
+      action: InvestmentAction.SELL,
+      securityId: "s1",
+      exchangeRate: 1,
+    });
+    expect(action.preview).toMatchObject({
+      symbol: "VTI",
+      investmentAction: InvestmentAction.SELL,
+      totalAmount: 1049,
+    });
+  });
+
+  it("builds a delete_investment_transaction action", () => {
+    const preview: DeleteInvestmentTransactionPreview = {
+      transactionId: "it9",
+      accountName: "Brokerage",
+      action: InvestmentAction.BUY,
+      transactionDate: "2025-03-03",
+      symbol: "VTI",
+      securityName: "Vanguard Total",
+      securityCurrency: "USD",
+      quantity: 10,
+      price: 200,
+      commission: 1,
+      totalAmount: 2001,
+      description: null,
+    };
+
+    const action = builder.buildDeleteInvestmentTransaction("u1", preview);
+
+    expect(action.type).toBe("delete_investment_transaction");
+    expect(action.descriptor).toMatchObject({
+      type: "delete_investment_transaction",
+      userId: "u1",
+      transactionId: "it9",
+    });
+    expect(action.preview).toMatchObject({
+      symbol: "VTI",
+      investmentAction: InvestmentAction.BUY,
+      totalAmount: 2001,
+    });
   });
 });

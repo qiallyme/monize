@@ -5700,6 +5700,74 @@ describe("InvestmentTransactionsService", () => {
     });
   });
 
+  describe("previewUpdateInvestmentTransaction", () => {
+    beforeEach(() => {
+      accountsService.findOne.mockImplementation(
+        (_uid: string, aid: string) => {
+          if (aid === accountId) return Promise.resolve(mockInvestmentAccount);
+          if (aid === cashAccountId) return Promise.resolve(mockCashAccount);
+          return Promise.reject(new NotFoundException("Account not found"));
+        },
+      );
+      securitiesService.resolveBySymbolOrName.mockResolvedValue({
+        match: mockSecurity,
+        candidates: [],
+      });
+      securitiesService.findOne.mockResolvedValue(mockSecurity);
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder(mockBuyTransaction),
+      );
+    });
+
+    it("merges overrides over the stored transaction and recomputes totals", async () => {
+      const preview = await service.previewUpdateInvestmentTransaction(
+        userId,
+        transactionId,
+        { action: InvestmentAction.SELL, quantity: 5, price: 160 },
+      );
+
+      expect(preview.transactionId).toBe(transactionId);
+      expect(preview.action).toBe(InvestmentAction.SELL);
+      expect(preview.quantity).toBe(5);
+      expect(preview.price).toBe(160);
+      // Commission kept from the stored transaction (not overridden).
+      expect(preview.commission).toBe(9.99);
+      // SELL credits cash.
+      expect(preview.totalAmount).toBe(790.01);
+      expect(preview.cashAmount).toBe(790.01);
+    });
+
+    it("rejects when no field is provided", async () => {
+      await expect(
+        service.previewUpdateInvestmentTransaction(userId, transactionId, {}),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe("previewDeleteInvestmentTransaction", () => {
+    it("returns a display preview without persisting", async () => {
+      investmentTransactionsRepository.createQueryBuilder.mockReturnValue(
+        createMockQueryBuilder(mockBuyTransaction),
+      );
+
+      const preview = await service.previewDeleteInvestmentTransaction(
+        userId,
+        transactionId,
+      );
+
+      expect(preview).toMatchObject({
+        transactionId,
+        accountName: mockInvestmentAccount.name,
+        action: InvestmentAction.BUY,
+        symbol: "AAPL",
+        quantity: 10,
+        price: 150,
+        commission: 9.99,
+        totalAmount: 1509.99,
+      });
+    });
+  });
+
   describe("createBulk", () => {
     const dto = (overrides = {}) => ({
       accountId,

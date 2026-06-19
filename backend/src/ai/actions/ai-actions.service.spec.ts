@@ -11,6 +11,10 @@ import {
   CreateInvestmentTransactionDescriptor,
   CreateTransactionsDescriptor,
   CreateInvestmentTransactionsDescriptor,
+  UpdateTransactionDescriptor,
+  DeleteTransactionDescriptor,
+  UpdateInvestmentTransactionDescriptor,
+  DeleteInvestmentTransactionDescriptor,
   TransactionRowDescriptor,
   InvestmentTransactionRowDescriptor,
   AiActionDescriptor,
@@ -45,6 +49,7 @@ describe("AiActionsService", () => {
     transactions = {
       create: jest.fn().mockResolvedValue({ id: "tx-new" }),
       update: jest.fn().mockResolvedValue({ id: TX }),
+      remove: jest.fn().mockResolvedValue(undefined),
       createBulk: jest.fn(),
     };
     payees = {
@@ -52,6 +57,8 @@ describe("AiActionsService", () => {
     };
     investments = {
       create: jest.fn().mockResolvedValue({ id: "inv-tx-new" }),
+      update: jest.fn().mockResolvedValue({ id: TX }),
+      remove: jest.fn().mockResolvedValue(undefined),
       createBulk: jest.fn(),
     };
     securities = {
@@ -258,6 +265,94 @@ describe("AiActionsService", () => {
     expect(dto.securityId).toBeUndefined();
     expect(dto.fundingAccountId).toBeUndefined();
     expect(dto.action).toBe(InvestmentAction.INTEREST);
+  });
+
+  it("updates a transaction on a valid confirmation", async () => {
+    const descriptor: UpdateTransactionDescriptor = {
+      type: "update_transaction",
+      userId: USER,
+      actionId: "act-update",
+      expiresAt: Date.now() + 60_000,
+      transactionId: TX,
+      accountId: ACC,
+      amount: -30,
+      transactionDate: "2026-02-01",
+      payeeId: PAYEE,
+      payeeName: "Store",
+      createPayee: false,
+      categoryId: CAT,
+      description: null,
+      currencyCode: "USD",
+    };
+    const result = await service.confirm(USER, dtoFor(descriptor));
+    expect(transactions.update).toHaveBeenCalledWith(
+      USER,
+      TX,
+      expect.objectContaining({ amount: -30, currencyCode: "USD" }),
+      { createPayeeIfMissing: false },
+    );
+    expect(result).toEqual({ type: "update_transaction", id: TX });
+  });
+
+  it("deletes a transaction on a valid confirmation", async () => {
+    const descriptor: DeleteTransactionDescriptor = {
+      type: "delete_transaction",
+      userId: USER,
+      actionId: "act-delete",
+      expiresAt: Date.now() + 60_000,
+      transactionId: TX,
+    };
+    const result = await service.confirm(USER, dtoFor(descriptor));
+    expect(transactions.remove).toHaveBeenCalledWith(USER, TX);
+    expect(result).toEqual({ type: "delete_transaction", id: TX });
+  });
+
+  it("updates an investment transaction (account id is not forwarded)", async () => {
+    const descriptor: UpdateInvestmentTransactionDescriptor = {
+      type: "update_investment_transaction",
+      userId: USER,
+      actionId: "act-update-inv",
+      expiresAt: Date.now() + 60_000,
+      transactionId: TX,
+      accountId: ACC,
+      action: InvestmentAction.SELL,
+      transactionDate: "2026-02-01",
+      securityId: SEC,
+      fundingAccountId: null,
+      quantity: 5,
+      price: 160,
+      commission: 0,
+      exchangeRate: 1,
+      description: null,
+    };
+    const result = await service.confirm(USER, dtoFor(descriptor));
+    expect(investments.update).toHaveBeenCalledWith(
+      USER,
+      TX,
+      expect.objectContaining({
+        action: InvestmentAction.SELL,
+        securityId: SEC,
+        quantity: 5,
+      }),
+    );
+    expect(investments.update.mock.calls[0][2].accountId).toBeUndefined();
+    expect(result).toEqual({ type: "update_investment_transaction", id: TX });
+  });
+
+  it("deletes an investment transaction on a valid confirmation", async () => {
+    const descriptor: DeleteInvestmentTransactionDescriptor = {
+      type: "delete_investment_transaction",
+      userId: USER,
+      actionId: "act-delete-inv",
+      expiresAt: Date.now() + 60_000,
+      transactionId: TX,
+    };
+    const result = await service.confirm(USER, dtoFor(descriptor));
+    expect(investments.remove).toHaveBeenCalledWith(USER, TX);
+    expect(result).toEqual({
+      type: "delete_investment_transaction",
+      id: TX,
+    });
   });
 
   it("rejects a bad signature", async () => {

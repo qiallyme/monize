@@ -217,6 +217,96 @@ describe("SecuritiesService", () => {
         service.previewCreateSecurity("user-1", { query: "AAPL" }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it("uses an explicit currency override over the looked-up currency", async () => {
+      mockSecurityPriceService.lookupSecurityCandidates.mockResolvedValue([
+        { ...lookupResult, currencyCode: "USD" },
+      ]);
+      securitiesRepository.findOne.mockResolvedValue(null);
+
+      const preview = await service.previewCreateSecurity("user-1", {
+        query: "AAPL",
+        currencyCode: "cad",
+      });
+
+      expect(preview.currencyCode).toBe("CAD");
+    });
+
+    it("lets an explicit currency rescue a lookup with no currency", async () => {
+      mockSecurityPriceService.lookupSecurityCandidates.mockResolvedValue([
+        { ...lookupResult, currencyCode: null },
+      ]);
+      securitiesRepository.findOne.mockResolvedValue(null);
+
+      const preview = await service.previewCreateSecurity("user-1", {
+        query: "AAPL",
+        currencyCode: "EUR",
+      });
+
+      expect(preview.currencyCode).toBe("EUR");
+    });
+  });
+
+  describe("lookupSecuritiesForLlm", () => {
+    it("returns every candidate and flags ones already in the library", async () => {
+      mockSecurityPriceService.lookupSecurityCandidates.mockResolvedValue([
+        {
+          symbol: "AAPL",
+          name: "Apple Inc.",
+          exchange: "NASDAQ",
+          securityType: "STOCK",
+          currencyCode: "USD",
+          provider: "yahoo",
+          msnInstrumentId: null,
+        },
+        {
+          symbol: "APC.F",
+          name: "Apple Inc.",
+          exchange: "FRA",
+          securityType: "STOCK",
+          currencyCode: "EUR",
+          provider: "yahoo",
+          msnInstrumentId: null,
+        },
+      ]);
+      // The user already owns AAPL.
+      securitiesRepository.find.mockResolvedValue([{ symbol: "aapl" }]);
+
+      const result = await service.lookupSecuritiesForLlm("user-1", {
+        query: "apple",
+      });
+
+      expect(
+        mockSecurityPriceService.lookupSecurityCandidates,
+      ).toHaveBeenCalledWith("user-1", "apple", undefined, undefined);
+      expect(result.count).toBe(2);
+      expect(result.candidates[0]).toMatchObject({
+        symbol: "AAPL",
+        alreadyAdded: true,
+      });
+      expect(result.candidates[1].alreadyAdded).toBe(false);
+    });
+
+    it("passes an exchange filter through to the provider lookup", async () => {
+      mockSecurityPriceService.lookupSecurityCandidates.mockResolvedValue([]);
+      securitiesRepository.find.mockResolvedValue([]);
+
+      await service.lookupSecuritiesForLlm("user-1", {
+        query: "apple",
+        exchange: "NASDAQ",
+        provider: "msn",
+      });
+
+      expect(
+        mockSecurityPriceService.lookupSecurityCandidates,
+      ).toHaveBeenCalledWith("user-1", "apple", ["NASDAQ"], "msn");
+    });
+
+    it("rejects an empty query", async () => {
+      await expect(
+        service.lookupSecuritiesForLlm("user-1", { query: "  " }),
+      ).rejects.toThrow(BadRequestException);
+    });
   });
 
   describe("create", () => {

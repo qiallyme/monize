@@ -311,4 +311,122 @@ describe('TransactionConfirmationCard', () => {
       screen.getByRole('link', { name: 'View securities' }),
     ).toHaveAttribute('href', '/securities');
   });
+
+  describe('edit and delete actions', () => {
+    it('renders an update_transaction card with the resulting values', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeAction({
+            type: 'update_transaction',
+            descriptor: { type: 'update_transaction' },
+            preview: {
+              accountName: 'Checking',
+              amount: -75,
+              currencyCode: 'USD',
+              transactionDate: '2026-02-01',
+              payeeName: 'Store',
+              categoryName: 'Groceries',
+            },
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByText('Apply this transaction edit?'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Store')).toBeInTheDocument();
+      expect(screen.getByText('Groceries')).toBeInTheDocument();
+    });
+
+    it('shows the updated success message and a view link', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeAction({
+            type: 'update_transaction',
+            descriptor: { type: 'update_transaction' },
+            status: 'confirmed',
+            resultId: 'tx-1',
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Transaction updated')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'View transaction' }),
+      ).toHaveAttribute('href', '/transactions');
+    });
+
+    it('renders a delete_transaction card and offers no view link on success', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeAction({
+            type: 'delete_transaction',
+            descriptor: { type: 'delete_transaction' },
+            status: 'confirmed',
+            resultId: 'tx-1',
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Transaction deleted')).toBeInTheDocument();
+      // The record is gone, so there is no link to navigate to.
+      expect(screen.queryByRole('link')).toBeNull();
+    });
+
+    it('renders an update_investment_transaction card with investment fields', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeAction({
+            type: 'update_investment_transaction',
+            descriptor: { type: 'update_investment_transaction' },
+            preview: {
+              accountName: 'Brokerage',
+              investmentAction: 'SELL',
+              transactionDate: '2026-02-01',
+              symbol: 'VTI',
+              securityName: 'Vanguard Total',
+              securityCurrency: 'USD',
+              quantity: 5,
+              price: 210,
+              totalAmount: 1049,
+            },
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByText('Apply this investment transaction edit?'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('VTI (Vanguard Total)')).toBeInTheDocument();
+    });
+
+    it('renders a delete_investment_transaction confirmed state without a link', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeAction({
+            type: 'delete_investment_transaction',
+            descriptor: { type: 'delete_investment_transaction' },
+            status: 'confirmed',
+            resultId: 'it-1',
+            preview: {
+              accountName: 'Brokerage',
+              investmentAction: 'BUY',
+              transactionDate: '2026-02-01',
+              symbol: 'VTI',
+            },
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByText('Investment transaction deleted'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('link')).toBeNull();
+    });
+  });
 });

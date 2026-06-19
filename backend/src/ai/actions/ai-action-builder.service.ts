@@ -13,14 +13,24 @@ import {
   CreateSecurityDescriptor,
   CreateTransactionDescriptor,
   CreateTransactionsDescriptor,
+  UpdateTransactionDescriptor,
+  DeleteTransactionDescriptor,
+  UpdateInvestmentTransactionDescriptor,
+  DeleteInvestmentTransactionDescriptor,
   PendingAiAction,
 } from "./ai-action.types";
 import {
   CategorizeTransactionPreview,
   CreateTransactionPreview,
+  UpdateTransactionPreview,
+  DeleteTransactionPreview,
 } from "../../transactions/transactions.service";
 import { CreatePayeePreview } from "../../payees/payees.service";
-import { CreateInvestmentTransactionPreview } from "../../securities/investment-transactions.service";
+import {
+  CreateInvestmentTransactionPreview,
+  UpdateInvestmentTransactionPreview,
+  DeleteInvestmentTransactionPreview,
+} from "../../securities/investment-transactions.service";
 import { CreateSecurityPreview } from "../../securities/securities.service";
 
 /**
@@ -263,6 +273,157 @@ export class AiActionBuilderService {
         cashAccountName: preview.cashAccountName,
         cashCurrency: preview.cashCurrency,
         cashAmount: preview.cashAmount,
+        description: preview.description,
+      },
+    };
+  }
+
+  buildUpdateTransaction(
+    userId: string,
+    preview: UpdateTransactionPreview,
+  ): PendingAiAction {
+    const { actionId, expiresAt } = this.newEnvelope();
+    const descriptor: UpdateTransactionDescriptor = {
+      type: "update_transaction",
+      userId,
+      actionId,
+      expiresAt,
+      transactionId: preview.transactionId,
+      accountId: preview.accountId,
+      amount: preview.amount,
+      transactionDate: preview.transactionDate,
+      payeeId: preview.payeeId,
+      payeeName: preview.payeeName,
+      createPayee: preview.payeeWillBeCreated,
+      categoryId: preview.categoryId,
+      description: preview.description,
+      currencyCode: preview.currencyCode,
+    };
+    return {
+      actionId,
+      type: "update_transaction",
+      expiresAt,
+      descriptor,
+      signature: this.signingService.sign(descriptor),
+      preview: {
+        accountName: preview.accountName,
+        amount: preview.amount,
+        currencyCode: preview.currencyCode,
+        transactionDate: preview.transactionDate,
+        payeeName: preview.payeeName,
+        payeeWillBeCreated: preview.payeeWillBeCreated,
+        categoryName: preview.categoryName,
+        description: preview.description,
+      },
+    };
+  }
+
+  buildDeleteTransaction(
+    userId: string,
+    preview: DeleteTransactionPreview,
+  ): PendingAiAction {
+    const { actionId, expiresAt } = this.newEnvelope();
+    const descriptor: DeleteTransactionDescriptor = {
+      type: "delete_transaction",
+      userId,
+      actionId,
+      expiresAt,
+      transactionId: preview.transactionId,
+    };
+    return {
+      actionId,
+      type: "delete_transaction",
+      expiresAt,
+      descriptor,
+      signature: this.signingService.sign(descriptor),
+      preview: {
+        accountName: preview.accountName,
+        amount: preview.amount,
+        currencyCode: preview.currencyCode,
+        transactionDate: preview.transactionDate,
+        payeeName: preview.payeeName,
+        categoryName: preview.categoryName,
+        description: preview.description,
+      },
+    };
+  }
+
+  buildUpdateInvestmentTransaction(
+    userId: string,
+    preview: UpdateInvestmentTransactionPreview,
+  ): PendingAiAction {
+    const { actionId, expiresAt } = this.newEnvelope();
+    const descriptor: UpdateInvestmentTransactionDescriptor = {
+      type: "update_investment_transaction",
+      userId,
+      actionId,
+      expiresAt,
+      transactionId: preview.transactionId,
+      accountId: preview.accountId,
+      action: preview.action,
+      transactionDate: preview.transactionDate,
+      securityId: preview.securityId,
+      fundingAccountId: preview.fundingAccountId,
+      quantity: preview.quantity,
+      price: preview.price,
+      commission: preview.commission,
+      exchangeRate: preview.exchangeRate,
+      description: preview.description,
+    };
+    return {
+      actionId,
+      type: "update_investment_transaction",
+      expiresAt,
+      descriptor,
+      signature: this.signingService.sign(descriptor),
+      preview: {
+        accountName: preview.accountName,
+        transactionDate: preview.transactionDate,
+        investmentAction: preview.action,
+        symbol: preview.symbol,
+        securityName: preview.securityName,
+        securityCurrency: preview.securityCurrency,
+        quantity: preview.quantity,
+        price: preview.price,
+        commission: preview.commission,
+        totalAmount: preview.totalAmount,
+        cashAccountName: preview.cashAccountName,
+        cashCurrency: preview.cashCurrency,
+        cashAmount: preview.cashAmount,
+        description: preview.description,
+      },
+    };
+  }
+
+  buildDeleteInvestmentTransaction(
+    userId: string,
+    preview: DeleteInvestmentTransactionPreview,
+  ): PendingAiAction {
+    const { actionId, expiresAt } = this.newEnvelope();
+    const descriptor: DeleteInvestmentTransactionDescriptor = {
+      type: "delete_investment_transaction",
+      userId,
+      actionId,
+      expiresAt,
+      transactionId: preview.transactionId,
+    };
+    return {
+      actionId,
+      type: "delete_investment_transaction",
+      expiresAt,
+      descriptor,
+      signature: this.signingService.sign(descriptor),
+      preview: {
+        accountName: preview.accountName,
+        transactionDate: preview.transactionDate,
+        investmentAction: preview.action,
+        symbol: preview.symbol,
+        securityName: preview.securityName,
+        securityCurrency: preview.securityCurrency,
+        quantity: preview.quantity,
+        price: preview.price,
+        commission: preview.commission,
+        totalAmount: preview.totalAmount,
         description: preview.description,
       },
     };

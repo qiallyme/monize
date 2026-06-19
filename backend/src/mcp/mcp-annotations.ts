@@ -12,9 +12,7 @@ import { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
  * - `READ_ONLY`  -- queries/aggregations that never mutate state.
  * - `CREATE`     -- adds a new record (non-idempotent, non-destructive).
  * - `UPDATE`     -- sets fields to given values (idempotent, non-destructive).
- *
- * There is deliberately no "destructive" preset: no MCP tool deletes data. Add
- * one (`destructiveHint: true`) only if a delete/overwrite tool is introduced.
+ * - `DELETE`     -- removes a record (destructive; idempotent end-state).
  */
 
 export const READ_ONLY: ToolAnnotations = {
@@ -32,6 +30,15 @@ export const CREATE: ToolAnnotations = {
 export const UPDATE: ToolAnnotations = {
   readOnlyHint: false,
   destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
+// Deletes a record. Destructive; idempotent because once the record is gone,
+// repeating the call leaves the same end state (it just reports not-found).
+export const DELETE: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
   idempotentHint: true,
   openWorldHint: false,
 };

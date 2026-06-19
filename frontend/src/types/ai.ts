@@ -176,7 +176,11 @@ export type AiActionType =
   | 'create_security'
   | 'create_investment_transaction'
   | 'create_transactions'
-  | 'create_investment_transactions';
+  | 'create_investment_transactions'
+  | 'update_transaction'
+  | 'delete_transaction'
+  | 'update_investment_transaction'
+  | 'delete_investment_transaction';
 
 export type PendingActionStatus =
   | 'pending'

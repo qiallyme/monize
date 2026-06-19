@@ -232,11 +232,23 @@ export const createPayeeSchema = z.object({
   defaultCategoryName: z.string().max(100).optional(),
 });
 
+export const lookupSecuritiesSchema = z.object({
+  query: z.string().min(1).max(100),
+  exchange: z.enum(SECURITY_EXCHANGES).optional(),
+  provider: z.enum(["yahoo", "msn", "auto"]).optional(),
+});
+
 export const createSecuritySchema = z.object({
   query: z.string().min(1).max(100),
   exchange: z.enum(SECURITY_EXCHANGES).optional(),
   securityType: z.enum(SECURITY_TYPES).optional(),
   isFavourite: z.boolean().optional(),
+  // ISO 4217 alphabetic code; the confirm-time DTO re-validates it as a known
+  // currency, so the schema only needs to enforce the 3-letter shape here.
+  currencyCode: z
+    .string()
+    .regex(/^[A-Za-z]{3}$/)
+    .optional(),
 });
 
 /**
@@ -276,6 +288,68 @@ export const createInvestmentTransactionsSchema = z.object({
     .max(MAX_BULK_ACTION_ROWS),
 });
 
+/**
+ * Edit/delete schemas. Edits require at least one field to change (enforced via
+ * refine) so a no-op confirmation card is never proposed; deletes need only the
+ * target id.
+ */
+export const updateTransactionSchema = z
+  .object({
+    transactionId: z.string().uuid(),
+    amount: amountSchema.optional(),
+    date: isoDateSchema.optional(),
+    payeeName: z.string().max(100).optional(),
+    categoryName: z.string().max(100).optional(),
+    description: z.string().max(500).optional(),
+    createPayeeIfMissing: z.boolean().optional(),
+  })
+  .refine(
+    (v) =>
+      v.amount !== undefined ||
+      v.date !== undefined ||
+      v.payeeName !== undefined ||
+      v.categoryName !== undefined ||
+      v.description !== undefined,
+    {
+      message:
+        "Provide at least one field to change (amount, date, payeeName, categoryName, or description).",
+    },
+  );
+
+export const deleteTransactionSchema = z.object({
+  transactionId: z.string().uuid(),
+});
+
+export const updateInvestmentTransactionSchema = z
+  .object({
+    transactionId: z.string().uuid(),
+    action: investmentActionSchema.optional(),
+    date: isoDateSchema.optional(),
+    security: z.string().min(1).max(100).optional(),
+    quantity: nonNegativeAmountSchema.optional(),
+    price: nonNegativeAmountSchema.optional(),
+    commission: nonNegativeAmountSchema.optional(),
+    description: z.string().max(500).optional(),
+  })
+  .refine(
+    (v) =>
+      v.action !== undefined ||
+      v.date !== undefined ||
+      v.security !== undefined ||
+      v.quantity !== undefined ||
+      v.price !== undefined ||
+      v.commission !== undefined ||
+      v.description !== undefined,
+    {
+      message:
+        "Provide at least one field to change (action, date, security, quantity, price, commission, or description).",
+    },
+  );
+
+export const deleteInvestmentTransactionSchema = z.object({
+  transactionId: z.string().uuid(),
+});
+
 export const toolInputSchemas: Record<string, z.ZodSchema> = {
   query_transactions: queryTransactionsSchema,
   get_account_balances: getAccountBalancesSchema,
@@ -298,9 +372,14 @@ export const toolInputSchemas: Record<string, z.ZodSchema> = {
   categorize_transaction: categorizeTransactionSchema,
   create_payee: createPayeeSchema,
   create_security: createSecuritySchema,
+  lookup_securities: lookupSecuritiesSchema,
   create_investment_transaction: createInvestmentTransactionSchema,
   create_transactions: createTransactionsSchema,
   create_investment_transactions: createInvestmentTransactionsSchema,
+  update_transaction: updateTransactionSchema,
+  delete_transaction: deleteTransactionSchema,
+  update_investment_transaction: updateInvestmentTransactionSchema,
+  delete_investment_transaction: deleteInvestmentTransactionSchema,
 };
 
 /**

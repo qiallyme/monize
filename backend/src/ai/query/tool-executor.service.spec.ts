@@ -160,6 +160,42 @@ describe("ToolExecutorService", () => {
         cashAmount: -1509.99,
         description: null,
       }),
+      previewUpdateInvestmentTransaction: jest.fn().mockResolvedValue({
+        transactionId: "inv-tx-1",
+        accountId: "acc-3",
+        accountName: "Brokerage",
+        accountCurrency: "USD",
+        action: "SELL",
+        transactionDate: "2026-02-01",
+        securityId: "sec-1",
+        symbol: "AAPL",
+        securityName: "Apple Inc.",
+        securityCurrency: "USD",
+        quantity: 5,
+        price: 160,
+        commission: 0,
+        totalAmount: 800,
+        exchangeRate: 1,
+        fundingAccountId: null,
+        cashAccountName: "Brokerage Cash",
+        cashCurrency: "USD",
+        cashAmount: 800,
+        description: null,
+      }),
+      previewDeleteInvestmentTransaction: jest.fn().mockResolvedValue({
+        transactionId: "inv-tx-1",
+        accountName: "Brokerage",
+        action: "BUY",
+        transactionDate: "2026-01-15",
+        symbol: "AAPL",
+        securityName: "Apple Inc.",
+        securityCurrency: "USD",
+        quantity: 10,
+        price: 150,
+        commission: 9.99,
+        totalAmount: 1509.99,
+        description: null,
+      }),
       getLlmInvestmentTransactions: jest.fn().mockResolvedValue({
         transactionCount: 3,
         totalAmount: 2325,
@@ -275,6 +311,31 @@ describe("ToolExecutorService", () => {
         categoryId: "cat-1",
         newCategoryName: "Dining",
       }),
+      previewUpdate: jest.fn().mockResolvedValue({
+        transactionId: "tx-1",
+        accountId: "acc-1",
+        accountName: "Checking",
+        amount: -30,
+        transactionDate: "2026-02-01",
+        payeeId: "payee-1",
+        payeeName: "Starbucks",
+        payeeMatched: true,
+        payeeWillBeCreated: false,
+        categoryId: "cat-1",
+        categoryName: "Dining",
+        description: null,
+        currencyCode: "USD",
+      }),
+      previewDelete: jest.fn().mockResolvedValue({
+        transactionId: "tx-1",
+        accountName: "Checking",
+        amount: -12.5,
+        transactionDate: "2026-01-15",
+        payeeName: "Starbucks",
+        categoryName: "Dining",
+        description: null,
+        currencyCode: "USD",
+      }),
     };
 
     payees = {
@@ -295,6 +356,30 @@ describe("ToolExecutorService", () => {
         isFavourite: false,
         quoteProvider: "yahoo",
         msnInstrumentId: null,
+      }),
+      lookupSecuritiesForLlm: jest.fn().mockResolvedValue({
+        query: "apple",
+        count: 2,
+        candidates: [
+          {
+            symbol: "AAPL",
+            name: "Apple Inc.",
+            exchange: "NASDAQ",
+            securityType: "STOCK",
+            currencyCode: "USD",
+            provider: "yahoo",
+            alreadyAdded: false,
+          },
+          {
+            symbol: "APC.F",
+            name: "Apple Inc.",
+            exchange: "FRA",
+            securityType: "STOCK",
+            currencyCode: "EUR",
+            provider: "yahoo",
+            alreadyAdded: false,
+          },
+        ],
       }),
     };
 
@@ -1098,6 +1183,126 @@ describe("ToolExecutorService", () => {
         currentCategoryName: "Uncategorized",
         newCategoryName: "Dining",
       });
+    });
+  });
+
+  describe("update_transaction (human-in-the-loop)", () => {
+    const TXID = "11111111-1111-4111-8111-111111111111";
+
+    it("resolves the category and returns a signed pending action", async () => {
+      const result = await service.execute(userId, "update_transaction", {
+        transactionId: TXID,
+        amount: -30,
+        categoryName: "Dining",
+      });
+
+      expect(transactions.previewUpdate).toHaveBeenCalledWith(
+        userId,
+        TXID,
+        expect.objectContaining({ amount: -30, categoryId: "cat-1" }),
+      );
+      expect(result.pendingAction?.type).toBe("update_transaction");
+      expect(result.pendingAction?.preview).toMatchObject({
+        accountName: "Checking",
+        amount: -30,
+      });
+      expect(JSON.stringify(result.data)).not.toContain("signature-abc");
+    });
+
+    it("surfaces a 4xx preview error (e.g. transfer)", async () => {
+      transactions.previewUpdate.mockRejectedValueOnce(
+        new BadRequestException("Transfers can't be edited here."),
+      );
+      const result = await service.execute(userId, "update_transaction", {
+        transactionId: TXID,
+        amount: -5,
+      });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe("delete_transaction (human-in-the-loop)", () => {
+    const TXID = "11111111-1111-4111-8111-111111111111";
+
+    it("returns a signed delete pending action", async () => {
+      const result = await service.execute(userId, "delete_transaction", {
+        transactionId: TXID,
+      });
+      expect(transactions.previewDelete).toHaveBeenCalledWith(userId, TXID);
+      expect(result.pendingAction?.type).toBe("delete_transaction");
+      expect(result.pendingAction?.preview).toMatchObject({
+        accountName: "Checking",
+      });
+    });
+  });
+
+  describe("update_investment_transaction (human-in-the-loop)", () => {
+    const TXID = "11111111-1111-4111-8111-111111111111";
+
+    it("returns a signed update pending action", async () => {
+      const result = await service.execute(
+        userId,
+        "update_investment_transaction",
+        { transactionId: TXID, action: "SELL", quantity: 5 },
+      );
+      expect(
+        investmentTransactions.previewUpdateInvestmentTransaction,
+      ).toHaveBeenCalledWith(
+        userId,
+        TXID,
+        expect.objectContaining({ action: "SELL", quantity: 5 }),
+      );
+      expect(result.pendingAction?.type).toBe("update_investment_transaction");
+      expect(result.pendingAction?.preview).toMatchObject({
+        symbol: "AAPL",
+        investmentAction: "SELL",
+      });
+    });
+  });
+
+  describe("delete_investment_transaction (human-in-the-loop)", () => {
+    const TXID = "11111111-1111-4111-8111-111111111111";
+
+    it("returns a signed delete pending action", async () => {
+      const result = await service.execute(
+        userId,
+        "delete_investment_transaction",
+        { transactionId: TXID },
+      );
+      expect(
+        investmentTransactions.previewDeleteInvestmentTransaction,
+      ).toHaveBeenCalledWith(userId, TXID);
+      expect(result.pendingAction?.type).toBe("delete_investment_transaction");
+      expect(result.pendingAction?.preview).toMatchObject({ symbol: "AAPL" });
+    });
+  });
+
+  describe("lookup_securities (read-only)", () => {
+    it("returns the candidate list and a source, with no pending action", async () => {
+      const result = await service.execute(userId, "lookup_securities", {
+        query: "apple",
+      });
+
+      expect(securities.lookupSecuritiesForLlm).toHaveBeenCalledWith(userId, {
+        query: "apple",
+        exchange: undefined,
+        provider: undefined,
+      });
+      expect(result.pendingAction).toBeUndefined();
+      expect(result.isError).toBeFalsy();
+      const data = result.data as { count: number };
+      expect(data.count).toBe(2);
+      expect(result.sources[0].type).toBe("security_lookup");
+    });
+
+    it("surfaces a 4xx lookup error", async () => {
+      securities.lookupSecuritiesForLlm.mockRejectedValueOnce(
+        new BadRequestException("Provide a ticker symbol or security name."),
+      );
+      const result = await service.execute(userId, "lookup_securities", {
+        query: "x",
+      });
+      expect(result.isError).toBe(true);
     });
   });
 

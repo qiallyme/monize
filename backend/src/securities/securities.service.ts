@@ -59,6 +59,26 @@ export interface CreateSecurityPreview {
   msnInstrumentId: string | null;
 }
 
+/** One candidate returned by the LLM/MCP security lookup tool. */
+export interface LlmSecurityLookupCandidate {
+  symbol: string;
+  name: string;
+  exchange: string | null;
+  securityType: string | null;
+  currencyCode: string | null;
+  /** Quote provider that produced this match (yahoo/msn), when known. */
+  provider: string | null;
+  /** True when a security with this symbol is already in the user's list. */
+  alreadyAdded: boolean;
+}
+
+/** Compact, LLM-friendly result of a Yahoo/MSN security lookup. */
+export interface LlmSecurityLookup {
+  query: string;
+  count: number;
+  candidates: LlmSecurityLookupCandidate[];
+}
+
 @Injectable()
 export class SecuritiesService {
   private readonly logger = new Logger(SecuritiesService.name);
@@ -541,6 +561,11 @@ export class SecuritiesService {
       exchange?: string;
       securityType?: string;
       isFavourite?: boolean;
+      /**
+       * Override the looked-up currency. Takes precedence over the provider's
+       * value, and lets creation proceed when the lookup can't determine one.
+       */
+      currencyCode?: string;
     },
   ): Promise<CreateSecurityPreview> {
     const query = (input.query ?? "").trim();
@@ -594,7 +619,10 @@ export class SecuritiesService {
 
     const lookup = candidates[0];
 
-    const currencyCode = lookup.currencyCode?.trim();
+    // An explicit currency override wins over the provider's value and also
+    // rescues the case where the lookup couldn't determine one.
+    const currencyCode =
+      input.currencyCode?.trim() || lookup.currencyCode?.trim();
     if (!currencyCode) {
       throw new BadRequestException(
         tr(
@@ -630,5 +658,57 @@ export class SecuritiesService {
       quoteProvider: lookup.provider ?? null,
       msnInstrumentId: lookup.msnInstrumentId ?? null,
     };
+  }
+
+  /**
+   * Look up a ticker symbol or company name against the user's configured quote
+   * provider (Yahoo/MSN) and return every plausible match so an AI agent can
+   * help the user pick the right one before adding it. Read-only: it neither
+   * persists anything nor enforces the unique-symbol rule. Each candidate is
+   * flagged when a security with that symbol is already in the user's list.
+   * Shared by the AI Assistant `lookup_securities` tool and the MCP tool.
+   */
+  async lookupSecuritiesForLlm(
+    userId: string,
+    input: {
+      query: string;
+      exchange?: string;
+      provider?: "yahoo" | "msn" | "auto";
+    },
+  ): Promise<LlmSecurityLookup> {
+    const query = (input.query ?? "").trim();
+    if (!query) {
+      throw new BadRequestException(
+        tr(
+          "errors.securities.lookupQueryRequired",
+          "Provide a ticker symbol or security name to look up.",
+        ),
+      );
+    }
+
+    const results = await this.securityPriceService.lookupSecurityCandidates(
+      userId,
+      query,
+      input.exchange ? [input.exchange] : undefined,
+      input.provider,
+    );
+
+    const owned = await this.securitiesRepository.find({
+      where: { userId },
+      select: ["symbol"],
+    });
+    const ownedSymbols = new Set(owned.map((s) => s.symbol.toUpperCase()));
+
+    const candidates: LlmSecurityLookupCandidate[] = results.map((r) => ({
+      symbol: r.symbol,
+      name: r.name,
+      exchange: r.exchange ?? null,
+      securityType: r.securityType ?? null,
+      currencyCode: r.currencyCode ?? null,
+      provider: r.provider ?? null,
+      alreadyAdded: ownedSymbols.has(r.symbol.toUpperCase()),
+    }));
+
+    return { query, count: candidates.length, candidates };
   }
 }

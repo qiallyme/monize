@@ -135,6 +135,23 @@ describe('SecurityForm', () => {
     expect(screen.getByDisplayValue('iShares Core Equity ETF')).toBeInTheDocument();
   });
 
+  it('shows the security\'s own currency when editing, not the user base currency', async () => {
+    // Base currency is CAD (useNumberFormat mock); this security is in USD.
+    // Currencies load asynchronously, so the controlled select must still
+    // reflect the security's value once the options arrive (regression test).
+    const security = createSecurity({ currencyCode: 'USD' });
+
+    render(<SecurityForm security={security} onSubmit={onSubmit} onCancel={onCancel} />);
+
+    await waitFor(() => {
+      expect(exchangeRatesApi.getCurrencies).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      const currencySelect = screen.getByLabelText('Currency') as HTMLSelectElement;
+      expect(currencySelect.value).toBe('USD');
+    });
+  });
+
   it('shows Lookup button for new security form', async () => {
     render(<SecurityForm onSubmit={onSubmit} onCancel={onCancel} />);
     await waitFor(() => {

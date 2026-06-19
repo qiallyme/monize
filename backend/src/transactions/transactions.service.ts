@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Inject,
   forwardRef,
   Logger,
@@ -122,6 +123,41 @@ export interface CategorizeTransactionPreview {
   currentCategoryName: string | null;
   categoryId: string;
   newCategoryName: string;
+}
+
+/**
+ * Resolved, sanitized preview of an edit the assistant proposes to an existing
+ * transaction. Carries the full resulting state (every field as it will be
+ * persisted) so the confirmation card matches the create flow and the signed
+ * descriptor can apply an idempotent overwrite. Shared by the MCP
+ * `update_transaction` dry-run and the AI Assistant confirmation flow.
+ */
+export interface UpdateTransactionPreview {
+  transactionId: string;
+  accountId: string;
+  accountName: string;
+  amount: number;
+  transactionDate: string;
+  payeeId: string | null;
+  payeeName: string | null;
+  payeeMatched: boolean;
+  payeeWillBeCreated: boolean;
+  categoryId: string | null;
+  categoryName: string | null;
+  description: string | null;
+  currencyCode: string;
+}
+
+/** Resolved preview of a proposed transaction deletion (display-only). */
+export interface DeleteTransactionPreview {
+  transactionId: string;
+  accountName: string;
+  amount: number;
+  transactionDate: string;
+  payeeName: string | null;
+  categoryName: string | null;
+  description: string | null;
+  currencyCode: string;
 }
 
 export { TransferResult };
@@ -447,6 +483,156 @@ export class TransactionsService {
       currentCategoryName: transaction.category?.name ?? null,
       categoryId,
       newCategoryName: cat.name,
+    };
+  }
+
+  /**
+   * Validate and resolve a proposed edit to an existing transaction WITHOUT
+   * persisting it. Only the provided fields change; every other field is kept
+   * from the stored transaction so the returned preview is the exact resulting
+   * state `update()` will write. Validates account ownership implicitly (the
+   * transaction is loaded by owner), validates a changed category, and resolves
+   * a changed payee name to an existing payee exactly like `previewCreate`.
+   *
+   * Transfers and split transactions are rejected here: their linked legs and
+   * child splits need the dedicated edit flows, so this single-record path
+   * would leave them inconsistent.
+   */
+  async previewUpdate(
+    userId: string,
+    transactionId: string,
+    input: {
+      amount?: number;
+      transactionDate?: string;
+      payeeName?: string;
+      categoryId?: string;
+      description?: string;
+      /** Auto-create a payee for an unmatched name. Defaults to true. */
+      createPayeeIfMissing?: boolean;
+    },
+  ): Promise<UpdateTransactionPreview> {
+    const existing = await this.findOne(userId, transactionId);
+
+    if (existing.isTransfer) {
+      throw new BadRequestException(
+        tr(
+          "errors.transactions.cannotEditTransfer",
+          "Transfers can't be edited here. Edit the transfer from the Transactions screen.",
+        ),
+      );
+    }
+    if (existing.isSplit) {
+      throw new BadRequestException(
+        tr(
+          "errors.transactions.cannotEditSplit",
+          "Split transactions can't be edited here. Edit the split from the Transactions screen.",
+        ),
+      );
+    }
+
+    const hasChange =
+      input.amount !== undefined ||
+      input.transactionDate !== undefined ||
+      input.payeeName !== undefined ||
+      input.categoryId !== undefined ||
+      input.description !== undefined;
+    if (!hasChange) {
+      throw new BadRequestException(
+        tr(
+          "errors.transactions.noUpdateFields",
+          "Provide at least one field to change.",
+        ),
+      );
+    }
+
+    const amount = input.amount ?? Number(existing.amount);
+    const transactionDate = input.transactionDate ?? existing.transactionDate;
+    const description =
+      input.description !== undefined
+        ? stripHtml(input.description) || null
+        : (existing.description ?? null);
+
+    // Category: validate ownership of a changed category; otherwise keep the
+    // transaction's existing category.
+    let categoryId: string | null = existing.categoryId ?? null;
+    let categoryName: string | null = existing.category?.name ?? null;
+    if (input.categoryId !== undefined) {
+      const cat = await this.categoriesRepository.findOne({
+        where: { id: input.categoryId, userId },
+      });
+      if (!cat) {
+        throw new NotFoundException(
+          tr("errors.transactions.categoryNotFound", "Category not found"),
+        );
+      }
+      categoryId = cat.id;
+      categoryName = cat.name;
+    }
+
+    // Payee: when a new name is given, resolve it to an existing payee (matching
+    // create()/previewCreate); an unmatched name becomes a new payee on confirm
+    // unless the caller opted out. When no new name is given, keep the existing
+    // payee link.
+    let payeeId: string | null = existing.payeeId ?? null;
+    let payeeName: string | null = existing.payeeName ?? null;
+    let payeeMatched = !!existing.payeeId;
+    let payeeWillBeCreated = false;
+    if (input.payeeName !== undefined) {
+      const inputPayeeName = stripHtml(input.payeeName) || null;
+      payeeId = null;
+      payeeName = inputPayeeName;
+      payeeMatched = false;
+      if (inputPayeeName) {
+        const payee = await this.payeesService.resolveByName(
+          userId,
+          inputPayeeName,
+        );
+        if (payee) {
+          payeeId = payee.id;
+          payeeMatched = true;
+          payeeName = payee.name;
+        }
+      }
+      payeeWillBeCreated =
+        !!payeeName && !payeeMatched && input.createPayeeIfMissing !== false;
+    }
+
+    return {
+      transactionId,
+      accountId: existing.accountId,
+      accountName: existing.account?.name ?? "",
+      amount,
+      transactionDate,
+      payeeId,
+      payeeName,
+      payeeMatched,
+      payeeWillBeCreated,
+      categoryId,
+      categoryName,
+      description,
+      currencyCode: existing.currencyCode,
+    };
+  }
+
+  /**
+   * Validate ownership of a transaction the assistant proposes to delete and
+   * return a display-only preview of what will be removed. The actual deletion
+   * (including any transfer/split side effects) is handled by `remove()`.
+   */
+  async previewDelete(
+    userId: string,
+    transactionId: string,
+  ): Promise<DeleteTransactionPreview> {
+    const existing = await this.findOne(userId, transactionId);
+    return {
+      transactionId,
+      accountName: existing.account?.name ?? "",
+      amount: Number(existing.amount),
+      transactionDate: existing.transactionDate,
+      payeeName: existing.payeeName ?? null,
+      categoryName: existing.category?.name ?? null,
+      description: existing.description ?? null,
+      currencyCode: existing.currencyCode,
     };
   }
 
@@ -1469,6 +1655,7 @@ export class TransactionsService {
     userId: string,
     id: string,
     updateTransactionDto: UpdateTransactionDto,
+    options?: { createPayeeIfMissing?: boolean },
   ): Promise<Transaction> {
     const transaction = await this.findOne(userId, id);
     const beforeSnapshot = this.snapshotTransaction(transaction);
@@ -1484,9 +1671,23 @@ export class TransactionsService {
       await this.accountsService.findOne(userId, updateData.accountId);
     }
 
-    // Validate ownership of referenced payee and category
+    // Validate ownership of referenced payee and category. When the caller opts
+    // in (createPayeeIfMissing) and only a free-text name was given, find or
+    // create a reusable payee from that name so the transaction links to a
+    // payee record -- mirroring create().
     if (updateData.payeeId) {
       await this.payeesService.findOne(userId, updateData.payeeId);
+    } else if (
+      options?.createPayeeIfMissing &&
+      typeof updateData.payeeName === "string" &&
+      updateData.payeeName.trim().length > 0
+    ) {
+      const payee = await this.payeesService.findOrCreate(
+        userId,
+        updateData.payeeName.trim(),
+      );
+      updateData.payeeId = payee.id;
+      updateData.payeeName = payee.name;
     }
     if ("categoryId" in updateData && updateData.categoryId) {
       const cat = await this.categoriesRepository.findOne({
