@@ -1240,4 +1240,87 @@ describe("ToolExecutorService", () => {
       expect(result.pendingAction).toBeUndefined();
     });
   });
+
+  describe("create_transactions (bulk human-in-the-loop)", () => {
+    it("builds one pending action for the valid rows and flags the rest", async () => {
+      const result = await service.execute(userId, "create_transactions", {
+        rows: [
+          { accountName: "Checking", amount: -10, date: "2026-01-15" },
+          { accountName: "Nonexistent", amount: -20, date: "2026-01-16" },
+        ],
+      });
+
+      expect(result.pendingAction?.type).toBe("create_transactions");
+      const descriptor = result.pendingAction?.descriptor;
+      if (descriptor?.type !== "create_transactions") throw new Error();
+      // Only the resolvable row is signed.
+      expect(descriptor.rows).toHaveLength(1);
+      // The display table keeps both rows; the bad one is flagged.
+      expect(result.pendingAction?.preview.rows).toHaveLength(2);
+      expect(result.pendingAction?.preview.rows?.[1].status).toBe("error");
+      expect(result.summary).toContain("1 skipped");
+    });
+
+    it("returns a tool error when no row resolves (no card)", async () => {
+      const result = await service.execute(userId, "create_transactions", {
+        rows: [{ accountName: "Nonexistent", amount: -20, date: "2026-01-16" }],
+      });
+      expect(result.isError).toBe(true);
+      expect(result.pendingAction).toBeUndefined();
+    });
+  });
+
+  describe("create_investment_transactions (bulk human-in-the-loop)", () => {
+    it("builds one pending action across rows", async () => {
+      const result = await service.execute(
+        userId,
+        "create_investment_transactions",
+        {
+          rows: [
+            {
+              accountName: "Brokerage",
+              action: "BUY",
+              date: "2026-01-15",
+              security: "AAPL",
+              quantity: 10,
+              price: 150,
+            },
+            {
+              accountName: "Brokerage",
+              action: "BUY",
+              date: "2026-01-16",
+              security: "AAPL",
+              quantity: 5,
+              price: 151,
+            },
+          ],
+        },
+      );
+
+      expect(result.pendingAction?.type).toBe("create_investment_transactions");
+      const descriptor = result.pendingAction?.descriptor;
+      if (descriptor?.type !== "create_investment_transactions")
+        throw new Error();
+      expect(descriptor.rows).toHaveLength(2);
+      expect(JSON.stringify(result.data)).not.toContain("signature-abc");
+    });
+
+    it("rejects a batch over 25 rows at the input schema", async () => {
+      const rows = Array.from({ length: 26 }, () => ({
+        accountName: "Brokerage",
+        action: "BUY",
+        date: "2026-01-15",
+        security: "AAPL",
+        quantity: 1,
+        price: 1,
+      }));
+      const result = await service.execute(
+        userId,
+        "create_investment_transactions",
+        { rows },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.pendingAction).toBeUndefined();
+    });
+  });
 });

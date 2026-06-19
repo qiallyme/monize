@@ -48,6 +48,11 @@ import {
 } from "./transaction-search.util";
 import { tr } from "../i18n/translate";
 import { stripHtml } from "../common/sanitization.util";
+import {
+  BulkCreateResult,
+  BulkCreateSkip,
+  bulkSkipReason,
+} from "../common/bulk-create.types";
 
 export interface TransactionWithInvestmentLink extends Transaction {
   linkedInvestmentTransactionId?: string | null;
@@ -295,6 +300,36 @@ export class TransactionsService {
     const result = await this.findOne(userId, savedTransactionId);
     this.recordTransactionAction(userId, result, "create");
     return result;
+  }
+
+  /**
+   * Create many cash transactions in one go for the "paste a table" bulk
+   * approval flow. Best-effort: each row is created through the single-row
+   * `create()` (its own QueryRunner, atomic balance update, action history) so a
+   * failing row is collected into `skipped` rather than aborting the batch. The
+   * per-row `createPayee` flag is forwarded so unmatched payee names are created
+   * or stored as free text exactly as the user approved on the card.
+   */
+  async createBulk(
+    userId: string,
+    rows: Array<{ dto: CreateTransactionDto; createPayeeIfMissing: boolean }>,
+  ): Promise<BulkCreateResult<Transaction>> {
+    const created: Transaction[] = [];
+    const skipped: BulkCreateSkip[] = [];
+    for (let index = 0; index < rows.length; index++) {
+      const { dto, createPayeeIfMissing } = rows[index];
+      try {
+        created.push(await this.create(userId, dto, { createPayeeIfMissing }));
+      } catch (error) {
+        skipped.push({ index, reason: bulkSkipReason(error) });
+        this.logger.warn(
+          `Bulk transaction row ${index} skipped: ${
+            error instanceof Error ? error.message : error
+          }`,
+        );
+      }
+    }
+    return { created, skipped };
   }
 
   /**

@@ -703,4 +703,137 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
       required: ["accountName", "action", "date"],
     },
   },
+  {
+    name: "create_transactions",
+    description:
+      "Propose creating SEVERAL cash transactions at once from a list or pasted table (e.g. the user pastes rows of transactions). This does NOT create anything immediately: it shows the user ONE confirmation card listing every row, which they review and approve with a single click. Parse the pasted data into the rows array, one entry per transaction; do not fabricate rows. Amount is positive for income and negative for expenses. Maximum 25 rows per call -- if the user pastes more, process the first 25 and tell them to send the rest separately. After calling this tool, briefly tell the user to review and approve the card; never claim the transactions were created. For a single transaction, use create_transaction instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rows: {
+          type: "array",
+          description:
+            "The transactions to propose, one entry per row (1-25 entries).",
+          items: {
+            type: "object",
+            properties: {
+              accountName: {
+                type: "string",
+                description:
+                  "Account for the transaction. Use an exact name from the user's account list.",
+              },
+              amount: {
+                type: "number",
+                description:
+                  "Signed amount: positive for income/inflow, negative for an expense/outflow. Up to 4 decimal places.",
+              },
+              date: {
+                type: "string",
+                description: "Transaction date (YYYY-MM-DD).",
+              },
+              payeeName: {
+                type: "string",
+                description:
+                  "Optional payee name. Matched to an existing payee when one exists; otherwise handled per createPayeeIfMissing.",
+              },
+              categoryName: {
+                type: "string",
+                description:
+                  'Optional category. Use an exact name from the user\'s category list ("Parent: Child" for a subcategory).',
+              },
+              description: {
+                type: "string",
+                description: "Optional description or memo.",
+              },
+              createPayeeIfMissing: {
+                type: "boolean",
+                description:
+                  "When the payee name matches no existing payee, create a new payee on approval (true, default) or record the name as free text (false).",
+              },
+            },
+            required: ["accountName", "amount", "date"],
+          },
+        },
+      },
+      required: ["rows"],
+    },
+  },
+  {
+    name: "create_investment_transactions",
+    description:
+      "Propose creating SEVERAL brokerage/investment-account transactions at once from a list or pasted table (e.g. the user copies a table of trades from a brokerage webpage). This does NOT create anything immediately: it shows the user ONE confirmation card listing every row, which they review and approve with a single click. Parse the pasted data into the rows array, one entry per trade; do not fabricate rows. Each security is matched automatically by ticker symbol or name. Buys debit, and sells/dividends/interest/capital gains credit, the brokerage's linked cash account automatically. Maximum 25 rows per call -- if the user pastes more, process the first 25 and tell them to send the rest separately. After calling this tool, briefly tell the user to review and approve the card; never claim the transactions were created. For a single transaction, use create_investment_transaction instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rows: {
+          type: "array",
+          description:
+            "The investment transactions to propose, one entry per row (1-25 entries).",
+          items: {
+            type: "object",
+            properties: {
+              accountName: {
+                type: "string",
+                description:
+                  "Investment/brokerage account. Use an exact name from the user's account list.",
+              },
+              action: {
+                type: "string",
+                enum: [
+                  "BUY",
+                  "SELL",
+                  "DIVIDEND",
+                  "INTEREST",
+                  "CAPITAL_GAIN",
+                  "SPLIT",
+                  "TRANSFER_IN",
+                  "TRANSFER_OUT",
+                  "REINVEST",
+                  "ADD_SHARES",
+                  "REMOVE_SHARES",
+                ],
+                description:
+                  "Transaction type. Values must be UPPER_SNAKE_CASE exactly as listed.",
+              },
+              date: {
+                type: "string",
+                description: "Transaction date (YYYY-MM-DD).",
+              },
+              security: {
+                type: "string",
+                description:
+                  "Security ticker symbol or name. Required for BUY, SELL, SPLIT, REINVEST, ADD_SHARES, and REMOVE_SHARES; optional for cash-only INTEREST.",
+              },
+              quantity: {
+                type: "number",
+                description:
+                  "Number of shares (up to 8 decimal places). For a SPLIT, the post-split-to-pre-split ratio.",
+              },
+              price: {
+                type: "number",
+                description:
+                  "Price per share (up to 6 decimal places). For DIVIDEND/INTEREST/CAPITAL_GAIN with no quantity, the total cash amount.",
+              },
+              commission: {
+                type: "number",
+                description:
+                  "Commission or fee (up to 4 decimal places). Defaults to 0.",
+              },
+              fundingAccountName: {
+                type: "string",
+                description:
+                  "Optional cash account that funds a buy or receives a sell's proceeds. Omit to use the brokerage's own linked cash account.",
+              },
+              description: {
+                type: "string",
+                description: "Optional description or memo.",
+              },
+            },
+            required: ["accountName", "action", "date"],
+          },
+        },
+      },
+      required: ["rows"],
+    },
+  },
 ];

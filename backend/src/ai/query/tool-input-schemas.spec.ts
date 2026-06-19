@@ -16,6 +16,8 @@ import {
   calculateSchema,
   renderChartSchema,
   createInvestmentTransactionSchema,
+  createTransactionsSchema,
+  createInvestmentTransactionsSchema,
 } from "./tool-input-schemas";
 
 describe("tool-input-schemas", () => {
@@ -936,6 +938,48 @@ describe("tool-input-schemas", () => {
       if (!result.success) {
         expect(result.error).toContain("Invalid input");
       }
+    });
+  });
+
+  describe("bulk schemas", () => {
+    const txRow = { accountName: "Checking", amount: -10, date: "2026-01-15" };
+    const invRow = {
+      accountName: "Brokerage",
+      action: "BUY",
+      date: "2026-01-15",
+    };
+
+    it("accepts 1 to 25 rows", () => {
+      expect(
+        createTransactionsSchema.safeParse({ rows: [txRow] }).success,
+      ).toBe(true);
+      const rows25 = Array.from({ length: 25 }, () => ({ ...txRow }));
+      expect(createTransactionsSchema.safeParse({ rows: rows25 }).success).toBe(
+        true,
+      );
+      const invRows25 = Array.from({ length: 25 }, () => ({ ...invRow }));
+      expect(
+        createInvestmentTransactionsSchema.safeParse({ rows: invRows25 })
+          .success,
+      ).toBe(true);
+    });
+
+    it("rejects an empty batch and a batch over 25 rows", () => {
+      expect(createTransactionsSchema.safeParse({ rows: [] }).success).toBe(
+        false,
+      );
+      const rows26 = Array.from({ length: 26 }, () => ({ ...txRow }));
+      expect(createTransactionsSchema.safeParse({ rows: rows26 }).success).toBe(
+        false,
+      );
+    });
+
+    it("validates each row against the singular row shape", () => {
+      // Missing required amount on a row.
+      const result = createTransactionsSchema.safeParse({
+        rows: [{ accountName: "Checking", date: "2026-01-15" }],
+      });
+      expect(result.success).toBe(false);
     });
   });
 });

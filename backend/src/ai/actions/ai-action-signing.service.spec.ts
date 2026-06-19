@@ -1,6 +1,10 @@
 import { ConfigService } from "@nestjs/config";
 import { AiActionSigningService } from "./ai-action-signing.service";
-import { CreateTransactionDescriptor } from "./ai-action.types";
+import {
+  CreateInvestmentTransactionsDescriptor,
+  CreateTransactionDescriptor,
+} from "./ai-action.types";
+import { InvestmentAction } from "../../securities/entities/investment-transaction.entity";
 
 describe("AiActionSigningService", () => {
   let service: AiActionSigningService;
@@ -73,5 +77,50 @@ describe("AiActionSigningService", () => {
     expect(service.verify(baseDescriptor, "")).toBe(false);
     expect(service.verify(baseDescriptor, "not-hex-zz")).toBe(false);
     expect(service.verify(baseDescriptor, "abcd")).toBe(false);
+  });
+
+  describe("bulk descriptors", () => {
+    const row = (securityId: string) => ({
+      accountId: "acc-1",
+      action: InvestmentAction.BUY,
+      transactionDate: "2026-01-15",
+      securityId,
+      fundingAccountId: null,
+      quantity: 10,
+      price: 100,
+      commission: 0,
+      exchangeRate: 1,
+      description: null,
+    });
+    const bulk: CreateInvestmentTransactionsDescriptor = {
+      type: "create_investment_transactions",
+      userId: "user-1",
+      actionId: "action-9",
+      expiresAt: 1_900_000_000_000,
+      rows: [row("s1"), row("s2")],
+    };
+
+    it("verifies a correctly signed multi-row descriptor", () => {
+      const sig = service.sign(bulk);
+      expect(service.verify(bulk, sig)).toBe(true);
+    });
+
+    it("rejects tampering with one row", () => {
+      const sig = service.sign(bulk);
+      const tampered: CreateInvestmentTransactionsDescriptor = {
+        ...bulk,
+        rows: [row("s1"), { ...row("s2"), quantity: 9999 }],
+      };
+      expect(service.verify(tampered, sig)).toBe(false);
+    });
+
+    it("rejects reordering rows (row order is load-bearing)", () => {
+      const sig = service.sign(bulk);
+      const reordered: CreateInvestmentTransactionsDescriptor = {
+        ...bulk,
+        rows: [row("s2"), row("s1")],
+      };
+      expect(service.verify(reordered, sig)).toBe(false);
+    });
   });
 });

@@ -34,6 +34,11 @@ import { CurrenciesService } from "../currencies/currencies.service";
 import { roundToDecimals, roundMoney, sumMoney } from "../common/round.util";
 import { stripHtml } from "../common/sanitization.util";
 import {
+  BulkCreateResult,
+  BulkCreateSkip,
+  bulkSkipReason,
+} from "../common/bulk-create.types";
+import {
   buildPaginationMeta,
   clampPagination,
   PaginatedResult,
@@ -651,6 +656,38 @@ export class InvestmentTransactionsService {
     });
 
     return result;
+  }
+
+  /**
+   * Create many investment transactions in one go for the "paste a table" bulk
+   * approval flow. Best-effort: each row is created through the single-row
+   * `create()` (its own QueryRunner, holdings/cash effects, action history) so a
+   * row that fails -- a bad oversell, an unknown security -- is collected into
+   * `skipped` rather than aborting the rest. Rows are processed in input order
+   * so dependent rows (e.g. a BUY before a later SELL) compound correctly. The
+   * expensive post-commit side effects `create()` triggers (net-worth recalc is
+   * debounced; the SPLIT holdings rebuild is idempotent) collapse naturally
+   * across the batch.
+   */
+  async createBulk(
+    userId: string,
+    dtos: CreateInvestmentTransactionDto[],
+  ): Promise<BulkCreateResult<InvestmentTransaction>> {
+    const created: InvestmentTransaction[] = [];
+    const skipped: BulkCreateSkip[] = [];
+    for (let index = 0; index < dtos.length; index++) {
+      try {
+        created.push(await this.create(userId, dtos[index]));
+      } catch (error) {
+        skipped.push({ index, reason: bulkSkipReason(error) });
+        this.logger.warn(
+          `Bulk investment row ${index} skipped: ${
+            error instanceof Error ? error.message : error
+          }`,
+        );
+      }
+    }
+    return { created, skipped };
   }
 
   /**

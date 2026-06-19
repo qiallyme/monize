@@ -146,4 +146,94 @@ describe("AiActionBuilderService", () => {
       totalAmount: 2001,
     });
   });
+
+  it("builds a bulk create_transactions action: signed rows are the valid ones, preview rows include flagged", () => {
+    const ok: CreateTransactionPreview = {
+      accountId: "a1",
+      accountName: "Checking",
+      amount: -50,
+      transactionDate: "2025-01-15",
+      payeeId: null,
+      payeeName: "Store",
+      payeeMatched: false,
+      payeeWillBeCreated: true,
+      categoryId: "c1",
+      categoryName: "Groceries",
+      description: null,
+      currencyCode: "USD",
+    };
+    const previewRows = [
+      {
+        status: "ok" as const,
+        accountName: "Checking",
+        amount: -50,
+        payeeName: "Store",
+      },
+      {
+        status: "error" as const,
+        accountName: "Nope",
+        error: "Unknown account: Nope",
+      },
+    ];
+
+    const action = builder.buildCreateTransactions("u1", [ok], previewRows);
+
+    expect(action.type).toBe("create_transactions");
+    expect(action.descriptor.type).toBe("create_transactions");
+    if (action.descriptor.type !== "create_transactions") throw new Error();
+    // Only the valid row is signed into the descriptor.
+    expect(action.descriptor.rows).toHaveLength(1);
+    expect(action.descriptor.rows[0]).toMatchObject({
+      accountId: "a1",
+      amount: -50,
+      createPayee: true,
+      currencyCode: "USD",
+    });
+    // The display preview keeps both rows in pasted order.
+    expect(action.preview.rows).toHaveLength(2);
+    expect(action.preview.rows?.[1].status).toBe("error");
+    expect(signing.sign).toHaveBeenCalledWith(action.descriptor);
+  });
+
+  it("builds a bulk create_investment_transactions action", () => {
+    const ok: CreateInvestmentTransactionPreview = {
+      accountId: "acc1",
+      accountName: "Brokerage",
+      accountCurrency: "USD",
+      action: InvestmentAction.BUY,
+      transactionDate: "2025-03-03",
+      securityId: "s1",
+      symbol: "VTI",
+      securityName: "Vanguard Total",
+      securityCurrency: "USD",
+      fundingAccountId: null,
+      quantity: 10,
+      price: 200,
+      commission: 1,
+      exchangeRate: 1,
+      totalAmount: 2001,
+      cashAccountName: "Brokerage Cash",
+      cashCurrency: "USD",
+      cashAmount: -2001,
+      description: null,
+    };
+
+    const action = builder.buildCreateInvestmentTransactions(
+      "u1",
+      [ok],
+      [{ status: "ok", symbol: "VTI" }],
+    );
+
+    expect(action.type).toBe("create_investment_transactions");
+    if (action.descriptor.type !== "create_investment_transactions")
+      throw new Error();
+    expect(action.descriptor.rows).toHaveLength(1);
+    expect(action.descriptor.rows[0]).toMatchObject({
+      accountId: "acc1",
+      action: InvestmentAction.BUY,
+      securityId: "s1",
+      exchangeRate: 1,
+    });
+    expect(action.preview.rows).toHaveLength(1);
+  });
 });

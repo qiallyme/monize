@@ -5,10 +5,13 @@ import {
   AI_ACTION_TTL_MS,
 } from "./ai-action-signing.service";
 import {
+  AiActionPreviewRow,
   CategorizeTransactionDescriptor,
   CreateInvestmentTransactionDescriptor,
+  CreateInvestmentTransactionsDescriptor,
   CreatePayeeDescriptor,
   CreateTransactionDescriptor,
+  CreateTransactionsDescriptor,
   PendingAiAction,
 } from "./ai-action.types";
 import {
@@ -17,6 +20,50 @@ import {
 } from "../../transactions/transactions.service";
 import { CreatePayeePreview } from "../../payees/payees.service";
 import { CreateInvestmentTransactionPreview } from "../../securities/investment-transactions.service";
+
+/**
+ * Map a resolved cash-transaction preview to the display row shown on the bulk
+ * confirmation card. Shared by the AI Assistant tool executor and the MCP bulk
+ * tool so the two surfaces present identical rows.
+ */
+export function transactionPreviewRow(
+  preview: CreateTransactionPreview,
+): AiActionPreviewRow {
+  return {
+    status: "ok",
+    accountName: preview.accountName,
+    amount: preview.amount,
+    currencyCode: preview.currencyCode,
+    transactionDate: preview.transactionDate,
+    payeeName: preview.payeeName,
+    payeeWillBeCreated: preview.payeeWillBeCreated,
+    categoryName: preview.categoryName,
+    description: preview.description,
+  };
+}
+
+/** Map a resolved investment-transaction preview to a bulk-card display row. */
+export function investmentPreviewRow(
+  preview: CreateInvestmentTransactionPreview,
+): AiActionPreviewRow {
+  return {
+    status: "ok",
+    accountName: preview.accountName,
+    investmentAction: preview.action,
+    transactionDate: preview.transactionDate,
+    symbol: preview.symbol,
+    securityName: preview.securityName,
+    securityCurrency: preview.securityCurrency,
+    quantity: preview.quantity,
+    price: preview.price,
+    commission: preview.commission,
+    totalAmount: preview.totalAmount,
+    cashAccountName: preview.cashAccountName,
+    cashCurrency: preview.cashCurrency,
+    cashAmount: preview.cashAmount,
+    description: preview.description,
+  };
+}
 
 /**
  * Builds the signed `PendingAiAction` envelopes for human-in-the-loop write
@@ -180,6 +227,84 @@ export class AiActionBuilderService {
         cashAmount: preview.cashAmount,
         description: preview.description,
       },
+    };
+  }
+
+  /**
+   * Build the signed envelope for a bulk cash-transaction action. `okPreviews`
+   * are the resolved rows that will be created (mapped into the signed
+   * descriptor in order); `previewRows` is the full display table -- every
+   * pasted row, valid and flagged -- shown on the confirmation card.
+   */
+  buildCreateTransactions(
+    userId: string,
+    okPreviews: CreateTransactionPreview[],
+    previewRows: AiActionPreviewRow[],
+  ): PendingAiAction {
+    const { actionId, expiresAt } = this.newEnvelope();
+    const descriptor: CreateTransactionsDescriptor = {
+      type: "create_transactions",
+      userId,
+      actionId,
+      expiresAt,
+      rows: okPreviews.map((preview) => ({
+        accountId: preview.accountId,
+        amount: preview.amount,
+        transactionDate: preview.transactionDate,
+        payeeId: preview.payeeId,
+        payeeName: preview.payeeName,
+        createPayee: preview.payeeWillBeCreated,
+        categoryId: preview.categoryId,
+        description: preview.description,
+        currencyCode: preview.currencyCode,
+      })),
+    };
+    return {
+      actionId,
+      type: "create_transactions",
+      expiresAt,
+      descriptor,
+      signature: this.signingService.sign(descriptor),
+      preview: { rows: previewRows },
+    };
+  }
+
+  /**
+   * Build the signed envelope for a bulk investment-transaction action. See
+   * `buildCreateTransactions` for the split between the signed `okPreviews` and
+   * the display-only `previewRows`.
+   */
+  buildCreateInvestmentTransactions(
+    userId: string,
+    okPreviews: CreateInvestmentTransactionPreview[],
+    previewRows: AiActionPreviewRow[],
+  ): PendingAiAction {
+    const { actionId, expiresAt } = this.newEnvelope();
+    const descriptor: CreateInvestmentTransactionsDescriptor = {
+      type: "create_investment_transactions",
+      userId,
+      actionId,
+      expiresAt,
+      rows: okPreviews.map((preview) => ({
+        accountId: preview.accountId,
+        action: preview.action,
+        transactionDate: preview.transactionDate,
+        securityId: preview.securityId,
+        fundingAccountId: preview.fundingAccountId,
+        quantity: preview.quantity,
+        price: preview.price,
+        commission: preview.commission,
+        exchangeRate: preview.exchangeRate,
+        description: preview.description,
+      })),
+    };
+    return {
+      actionId,
+      type: "create_investment_transactions",
+      expiresAt,
+      descriptor,
+      signature: this.signingService.sign(descriptor),
+      preview: { rows: previewRows },
     };
   }
 }

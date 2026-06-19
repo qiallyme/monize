@@ -8,8 +8,17 @@ import {
 import { AccountsService } from "../../accounts/accounts.service";
 import { TransactionsService } from "../../transactions/transactions.service";
 import { PayeesService } from "../../payees/payees.service";
-import { AiActionBuilderService } from "../actions/ai-action-builder.service";
-import { PendingAiAction } from "../actions/ai-action.types";
+import {
+  AiActionBuilderService,
+  investmentPreviewRow,
+  transactionPreviewRow,
+} from "../actions/ai-action-builder.service";
+import {
+  AiActionPreviewRow,
+  PendingAiAction,
+} from "../actions/ai-action.types";
+import { CreateTransactionPreview } from "../../transactions/transactions.service";
+import { CreateInvestmentTransactionPreview } from "../../securities/investment-transactions.service";
 import { AccountType } from "../../accounts/entities/account.entity";
 import { CategoriesService } from "../../categories/categories.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
@@ -179,6 +188,15 @@ export class ToolExecutorService {
           break;
         case "create_investment_transaction":
           result = await this.createInvestmentTransactionAction(
+            userId,
+            validatedInput,
+          );
+          break;
+        case "create_transactions":
+          result = await this.createTransactionsAction(userId, validatedInput);
+          break;
+        case "create_investment_transactions":
+          result = await this.createInvestmentTransactionsAction(
             userId,
             validatedInput,
           );
@@ -574,6 +592,219 @@ export class ToolExecutorService {
     return {
       data: PENDING_ACTION_TOOL_RESULT,
       summary: `Prepared a ${preview.action} investment transaction${securityLabel} in ${preview.accountName} dated ${preview.transactionDate}. Awaiting user confirmation.`,
+      sources: [],
+      pendingAction,
+    };
+  }
+
+  /**
+   * Extract a user-facing reason from a row preview failure for the bulk card.
+   * 4xx messages are passed through; anything else collapses to the fallback so
+   * internal details never reach the card.
+   */
+  private previewErrorReason(err: unknown, fallback: string): string {
+    if (err instanceof HttpException) {
+      const status = err.getStatus();
+      if (status >= 400 && status < 500) {
+        return err.message;
+      }
+    }
+    this.logger.warn(
+      `bulk row preview failed: ${err instanceof Error ? err.message : err}`,
+    );
+    return fallback;
+  }
+
+  private async createTransactionsAction(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const rows = (input.rows as Array<Record<string, unknown>>) ?? [];
+    const previewRows: AiActionPreviewRow[] = [];
+    const okPreviews: CreateTransactionPreview[] = [];
+
+    for (const row of rows) {
+      const accountName = row.accountName as string;
+      const amount = row.amount as number;
+      const date = row.date as string;
+      const payeeName = row.payeeName as string | undefined;
+      const categoryName = row.categoryName as string | undefined;
+      const description = row.description as string | undefined;
+      const createPayeeIfMissing =
+        (row.createPayeeIfMissing as boolean | undefined) ?? true;
+
+      const base: AiActionPreviewRow = {
+        status: "error",
+        accountName,
+        amount,
+        transactionDate: date,
+        payeeName: payeeName ?? null,
+        categoryName: categoryName ?? null,
+        description: description ?? null,
+      };
+
+      const account = await this.resolveAccountByName(userId, accountName);
+      if (!account) {
+        previewRows.push({ ...base, error: `Unknown account: ${accountName}` });
+        continue;
+      }
+
+      let categoryId: string | undefined;
+      if (categoryName) {
+        const resolved = await this.resolveSingleCategoryId(
+          userId,
+          categoryName,
+        );
+        if (!resolved) {
+          previewRows.push({
+            ...base,
+            error: `Unknown category: ${categoryName}`,
+          });
+          continue;
+        }
+        categoryId = resolved;
+      }
+
+      try {
+        const preview = await this.transactionsService.previewCreate(userId, {
+          accountId: account.id,
+          amount,
+          transactionDate: date,
+          payeeName,
+          categoryId,
+          description,
+          createPayeeIfMissing,
+        });
+        okPreviews.push(preview);
+        previewRows.push(transactionPreviewRow(preview));
+      } catch (err) {
+        previewRows.push({
+          ...base,
+          error: this.previewErrorReason(
+            err,
+            "Could not prepare this transaction.",
+          ),
+        });
+      }
+    }
+
+    if (okPreviews.length === 0) {
+      return this.toolError(
+        "None of the transactions could be prepared. Check the account, category, and date for each row and try again.",
+      );
+    }
+
+    const pendingAction = this.actionBuilder.buildCreateTransactions(
+      userId,
+      okPreviews,
+      previewRows,
+    );
+    const skippedCount = previewRows.length - okPreviews.length;
+    return {
+      data: PENDING_ACTION_TOOL_RESULT,
+      summary: `Prepared ${okPreviews.length} transaction${okPreviews.length === 1 ? "" : "s"}${skippedCount ? ` (${skippedCount} skipped)` : ""}. Awaiting user confirmation.`,
+      sources: [],
+      pendingAction,
+    };
+  }
+
+  private async createInvestmentTransactionsAction(
+    userId: string,
+    input: Record<string, unknown>,
+  ): Promise<ToolResult> {
+    const rows = (input.rows as Array<Record<string, unknown>>) ?? [];
+    const previewRows: AiActionPreviewRow[] = [];
+    const okPreviews: CreateInvestmentTransactionPreview[] = [];
+
+    for (const row of rows) {
+      const accountName = row.accountName as string;
+      const action = row.action as InvestmentAction;
+      const date = row.date as string;
+      const securityQuery = row.security as string | undefined;
+      const quantity = row.quantity as number | undefined;
+      const price = row.price as number | undefined;
+      const commission = row.commission as number | undefined;
+      const fundingAccountName = row.fundingAccountName as string | undefined;
+      const description = row.description as string | undefined;
+
+      const base: AiActionPreviewRow = {
+        status: "error",
+        accountName,
+        investmentAction: action,
+        transactionDate: date,
+        symbol: securityQuery ?? null,
+        quantity: quantity ?? null,
+        price: price ?? null,
+        commission: commission ?? 0,
+        description: description ?? null,
+      };
+
+      const account = await this.resolveAccountByName(userId, accountName);
+      if (!account) {
+        previewRows.push({ ...base, error: `Unknown account: ${accountName}` });
+        continue;
+      }
+
+      let fundingAccountId: string | undefined;
+      if (fundingAccountName) {
+        const funding = await this.resolveAccountByName(
+          userId,
+          fundingAccountName,
+        );
+        if (!funding) {
+          previewRows.push({
+            ...base,
+            error: `Unknown funding account: ${fundingAccountName}`,
+          });
+          continue;
+        }
+        fundingAccountId = funding.id;
+      }
+
+      try {
+        const preview =
+          await this.investmentTransactionsService.previewCreateInvestmentTransaction(
+            userId,
+            {
+              accountId: account.id,
+              action,
+              transactionDate: date,
+              securityQuery,
+              quantity,
+              price,
+              commission,
+              fundingAccountId,
+              description,
+            },
+          );
+        okPreviews.push(preview);
+        previewRows.push(investmentPreviewRow(preview));
+      } catch (err) {
+        previewRows.push({
+          ...base,
+          error: this.previewErrorReason(
+            err,
+            "Could not prepare this investment transaction.",
+          ),
+        });
+      }
+    }
+
+    if (okPreviews.length === 0) {
+      return this.toolError(
+        "None of the investment transactions could be prepared. Check the account, security, action, and date for each row and try again.",
+      );
+    }
+
+    const pendingAction = this.actionBuilder.buildCreateInvestmentTransactions(
+      userId,
+      okPreviews,
+      previewRows,
+    );
+    const skippedCount = previewRows.length - okPreviews.length;
+    return {
+      data: PENDING_ACTION_TOOL_RESULT,
+      summary: `Prepared ${okPreviews.length} investment transaction${okPreviews.length === 1 ? "" : "s"}${skippedCount ? ` (${skippedCount} skipped)` : ""}. Awaiting user confirmation.`,
       sources: [],
       pendingAction,
     };

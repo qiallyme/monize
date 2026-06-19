@@ -5750,4 +5750,46 @@ describe("TransactionsService", () => {
       expect(transactionsRepository.save).not.toHaveBeenCalled();
     });
   });
+
+  describe("createBulk", () => {
+    const row = (amount: number) => ({
+      dto: {
+        accountId: "account-1",
+        transactionDate: "2026-01-15",
+        amount,
+        currencyCode: "USD",
+      } as any,
+      createPayeeIfMissing: true,
+    });
+
+    it("creates every valid row and forwards the per-row payee flag", async () => {
+      const createSpy = jest
+        .spyOn(service, "create")
+        .mockResolvedValueOnce({ id: "tx-1" } as never)
+        .mockResolvedValueOnce({ id: "tx-2" } as never);
+
+      const result = await service.createBulk("user-1", [row(-10), row(-20)]);
+
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(createSpy).toHaveBeenLastCalledWith(
+        "user-1",
+        expect.objectContaining({ amount: -20 }),
+        { createPayeeIfMissing: true },
+      );
+      expect(result.created.map((t) => t.id)).toEqual(["tx-1", "tx-2"]);
+      expect(result.skipped).toEqual([]);
+    });
+
+    it("collects a failing row into skipped without aborting the batch", async () => {
+      jest
+        .spyOn(service, "create")
+        .mockResolvedValueOnce({ id: "tx-1" } as never)
+        .mockRejectedValueOnce(new BadRequestException("Unknown account"));
+
+      const result = await service.createBulk("user-1", [row(-10), row(-20)]);
+
+      expect(result.created.map((t) => t.id)).toEqual(["tx-1"]);
+      expect(result.skipped).toEqual([{ index: 1, reason: "Unknown account" }]);
+    });
+  });
 });

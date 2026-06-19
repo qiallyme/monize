@@ -5699,4 +5699,43 @@ describe("InvestmentTransactionsService", () => {
       expect(preview.cashAmount).toBe(25);
     });
   });
+
+  describe("createBulk", () => {
+    const dto = (overrides = {}) => ({
+      accountId,
+      securityId,
+      action: InvestmentAction.BUY,
+      transactionDate: "2025-01-15",
+      quantity: 10,
+      price: 150,
+      commission: 0,
+      ...overrides,
+    });
+
+    it("creates every valid row in input order and returns them", async () => {
+      const createSpy = jest
+        .spyOn(service, "create")
+        .mockResolvedValueOnce({ id: "inv-1" } as never)
+        .mockResolvedValueOnce({ id: "inv-2" } as never);
+
+      const result = await service.createBulk(userId, [dto(), dto()]);
+
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(result.created.map((t) => t.id)).toEqual(["inv-1", "inv-2"]);
+      expect(result.skipped).toEqual([]);
+    });
+
+    it("isolates a failing row into skipped without aborting the rest", async () => {
+      jest
+        .spyOn(service, "create")
+        .mockResolvedValueOnce({ id: "inv-1" } as never)
+        .mockRejectedValueOnce(new BadRequestException("Oversell"))
+        .mockResolvedValueOnce({ id: "inv-3" } as never);
+
+      const result = await service.createBulk(userId, [dto(), dto(), dto()]);
+
+      expect(result.created.map((t) => t.id)).toEqual(["inv-1", "inv-3"]);
+      expect(result.skipped).toEqual([{ index: 1, reason: "Oversell" }]);
+    });
+  });
 });

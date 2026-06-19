@@ -478,4 +478,72 @@ describe('ChatMessage', () => {
       expect(screen.getByText('Chart')).toBeInTheDocument();
     });
   });
+
+  describe('pending action cards', () => {
+    it('renders the single-row card for create_transaction', () => {
+      render(
+        <ChatMessage
+          id="m1"
+          role="assistant"
+          content="Review the card."
+          pendingActions={[
+            {
+              actionId: 'a1',
+              type: 'create_transaction',
+              status: 'pending',
+              expiresAt: Date.now() + 60_000,
+              signature: 'sig',
+              descriptor: { type: 'create_transaction' },
+              preview: {
+                accountName: 'Checking',
+                amount: -10,
+                currencyCode: 'USD',
+                transactionDate: '2026-01-15',
+              },
+            },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText('Create this transaction?'),
+      ).toBeInTheDocument();
+    });
+
+    it('routes the bulk type to the bulk confirmation card', () => {
+      render(
+        <ChatMessage
+          id="m2"
+          role="assistant"
+          content="Review the card."
+          pendingActions={[
+            {
+              actionId: 'a2',
+              type: 'create_investment_transactions',
+              status: 'pending',
+              expiresAt: Date.now() + 60_000,
+              signature: 'sig',
+              descriptor: { type: 'create_investment_transactions' },
+              preview: {
+                rows: [
+                  {
+                    status: 'ok',
+                    investmentAction: 'BUY',
+                    symbol: 'AAPL',
+                    transactionDate: '2026-01-15',
+                    quantity: 5,
+                  },
+                ],
+              },
+            },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText('Create these investment transactions?'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Approve all' }),
+      ).toBeInTheDocument();
+    });
+  });
 });

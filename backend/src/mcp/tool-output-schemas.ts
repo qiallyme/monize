@@ -236,6 +236,30 @@ export const createTransactionOutput = {
   status: str.optional(),
 };
 
+const bulkSkippedRow = looseObject({ index: num, reason: str });
+
+export const createTransactionsOutput = {
+  // Dry-run / preview branch: resolved rows + the rows that could not resolve.
+  dryRun: bool.optional(),
+  preview: z
+    .object({
+      rows: z.array(looseObject({})).optional(),
+      skipped: z.array(bulkSkippedRow).optional(),
+    })
+    .loose()
+    .optional(),
+  message: str.optional(),
+  // Created branch: ids of the rows created best-effort plus any skipped.
+  created: z.array(looseObject({})).optional(),
+  ids: z.array(str).optional(),
+  count: num.optional(),
+  skipped: z.array(bulkSkippedRow).optional(),
+  // Relay branch: a confirmation card was shown in the web chat instead.
+  status: str.optional(),
+};
+
+export const createInvestmentTransactionsOutput = createTransactionsOutput;
+
 export const categorizeTransactionOutput = {
   // Applied branch (direct MCP client).
   id: str.optional(),

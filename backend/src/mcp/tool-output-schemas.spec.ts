@@ -275,6 +275,40 @@ const cases: Array<{ name: string; schema: RawShape; raw: unknown }> = [
     },
   },
   {
+    name: "createTransactionsOutput (created branch)",
+    schema: schemas.createTransactionsOutput,
+    raw: {
+      created: [{ id: "t1", date: "2026-01-01", amount: -5 }],
+      ids: ["t1"],
+      count: 1,
+      skipped: [{ index: 1, reason: "Unknown account" }],
+    },
+  },
+  {
+    name: "createTransactionsOutput (dry-run branch)",
+    schema: schemas.createTransactionsOutput,
+    raw: {
+      dryRun: true,
+      preview: {
+        rows: [{ status: "ok", amount: -5 }],
+        skipped: [],
+      },
+      message: "preview only",
+    },
+  },
+  {
+    name: "createInvestmentTransactionsOutput (created branch)",
+    schema: schemas.createInvestmentTransactionsOutput,
+    raw: {
+      created: [
+        { id: "it1", action: "BUY", date: "2026-01-15", totalAmount: 1500 },
+      ],
+      ids: ["it1"],
+      count: 1,
+      skipped: [],
+    },
+  },
+  {
     name: "getCategoriesOutput",
     schema: schemas.getCategoriesOutput,
     raw: {
