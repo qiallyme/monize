@@ -60,6 +60,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# Console formatter preloaded before the standalone server so that every line
+# the container emits -- including Next.js's own startup banner -- carries an
+# ISO timestamp consistent with createLogger and the backend logs.
+COPY --from=builder --chown=nextjs:nodejs /app/server-log-format.cjs ./
+
 USER nextjs
 
 EXPOSE 3000
@@ -68,4 +73,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "server.js"]
+CMD ["node", "--require", "./server-log-format.cjs", "server.js"]
