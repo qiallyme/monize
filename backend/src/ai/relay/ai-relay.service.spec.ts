@@ -125,6 +125,46 @@ describe("AiRelayService", () => {
     });
   });
 
+  describe("reportProgress", () => {
+    it("returns false when the user has no in-flight prompt", () => {
+      expect(service.reportProgress(USER, "missing", "working...")).toBe(false);
+    });
+
+    it("streams an assistant_text event on the in-flight prompt", async () => {
+      const emit = jest.fn();
+      service.enqueuePrompt(USER, "buy XBAL", [], emit);
+      const claimed = await service.waitForPrompt(USER);
+
+      expect(
+        service.reportProgress(USER, claimed!.promptId, "looking up category"),
+      ).toBe(true);
+      expect(emit).toHaveBeenCalledWith({
+        type: "assistant_text",
+        text: "looking up category\n",
+      });
+    });
+
+    it("does not target another user's prompt", async () => {
+      const emit = jest.fn();
+      service.enqueuePrompt(USER, "q", [], emit);
+      const claimed = await service.waitForPrompt(USER);
+
+      expect(service.reportProgress(OTHER, claimed!.promptId, "x")).toBe(false);
+      expect(emit).not.toHaveBeenCalled();
+    });
+
+    it("returns false once the prompt has been answered", async () => {
+      const emit = jest.fn();
+      service.enqueuePrompt(USER, "q", [], emit);
+      const claimed = await service.waitForPrompt(USER);
+      service.postResponse(USER, claimed!.promptId, "done");
+
+      expect(service.reportProgress(USER, claimed!.promptId, "late")).toBe(
+        false,
+      );
+    });
+  });
+
   describe("status", () => {
     it("is offline before any agent polls", () => {
       expect(service.getStatus(USER)).toEqual({ state: "offline", queued: 0 });

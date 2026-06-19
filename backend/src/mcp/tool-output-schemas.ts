@@ -609,3 +609,7 @@ export const getNextPromptOutput = {
 export const postResponseOutput = {
   delivered: bool,
 };
+
+export const reportProgressOutput = {
+  delivered: bool,
+};

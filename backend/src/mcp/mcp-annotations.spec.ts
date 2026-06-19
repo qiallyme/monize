@@ -20,7 +20,7 @@ const WRITE_TOOLS = new Set([
 // Write tools whose repeated calls converge to the same state.
 const IDEMPOTENT_WRITES = new Set(["categorize_transaction"]);
 
-const EXPECTED_TOOL_COUNT = 30;
+const EXPECTED_TOOL_COUNT = 31;
 
 interface ToolProvider {
   register: (server: unknown, resolve?: unknown) => void;

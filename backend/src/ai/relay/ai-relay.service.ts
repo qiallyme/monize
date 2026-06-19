@@ -163,6 +163,31 @@ export class AiRelayService {
   }
 
   /**
+   * Called by the `report_progress` MCP tool. Streams an interim status line
+   * from the agent to the browser parked on this prompt as an `assistant_text`
+   * event -- the same live-narration channel the native AI Assistant uses -- so
+   * the user sees what the agent is doing ("looking up the category...",
+   * "sending the confirmation card...") instead of a static spinner. Returns
+   * false if the prompt is unknown, already settled, or has no stream.
+   */
+  reportProgress(userId: string, promptId: string, text: string): boolean {
+    this.lastPollAt.set(userId, Date.now());
+    const record = this.inFlight.get(promptId);
+    if (!record || record.userId !== userId) {
+      return false;
+    }
+    const { prompt } = record;
+    if (prompt.settled || !prompt.emit) {
+      return false;
+    }
+    // The browser accumulates assistant_text into one live-narration block
+    // (rendered whitespace-pre-wrap), so terminate each discrete update with a
+    // newline to keep sequential progress lines from running together.
+    prompt.emit({ type: "assistant_text", text: `${text}\n` });
+    return true;
+  }
+
+  /**
    * Push a write-confirmation card to the browser parked on this user's
    * in-flight relay prompt. Called by the MCP write tools when they detect they
    * are serving a relayed prompt: instead of an MCP-client elicitation (which
