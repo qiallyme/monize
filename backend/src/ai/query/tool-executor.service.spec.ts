@@ -1578,6 +1578,203 @@ describe("ToolExecutorService", () => {
       expect(result.isError).toBe(true);
       expect(result.pendingAction).toBeUndefined();
     });
+
+    it("bulk create (bulk mode) with both standard and transfer rows builds two cards", async () => {
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "create",
+        items: [
+          { accountName: "Checking", amount: -10, date: "2026-01-15" },
+          {
+            fromAccountName: "Checking",
+            toAccountName: "Savings",
+            amount: 100,
+            date: "2026-01-16",
+          },
+        ],
+        approvalMode: "bulk",
+      });
+      const types = result.pendingActions?.map((a) => a.type).sort();
+      expect(types).toEqual(["batch_actions", "create_transactions"]);
+    });
+
+    it("bulk create (individual mode) with a transfer row builds a create_transfer card", async () => {
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "create",
+        items: [
+          { accountName: "Checking", amount: -10, date: "2026-01-15" },
+          {
+            fromAccountName: "Checking",
+            toAccountName: "Savings",
+            amount: 100,
+            date: "2026-01-16",
+          },
+        ],
+        approvalMode: "individual",
+      });
+      const types = result.pendingActions?.map((a) => a.type).sort();
+      expect(types).toEqual(["create_transaction", "create_transfer"]);
+    });
+  });
+
+  describe("manage_transactions (update/delete bulk + individual branches)", () => {
+    const TXID1 = "11111111-1111-4111-8111-111111111111";
+    const TXID2 = "22222222-2222-4222-8222-222222222222";
+
+    it("bulk update (individual mode) builds one card per row", async () => {
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "update",
+        items: [
+          { transactionId: TXID1, amount: -5 },
+          { transactionId: TXID2, amount: -6 },
+        ],
+        approvalMode: "individual",
+      });
+      expect(result.pendingActions).toHaveLength(2);
+      expect(
+        result.pendingActions?.every((a) => a.type === "update_transaction"),
+      ).toBe(true);
+    });
+
+    it("bulk update (individual mode) skips failing rows and surfaces the count", async () => {
+      transactions.previewUpdate
+        .mockResolvedValueOnce({
+          transactionId: TXID1,
+          accountId: "acc-1",
+          accountName: "Checking",
+          amount: -5,
+          transactionDate: "2026-01-15",
+          payeeId: "payee-1",
+          payeeName: "Store",
+          payeeMatched: true,
+          payeeWillBeCreated: false,
+          categoryId: "cat-1",
+          categoryName: "Dining",
+          description: null,
+          currencyCode: "USD",
+        })
+        .mockRejectedValueOnce(new BadRequestException("bad row"));
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "update",
+        items: [
+          { transactionId: TXID1, amount: -5 },
+          { transactionId: TXID2, amount: -6 },
+        ],
+        approvalMode: "individual",
+      });
+      expect(result.pendingActions).toHaveLength(1);
+      expect(result.summary).toContain("1 skipped");
+    });
+
+    it("bulk update (individual mode) errors when no row prepares", async () => {
+      transactions.previewUpdate.mockRejectedValue(
+        new BadRequestException("nope"),
+      );
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "update",
+        items: [
+          { transactionId: TXID1, amount: -5 },
+          { transactionId: TXID2, amount: -6 },
+        ],
+        approvalMode: "individual",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("bulk update (bulk mode) builds a batch_actions update card", async () => {
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "update",
+        items: [
+          { transactionId: TXID1, amount: -5 },
+          { transactionId: TXID2, amount: -6 },
+        ],
+        approvalMode: "bulk",
+      });
+      expect(result.pendingAction?.type).toBe("batch_actions");
+    });
+
+    it("bulk update (bulk mode) errors when every row is skipped", async () => {
+      transactions.previewUpdate.mockRejectedValue(
+        new BadRequestException("nope"),
+      );
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "update",
+        items: [
+          { transactionId: TXID1, amount: -5 },
+          { transactionId: TXID2, amount: -6 },
+        ],
+        approvalMode: "bulk",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("single delete errors on a preview failure", async () => {
+      transactions.previewDelete.mockRejectedValueOnce(
+        new BadRequestException("not found"),
+      );
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "delete",
+        items: [{ transactionId: TXID1 }],
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("bulk delete (individual mode) builds one card per row", async () => {
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "delete",
+        items: [{ transactionId: TXID1 }, { transactionId: TXID2 }],
+        approvalMode: "individual",
+      });
+      expect(result.pendingActions).toHaveLength(2);
+      expect(
+        result.pendingActions?.every((a) => a.type === "delete_transaction"),
+      ).toBe(true);
+    });
+
+    it("bulk delete (individual mode) skips failing rows", async () => {
+      transactions.previewDelete
+        .mockResolvedValueOnce({
+          transactionId: TXID1,
+          accountName: "Checking",
+          amount: -5,
+          transactionDate: "2026-01-15",
+          payeeName: "Store",
+          categoryName: "Dining",
+          description: null,
+          currencyCode: "USD",
+        })
+        .mockRejectedValueOnce(new BadRequestException("gone"));
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "delete",
+        items: [{ transactionId: TXID1 }, { transactionId: TXID2 }],
+        approvalMode: "individual",
+      });
+      expect(result.pendingActions).toHaveLength(1);
+      expect(result.summary).toContain("1 skipped");
+    });
+
+    it("bulk delete (individual mode) errors when no row prepares", async () => {
+      transactions.previewDelete.mockRejectedValue(
+        new BadRequestException("gone"),
+      );
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "delete",
+        items: [{ transactionId: TXID1 }, { transactionId: TXID2 }],
+        approvalMode: "individual",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("bulk delete (bulk mode) errors when every row is skipped", async () => {
+      transactions.previewDelete.mockRejectedValue(
+        new BadRequestException("gone"),
+      );
+      const result = await service.execute(userId, "manage_transactions", {
+        operation: "delete",
+        items: [{ transactionId: TXID1 }, { transactionId: TXID2 }],
+        approvalMode: "bulk",
+      });
+      expect(result.isError).toBe(true);
+    });
   });
 
   describe("create_investment_transactions (bulk human-in-the-loop)", () => {

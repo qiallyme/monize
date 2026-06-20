@@ -1,5 +1,8 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { BadRequestException } from "@nestjs/common";
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from "@nestjs/common";
 import { TransactionToolPrepService } from "./transaction-tool-prep.service";
 import { AccountsService } from "../accounts/accounts.service";
 import { TransactionsService } from "./transactions.service";
@@ -153,6 +156,19 @@ describe("TransactionToolPrepService", () => {
       expect(result.okPreviews).toHaveLength(0);
       expect(result.skipped[0].reason).toContain("Unknown category");
     });
+
+    it("skips a row when previewCreate throws (best-effort catch)", async () => {
+      transactions.previewCreate.mockRejectedValueOnce(
+        new BadRequestException("Amount out of range"),
+      );
+      const result = await service.prepareCreate(userId, [
+        { accountName: "Checking", amount: -10, date: "2026-01-15" },
+      ]);
+      expect(result.okPreviews).toHaveLength(0);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0].reason).toContain("Amount out of range");
+      expect(result.previewRows[0].status).toBe("error");
+    });
   });
 
   describe("prepareCreateSingle", () => {
@@ -164,6 +180,39 @@ describe("TransactionToolPrepService", () => {
           date: "2026-01-15",
         }),
       ).rejects.toThrow(/Unknown account/);
+    });
+
+    it("throws on an unknown category", async () => {
+      analytics.resolveLlmCategoryIds.mockResolvedValueOnce({
+        categoryIds: [],
+        unresolved: ["Nope"],
+      });
+      await expect(
+        service.prepareCreateSingle(userId, {
+          accountName: "Checking",
+          amount: -1,
+          date: "2026-01-15",
+          categoryName: "Nope",
+        }),
+      ).rejects.toThrow(/Unknown category/);
+    });
+
+    it("resolves a category and threads createPayeeIfMissing=false", async () => {
+      const result = await service.prepareCreateSingle(userId, {
+        accountName: "Checking",
+        amount: -1,
+        date: "2026-01-15",
+        categoryName: "Dining",
+        createPayeeIfMissing: false,
+      });
+      expect(result.createPayee).toBe(false);
+      expect(transactions.previewCreate).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          categoryId: "c1",
+          createPayeeIfMissing: false,
+        }),
+      );
     });
   });
 
@@ -229,6 +278,73 @@ describe("TransactionToolPrepService", () => {
         expect.objectContaining({ createPayeeIfMissing: false }),
       );
     });
+
+    it("skips when the source account is unknown", async () => {
+      const result = await service.prepareCreateTransfer(userId, [
+        {
+          fromAccountName: "Ghost",
+          toAccountName: "Savings",
+          amount: 100,
+          date: "2026-01-15",
+        },
+      ]);
+      expect(result.okPreviews).toHaveLength(0);
+      expect(result.skipped[0].reason).toContain("Unknown account: Ghost");
+      expect(transfer.previewCreateTransfer).not.toHaveBeenCalled();
+    });
+
+    it("skips a row when previewCreateTransfer throws (best-effort catch)", async () => {
+      transfer.previewCreateTransfer.mockRejectedValueOnce(
+        new BadRequestException("Transfer amount must be positive"),
+      );
+      const result = await service.prepareCreateTransfer(userId, [
+        {
+          fromAccountName: "Checking",
+          toAccountName: "Savings",
+          amount: 100,
+          date: "2026-01-15",
+        },
+      ]);
+      expect(result.okPreviews).toHaveLength(0);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0].reason).toContain("must be positive");
+      expect(result.previewRows[0].status).toBe("error");
+    });
+  });
+
+  describe("prepareCreateTransferSingle", () => {
+    it("resolves both accounts and returns a preview", async () => {
+      const preview = await service.prepareCreateTransferSingle(userId, {
+        fromAccountName: "Checking",
+        toAccountName: "Savings",
+        amount: 100,
+        date: "2026-01-15",
+      });
+      expect(preview.fromAccountId).toBe("a1");
+      expect(transfer.previewCreateTransfer).toHaveBeenCalled();
+    });
+
+    it("throws on an unknown source account", async () => {
+      await expect(
+        service.prepareCreateTransferSingle(userId, {
+          fromAccountName: "Ghost",
+          toAccountName: "Savings",
+          amount: 100,
+          date: "2026-01-15",
+        }),
+      ).rejects.toThrow(/Unknown account: Ghost/);
+    });
+
+    it("throws on an unknown destination account", async () => {
+      await expect(
+        service.prepareCreateTransferSingle(userId, {
+          fromAccountName: "Checking",
+          toAccountName: "Ghost",
+          amount: 100,
+          date: "2026-01-15",
+        }),
+      ).rejects.toThrow(/Unknown account: Ghost/);
+    });
   });
 
   describe("prepareUpdate", () => {
@@ -293,6 +409,54 @@ describe("TransactionToolPrepService", () => {
       ]);
       expect(result.okRows).toHaveLength(1);
       expect(result.skipped).toHaveLength(1);
+    });
+
+    it("skips a row whose prepare throws a 4xx, surfacing the date when present", async () => {
+      transactions.findOne.mockResolvedValueOnce({
+        id: "t1",
+        isTransfer: false,
+      });
+      transactions.previewUpdate.mockRejectedValueOnce(
+        new BadRequestException("No fields to update"),
+      );
+      const result = await service.prepareUpdateBulk(userId, [
+        { transactionId: "t1", date: "2026-03-03" },
+      ]);
+      expect(result.okRows).toHaveLength(0);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0].reason).toContain("No fields to update");
+      expect(result.previewRows[0]).toMatchObject({
+        status: "error",
+        transactionDate: "2026-03-03",
+      });
+    });
+
+    it("skips a row with a generic reason for a 5xx error and no date", async () => {
+      transactions.findOne.mockResolvedValueOnce({
+        id: "t1",
+        isTransfer: false,
+      });
+      transactions.previewUpdate.mockRejectedValueOnce(
+        new InternalServerErrorException("boom"),
+      );
+      const result = await service.prepareUpdateBulk(userId, [
+        { transactionId: "t1", amount: -1 },
+      ]);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0].reason).toBe("Could not be prepared.");
+      expect(result.previewRows[0].transactionDate).toBeUndefined();
+    });
+
+    it("falls back to a generic reason for a non-Error rejection", async () => {
+      transactions.findOne.mockResolvedValueOnce({
+        id: "t1",
+        isTransfer: false,
+      });
+      transactions.previewUpdate.mockRejectedValueOnce("string failure");
+      const result = await service.prepareUpdateBulk(userId, [
+        { transactionId: "t1", amount: -1 },
+      ]);
+      expect(result.skipped[0].reason).toBe("Could not be prepared.");
     });
   });
 

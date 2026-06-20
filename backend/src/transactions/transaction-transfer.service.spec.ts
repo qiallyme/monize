@@ -615,6 +615,71 @@ describe("TransactionTransferService", () => {
         "user-1",
       );
     });
+
+    it("recalculates balances instead of adjusting them when removing a future-dated split-linked transfer", async () => {
+      mockedIsTransactionInFuture.mockReturnValue(true);
+
+      const tx = {
+        id: "linked-from-split",
+        isTransfer: true,
+        linkedTransactionId: "parent-tx",
+        accountId: "account-2",
+        amount: 50,
+        transactionDate: "2099-01-01",
+      };
+
+      const targetSplit = {
+        id: "target-split",
+        transactionId: "parent-tx",
+        linkedTransactionId: "linked-from-split",
+      };
+      // A second split links to a different leg, exercising the linked-leg
+      // future recalc branch (line 627).
+      const otherSplit = {
+        id: "other-split",
+        transactionId: "parent-tx",
+        linkedTransactionId: "other-leg",
+      };
+
+      mockFindOne.mockResolvedValue(tx);
+      splitsRepository.findOne.mockResolvedValue(targetSplit);
+      transactionsRepository.findOne.mockImplementation((opts: any) => {
+        const id = opts?.where?.id;
+        if (id === "parent-tx")
+          return Promise.resolve({
+            id: "parent-tx",
+            accountId: "account-1",
+            amount: -100,
+            transactionDate: "2099-01-01",
+          });
+        if (id === "other-leg")
+          return Promise.resolve({
+            id: "other-leg",
+            accountId: "account-3",
+            amount: 25,
+            transactionDate: "2099-01-01",
+          });
+        return Promise.resolve(null);
+      });
+      splitsRepository.find.mockResolvedValue([targetSplit, otherSplit]);
+
+      await service.removeTransfer("user-1", "linked-from-split", mockFindOne);
+
+      // Future-dated: balances are recalculated, never adjusted.
+      expect(accountsService.updateBalance).not.toHaveBeenCalled();
+      expect(accountsService.recalculateCurrentBalance).toHaveBeenCalledWith(
+        "account-3",
+        expect.anything(),
+      );
+      expect(accountsService.recalculateCurrentBalance).toHaveBeenCalledWith(
+        "account-1",
+        expect.anything(),
+      );
+      expect(accountsService.recalculateCurrentBalance).toHaveBeenCalledWith(
+        "account-2",
+        expect.anything(),
+      );
+    });
   });
 
   describe("updateTransfer", () => {
@@ -742,6 +807,56 @@ describe("TransactionTransferService", () => {
           description: "Updated description",
           referenceNumber: "REF-123",
         }),
+      );
+    });
+
+    it("rewrites created_at on both legs via raw query when createdAt is provided", async () => {
+      mockFindOne
+        .mockResolvedValueOnce(fromTransaction)
+        .mockResolvedValueOnce(toTransaction)
+        .mockResolvedValueOnce(fromTransaction)
+        .mockResolvedValueOnce(toTransaction);
+
+      await service.updateTransfer(
+        "user-1",
+        "from-tx",
+        { createdAt: "2026-01-10T12:34:56.000Z" } as any,
+        mockFindOne,
+      );
+
+      const createdAtCalls = mockQueryRunner.query.mock.calls.filter(
+        (c: any[]) =>
+          typeof c[0] === "string" && c[0].includes("SET created_at"),
+      );
+      expect(createdAtCalls).toHaveLength(2);
+      expect(createdAtCalls[0][1]).toEqual([
+        expect.stringContaining("2026-01-10 12:34:56"),
+        "from-tx",
+      ]);
+      expect(createdAtCalls[1][1][1]).toBe("to-tx");
+    });
+
+    it("updates the source and destination currency codes when provided", async () => {
+      mockFindOne
+        .mockResolvedValueOnce(fromTransaction)
+        .mockResolvedValueOnce(toTransaction)
+        .mockResolvedValueOnce(fromTransaction)
+        .mockResolvedValueOnce(toTransaction);
+
+      await service.updateTransfer(
+        "user-1",
+        "from-tx",
+        { fromCurrencyCode: "EUR", toCurrencyCode: "GBP" },
+        mockFindOne,
+      );
+
+      expect(transactionsRepository.update).toHaveBeenCalledWith(
+        "from-tx",
+        expect.objectContaining({ currencyCode: "EUR" }),
+      );
+      expect(transactionsRepository.update).toHaveBeenCalledWith(
+        "to-tx",
+        expect.objectContaining({ currencyCode: "GBP" }),
       );
     });
 
