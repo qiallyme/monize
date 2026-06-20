@@ -429,4 +429,80 @@ describe('TransactionConfirmationCard', () => {
       expect(screen.queryByRole('link')).toBeNull();
     });
   });
+
+  describe('transfer actions', () => {
+    function makeTransferAction(
+      previewOverrides: Partial<PendingAction['preview']> = {},
+      overrides: Partial<PendingAction> = {},
+    ): PendingAction {
+      return makeAction({
+        type: 'create_transfer',
+        descriptor: { type: 'create_transfer' },
+        preview: {
+          fromAccountName: 'Checking',
+          toAccountName: 'Savings',
+          amount: 200,
+          currencyCode: 'USD',
+          toAmount: 200,
+          toCurrencyCode: 'USD',
+          transactionDate: '2026-03-01',
+          ...previewOverrides,
+        },
+        ...overrides,
+      });
+    }
+
+    it('renders a create_transfer card with From, To, and Amount', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeTransferAction()}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Create this transfer?')).toBeInTheDocument();
+      expect(screen.getByText('From')).toBeInTheDocument();
+      expect(screen.getByText('Checking')).toBeInTheDocument();
+      expect(screen.getByText('To')).toBeInTheDocument();
+      expect(screen.getByText('Savings')).toBeInTheDocument();
+      // Same-currency transfer: no separate "To amount" row.
+      expect(screen.queryByText('To amount')).toBeNull();
+    });
+
+    it('shows the destination amount for a cross-currency transfer', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeTransferAction({
+            toAmount: 270,
+            toCurrencyCode: 'CAD',
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('To amount')).toBeInTheDocument();
+    });
+
+    it('shows the transfer success message and a view link on confirm', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeTransferAction(
+            {},
+            {
+              type: 'update_transfer',
+              descriptor: { type: 'update_transfer' },
+              status: 'confirmed',
+              resultId: 'tx-1',
+            },
+          )}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Transfer updated')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'View transaction' }),
+      ).toHaveAttribute('href', '/transactions');
+    });
+  });
 });
