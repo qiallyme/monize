@@ -94,6 +94,16 @@ export class MonthlyCategoryBreakdownService {
         -- its category and is not double-counted by the inflow leg. The
         -- transfer is still excluded from every other report, so it never
         -- counts as income/expense or affects net worth.
+        --
+        -- Note: the category is stored on BOTH legs of the transfer (so the
+        -- transfer rollup below can exclude the whole movement via
+        -- category_id IS NOT NULL). This aggregate is therefore the single
+        -- source of truth for the net figure (one outflow leg, e.g. -1000).
+        -- A transaction-level view filtered by the same category (a report
+        -- drill-down, or the transactions list filtered by category) lists
+        -- BOTH legs (-1000 and +1000) because both carry category_id, so they
+        -- visibly net to zero there. That is expected, not a double-count: the
+        -- net contribution lives in this aggregate, not in the per-leg list.
         AND (
           t.is_transfer = false
           OR (t.is_transfer = true AND t.category_id IS NOT NULL AND t.amount < 0)
