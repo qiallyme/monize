@@ -531,9 +531,19 @@ export function TransactionForm({ transaction, duplicateFrom, defaultAccountId, 
       setSelectedCategoryId(categoryId);
       setValue('categoryId', categoryId, { shouldDirty: true, shouldValidate: true });
 
-      // Adjust amount sign based on category type (income = positive, expense = negative)
+      // Adjust amount sign based on category type (income = positive, expense
+      // = negative) -- only in normal mode. A transfer amount is always entered
+      // as a positive number (the legs' signs are derived on save), so an
+      // expense category must not flip it negative or the transfer fails the
+      // "amount must be positive" check. Mirrors the mode guard in
+      // handleAmountChange.
       const category = categories.find(c => c.id === categoryId);
-      if (category && watchedAmount !== undefined && watchedAmount !== 0) {
+      if (
+        category &&
+        mode === 'normal' &&
+        watchedAmount !== undefined &&
+        watchedAmount !== 0
+      ) {
         const absAmount = Math.abs(watchedAmount);
         const newAmount = category.isIncome ? absAmount : -absAmount;
         if (newAmount !== watchedAmount) {
