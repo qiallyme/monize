@@ -208,7 +208,9 @@ export function TransactionConfirmationCard({
     if (preview.payeeName)
       rows.push({
         label: t('confirmAction.payee'),
-        value: preview.payeeName,
+        value: preview.payeeWillBeCreated
+          ? `${preview.payeeName} ${t('confirmAction.newPayee')}`
+          : preview.payeeName,
       });
     if (preview.description)
       rows.push({

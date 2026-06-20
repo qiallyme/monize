@@ -561,8 +561,8 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
       "Create, update, or delete the user's cash transactions (including transfers between their own accounts). This does NOT change anything immediately: it shows the user one or more confirmation cards they must explicitly approve before anything is saved. Use it only when the user clearly asks to add, edit, categorize, transfer, or delete a transaction in their latest message. Accepts NAMES for account, category, and payee -- they are resolved internally, so you do NOT need to look up IDs first. " +
       "operation = 'create' | 'update' | 'delete'. Provide an 'items' array (1-25 rows). " +
       "create (standard): { accountName, amount, date, payeeName?, categoryName?, description?, createPayeeIfMissing? } -- amount is positive for income, negative for expenses. " +
-      "create (transfer): { fromAccountName, toAccountName, amount, date, description?, payeeName?, exchangeRate?, toAmount? } -- an item is a transfer when toAccountName is present; amount is the positive transfer amount (exchangeRate/toAmount only for cross-currency); payeeName is an optional custom label for the transfer (omit to auto-generate 'Transfer to/from <account>'). " +
-      "update: { transactionId, amount?, date?, payeeName?, categoryName?, description?, createPayeeIfMissing? } -- provide only the fields to change (at least one); a category-only change is just transactionId + categoryName. First call search_transactions to obtain the transactionId. Transfers are auto-detected and edited correctly; for a transfer, payeeName sets its custom label. " +
+      "create (transfer): { fromAccountName, toAccountName, amount, date, description?, payeeName?, createPayeeIfMissing?, exchangeRate?, toAmount? } -- an item is a transfer when toAccountName is present; amount is the positive transfer amount (exchangeRate/toAmount only for cross-currency); payeeName is an optional custom label for the transfer, matched to an existing payee (or created if missing, like a normal transaction) and applied to both legs (omit to auto-generate 'Transfer to/from <account>'). " +
+      "update: { transactionId, amount?, date?, payeeName?, categoryName?, description?, createPayeeIfMissing? } -- provide only the fields to change (at least one); a category-only change is just transactionId + categoryName. First call search_transactions to obtain the transactionId. Transfers are auto-detected and edited correctly; for a transfer, payeeName sets its custom label (matched to an existing payee or created if missing, like a normal transaction). " +
       "delete: { transactionId } -- removes the transaction (and any linked transfer legs / split children). First call search_transactions to obtain the transactionId. " +
       "approvalMode = 'bulk' (default) shows one card for the whole batch; 'individual' shows one card per item the user approves separately. Ignored for a single item. Maximum 25 items per call; if the user pastes more, process the first 25 and tell them to send the rest. After calling this tool, briefly tell the user to review and approve the card(s); never claim the change was applied.",
     inputSchema: {
@@ -614,7 +614,7 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
               payeeName: {
                 type: "string",
                 description:
-                  "Optional payee name (standard create/update; matched to an existing payee when one exists, otherwise handled per createPayeeIfMissing). For a transfer (create/update), this is a custom free-text label applied to both legs; omit to auto-generate 'Transfer to/from <account>'.",
+                  "Optional payee name (standard create/update; matched to an existing payee when one exists, otherwise handled per createPayeeIfMissing). For a transfer (create/update), this is a custom label applied to both legs that is matched to an existing payee when one exists, otherwise handled per createPayeeIfMissing (omit to auto-generate 'Transfer to/from <account>').",
               },
               categoryName: {
                 type: "string",
@@ -628,7 +628,7 @@ export const FINANCIAL_TOOLS: AiToolDefinition[] = [
               createPayeeIfMissing: {
                 type: "boolean",
                 description:
-                  "When the payee name matches no existing payee, create a new payee on approval (true, default) or record the name as free text (false).",
+                  "When the payee name matches no existing payee, create a new payee on approval (true, default) or record the name as free text (false). Applies to standard and transfer create/update.",
               },
               exchangeRate: {
                 type: "number",

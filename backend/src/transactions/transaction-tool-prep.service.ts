@@ -51,6 +51,7 @@ export interface TransferRowInput {
   date: string;
   description?: string;
   payeeName?: string;
+  createPayeeIfMissing?: boolean;
   exchangeRate?: number;
   toAmount?: number;
 }
@@ -274,6 +275,7 @@ export class TransactionToolPrepService {
             toAmount: row.toAmount,
             description: row.description,
             payeeName: row.payeeName,
+            createPayeeIfMissing: row.createPayeeIfMissing ?? true,
           },
         );
         okPreviews.push(preview);
@@ -324,6 +326,7 @@ export class TransactionToolPrepService {
       toAmount: row.toAmount,
       description: row.description,
       payeeName: row.payeeName,
+      createPayeeIfMissing: row.createPayeeIfMissing ?? true,
     });
   }
 
@@ -384,6 +387,7 @@ export class TransactionToolPrepService {
           transactionDate: item.date,
           description: item.description,
           payeeName: item.payeeName,
+          createPayeeIfMissing: item.createPayeeIfMissing ?? true,
         },
         this.transactionsService.findOne.bind(this.transactionsService),
       );
@@ -540,7 +544,9 @@ export class TransactionToolPrepService {
       exchangeRate: preview.exchangeRate,
       toAmount: preview.toAmount,
       description: preview.description,
+      payeeId: preview.payeeId,
       payeeName: preview.payeeName,
+      createPayee: preview.payeeWillBeCreated,
     };
   }
 

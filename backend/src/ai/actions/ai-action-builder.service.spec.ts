@@ -435,7 +435,10 @@ describe("AiActionBuilderService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: null,
+      payeeId: "payee-1",
       payeeName: "Custom transfer label",
+      payeeMatched: true,
+      payeeWillBeCreated: false,
     };
     const action = builder.buildCreateTransfer("user-1", preview);
     expect(action.type).toBe("create_transfer");
@@ -447,14 +450,44 @@ describe("AiActionBuilderService", () => {
       toAccountId: "a2",
       amount: 100,
       toAmount: 100,
+      payeeId: "payee-1",
       payeeName: "Custom transfer label",
+      createPayee: false,
     });
     expect(action.preview).toMatchObject({
       fromAccountName: "Checking",
       toAccountName: "Savings",
       toAmount: 100,
       payeeName: "Custom transfer label",
+      payeeWillBeCreated: false,
     });
+  });
+
+  it("carries payeeId=null and createPayee=true for an unmatched transfer label", () => {
+    const action = builder.buildCreateTransfer("user-1", {
+      fromAccountId: "a1",
+      fromAccountName: "Checking",
+      fromCurrencyCode: "USD",
+      toAccountId: "a2",
+      toAccountName: "Savings",
+      toCurrencyCode: "USD",
+      amount: 100,
+      toAmount: 100,
+      exchangeRate: 1,
+      transactionDate: "2026-01-15",
+      description: null,
+      payeeId: null,
+      payeeName: "Brand new label",
+      payeeMatched: false,
+      payeeWillBeCreated: true,
+    });
+    expect(action.descriptor).toMatchObject({
+      type: "create_transfer",
+      payeeId: null,
+      payeeName: "Brand new label",
+      createPayee: true,
+    });
+    expect(action.preview).toMatchObject({ payeeWillBeCreated: true });
   });
 
   it("builds a signed update_transfer action", () => {
@@ -471,17 +504,23 @@ describe("AiActionBuilderService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: null,
+      payeeId: "payee-2",
       payeeName: "Edited transfer label",
+      payeeMatched: true,
+      payeeWillBeCreated: false,
     });
     expect(action.type).toBe("update_transfer");
     expect(action.descriptor).toMatchObject({
       type: "update_transfer",
       transactionId: "t1",
       amount: 200,
+      payeeId: "payee-2",
       payeeName: "Edited transfer label",
+      createPayee: false,
     });
     expect(action.preview).toMatchObject({
       payeeName: "Edited transfer label",
+      payeeWillBeCreated: false,
     });
   });
 
@@ -520,7 +559,10 @@ describe("AiActionBuilderService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: null,
+      payeeId: null,
       payeeName: "Row label",
+      payeeMatched: false,
+      payeeWillBeCreated: true,
     });
     expect(row).toMatchObject({
       status: "ok",
@@ -528,6 +570,7 @@ describe("AiActionBuilderService", () => {
       toAccountName: "Savings",
       toAmount: 100,
       payeeName: "Row label",
+      payeeWillBeCreated: true,
     });
   });
 });

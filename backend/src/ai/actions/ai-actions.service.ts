@@ -223,6 +223,7 @@ export class AiActionsService {
     userId: string,
     descriptor: CreateTransferDescriptor,
   ): Promise<ConfirmActionResult> {
+    const payeeId = await this.resolveTransferPayeeId(userId, descriptor);
     const dto = await this.toValidatedDto(CreateTransferDto, {
       fromAccountId: descriptor.fromAccountId,
       toAccountId: descriptor.toAccountId,
@@ -233,6 +234,7 @@ export class AiActionsService {
       exchangeRate: descriptor.exchangeRate,
       toAmount: descriptor.toAmount,
       description: descriptor.description ?? undefined,
+      payeeId,
       payeeName: descriptor.payeeName ?? undefined,
     });
     const result = await this.transactionsService.createTransfer(userId, dto);
@@ -243,12 +245,14 @@ export class AiActionsService {
     userId: string,
     descriptor: UpdateTransferDescriptor,
   ): Promise<ConfirmActionResult> {
+    const payeeId = await this.resolveTransferPayeeId(userId, descriptor);
     const dto = await this.toValidatedDto(UpdateTransferDto, {
       amount: descriptor.amount,
       transactionDate: descriptor.transactionDate,
       exchangeRate: descriptor.exchangeRate,
       toAmount: descriptor.toAmount,
       description: descriptor.description ?? undefined,
+      payeeId,
       payeeName: descriptor.payeeName ?? undefined,
     });
     const result = await this.transactionsService.updateTransfer(
@@ -257,6 +261,29 @@ export class AiActionsService {
       dto,
     );
     return { type: "update_transfer", id: result.fromTransaction.id };
+  }
+
+  /**
+   * Resolve the final payee id for a transfer descriptor/row, mirroring the
+   * normal cash-transaction flow: use the matched id, otherwise find-or-create
+   * from the custom label when the descriptor opted in. Returns undefined when
+   * no payee should be linked (free text or no label).
+   */
+  private async resolveTransferPayeeId(
+    userId: string,
+    descriptor: {
+      payeeId: string | null;
+      createPayee: boolean;
+      payeeName: string | null;
+    },
+  ): Promise<string | undefined> {
+    let payeeId = descriptor.payeeId ?? undefined;
+    if (!payeeId && descriptor.createPayee && descriptor.payeeName) {
+      payeeId = (
+        await this.payeesService.findOrCreate(userId, descriptor.payeeName)
+      ).id;
+    }
+    return payeeId;
   }
 
   /**
@@ -322,6 +349,7 @@ export class AiActionsService {
       }
       case "create_transfer": {
         const r = row as BatchCreateTransferRow;
+        const payeeId = await this.resolveTransferPayeeId(userId, r);
         const dto = await this.toValidatedDto(CreateTransferDto, {
           fromAccountId: r.fromAccountId,
           toAccountId: r.toAccountId,
@@ -332,6 +360,7 @@ export class AiActionsService {
           exchangeRate: r.exchangeRate,
           toAmount: r.toAmount,
           description: r.description ?? undefined,
+          payeeId,
           payeeName: r.payeeName ?? undefined,
         });
         const result = await this.transactionsService.createTransfer(

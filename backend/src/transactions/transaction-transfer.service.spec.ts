@@ -6,6 +6,7 @@ import { TransactionTransferService } from "./transaction-transfer.service";
 import { Transaction, TransactionStatus } from "./entities/transaction.entity";
 import { TransactionSplit } from "./entities/transaction-split.entity";
 import { AccountsService } from "../accounts/accounts.service";
+import { PayeesService } from "../payees/payees.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { ActionHistoryService } from "../action-history/action-history.service";
 import { isTransactionInFuture } from "../common/date-utils";
@@ -22,6 +23,7 @@ describe("TransactionTransferService", () => {
   let transactionsRepository: Record<string, jest.Mock>;
   let splitsRepository: Record<string, jest.Mock>;
   let accountsService: Record<string, jest.Mock>;
+  let payeesService: Record<string, jest.Mock>;
   let netWorthService: Record<string, jest.Mock>;
   let mockQueryRunner: Record<string, any>;
   let mockDataSource: Record<string, jest.Mock>;
@@ -96,6 +98,13 @@ describe("TransactionTransferService", () => {
       recalculateCurrentBalance: jest.fn().mockResolvedValue(undefined),
     };
 
+    // Default: no payee matches a custom label (free-text / will-be-created
+    // paths). Tests that exercise the match path override resolveByName.
+    payeesService = {
+      resolveByName: jest.fn().mockResolvedValue(null),
+      findOrCreate: jest.fn(),
+    };
+
     netWorthService = {
       recalculateAccount: jest.fn().mockResolvedValue(undefined),
       triggerDebouncedRecalc: jest.fn(),
@@ -160,6 +169,7 @@ describe("TransactionTransferService", () => {
           useValue: splitsRepository,
         },
         { provide: AccountsService, useValue: accountsService },
+        { provide: PayeesService, useValue: payeesService },
         { provide: NetWorthService, useValue: netWorthService },
         { provide: DataSource, useValue: mockDataSource },
         {
@@ -1561,6 +1571,61 @@ describe("TransactionTransferService", () => {
         transactionDate: "2026-01-15",
       });
       expect(preview.payeeName).toBeNull();
+      expect(preview.payeeId).toBeNull();
+      expect(preview.payeeMatched).toBe(false);
+      expect(preview.payeeWillBeCreated).toBe(false);
+    });
+
+    it("links payeeId and adopts the canonical name when the label matches an existing payee", async () => {
+      payeesService.resolveByName.mockResolvedValue({
+        id: "payee-1",
+        name: "Buon Gusto Restaurant",
+        defaultCategoryId: "cat-1",
+      });
+      const preview = await service.previewCreateTransfer("user-1", {
+        fromAccountId: "from-account",
+        toAccountId: "to-account",
+        amount: 100,
+        transactionDate: "2026-01-15",
+        payeeName: "Buon Gusto",
+      });
+      expect(payeesService.resolveByName).toHaveBeenCalledWith(
+        "user-1",
+        "Buon Gusto",
+      );
+      expect(preview.payeeId).toBe("payee-1");
+      expect(preview.payeeName).toBe("Buon Gusto Restaurant");
+      expect(preview.payeeMatched).toBe(true);
+      expect(preview.payeeWillBeCreated).toBe(false);
+    });
+
+    it("flags an unmatched label for creation by default", async () => {
+      const preview = await service.previewCreateTransfer("user-1", {
+        fromAccountId: "from-account",
+        toAccountId: "to-account",
+        amount: 100,
+        transactionDate: "2026-01-15",
+        payeeName: "Brand New Label",
+      });
+      expect(preview.payeeId).toBeNull();
+      expect(preview.payeeMatched).toBe(false);
+      expect(preview.payeeWillBeCreated).toBe(true);
+      expect(preview.payeeName).toBe("Brand New Label");
+    });
+
+    it("keeps an unmatched label as free text when createPayeeIfMissing is false", async () => {
+      const preview = await service.previewCreateTransfer("user-1", {
+        fromAccountId: "from-account",
+        toAccountId: "to-account",
+        amount: 100,
+        transactionDate: "2026-01-15",
+        payeeName: "Brand New Label",
+        createPayeeIfMissing: false,
+      });
+      expect(preview.payeeId).toBeNull();
+      expect(preview.payeeMatched).toBe(false);
+      expect(preview.payeeWillBeCreated).toBe(false);
+      expect(preview.payeeName).toBe("Brand New Label");
     });
 
     it("rejects same source and destination account", async () => {
@@ -1635,9 +1700,9 @@ describe("TransactionTransferService", () => {
       });
     });
 
-    it("keeps the existing from-leg payeeName when omitted", async () => {
+    it("keeps the existing from-leg payee link untouched when omitted", async () => {
       const findOne = jest.fn(async (_uid: string, id: string) =>
-        id === "from-tx" ? fromLeg : toLeg,
+        id === "from-tx" ? { ...fromLeg, payeeId: "existing-payee" } : toLeg,
       );
       const preview = await service.previewUpdateTransfer(
         "user-1",
@@ -1646,9 +1711,13 @@ describe("TransactionTransferService", () => {
         findOne as any,
       );
       expect(preview.payeeName).toBe("Transfer to Savings");
+      expect(preview.payeeId).toBe("existing-payee");
+      expect(preview.payeeMatched).toBe(true);
+      expect(preview.payeeWillBeCreated).toBe(false);
+      expect(payeesService.resolveByName).not.toHaveBeenCalled();
     });
 
-    it("sets a custom payeeName, sanitized", async () => {
+    it("sets a custom payeeName, sanitized, and flags creation for an unmatched label", async () => {
       const findOne = jest.fn(async (_uid: string, id: string) =>
         id === "from-tx" ? fromLeg : toLeg,
       );
@@ -1660,6 +1729,46 @@ describe("TransactionTransferService", () => {
       );
       expect(preview.payeeName).toBeTruthy();
       expect(preview.payeeName).not.toContain("<");
+      expect(preview.payeeId).toBeNull();
+      expect(preview.payeeMatched).toBe(false);
+      expect(preview.payeeWillBeCreated).toBe(true);
+    });
+
+    it("links payeeId when a new label matches an existing payee", async () => {
+      payeesService.resolveByName.mockResolvedValue({
+        id: "payee-9",
+        name: "Landlord LLC",
+        defaultCategoryId: null,
+      });
+      const findOne = jest.fn(async (_uid: string, id: string) =>
+        id === "from-tx" ? fromLeg : toLeg,
+      );
+      const preview = await service.previewUpdateTransfer(
+        "user-1",
+        "from-tx",
+        { payeeName: "Landlord" },
+        findOne as any,
+      );
+      expect(preview.payeeId).toBe("payee-9");
+      expect(preview.payeeName).toBe("Landlord LLC");
+      expect(preview.payeeMatched).toBe(true);
+      expect(preview.payeeWillBeCreated).toBe(false);
+    });
+
+    it("keeps an unmatched new label as free text when createPayeeIfMissing is false", async () => {
+      const findOne = jest.fn(async (_uid: string, id: string) =>
+        id === "from-tx" ? fromLeg : toLeg,
+      );
+      const preview = await service.previewUpdateTransfer(
+        "user-1",
+        "from-tx",
+        { payeeName: "Freeform", createPayeeIfMissing: false },
+        findOne as any,
+      );
+      expect(preview.payeeId).toBeNull();
+      expect(preview.payeeMatched).toBe(false);
+      expect(preview.payeeWillBeCreated).toBe(false);
+      expect(preview.payeeName).toBe("Freeform");
     });
 
     it("throws notATransfer when the target is not a transfer", async () => {

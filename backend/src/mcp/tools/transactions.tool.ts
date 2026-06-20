@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TransactionsService } from "../../transactions/transactions.service";
+import { PayeesService } from "../../payees/payees.service";
 import { TransactionAnalyticsService } from "../../transactions/transaction-analytics.service";
 import {
   TransactionToolPrepService,
@@ -66,6 +67,7 @@ export class McpTransactionsTools {
 
   constructor(
     private readonly transactionsService: TransactionsService,
+    private readonly payeesService: PayeesService,
     private readonly analyticsService: TransactionAnalyticsService,
     private readonly relayService: AiRelayService,
     private readonly actionBuilder: AiActionBuilderService,
@@ -456,8 +458,8 @@ export class McpTransactionsTools {
         description:
           "Create, update, or delete the user's cash transactions (including transfers between their own accounts). Accepts NAMES for account, category, and payee -- they are resolved internally, so you do NOT need to call get_accounts/get_categories first. operation = 'create' | 'update' | 'delete' with an items array (1-25 rows). " +
           "create (standard): { accountName, amount, date, payeeName?, categoryName?, description?, createPayeeIfMissing? } (amount positive=income, negative=expense). " +
-          "create (transfer): { fromAccountName, toAccountName, amount, date, description?, payeeName?, exchangeRate?, toAmount? } -- an item is a transfer when toAccountName is present; payeeName is an optional custom label (omit to auto-generate 'Transfer to/from <account>'). " +
-          "update: { transactionId, amount?, date?, payeeName?, categoryName?, description?, createPayeeIfMissing? } (>=1 field; a category-only change is transactionId + categoryName; transfers auto-detected; payeeName sets the transfer's custom label). " +
+          "create (transfer): { fromAccountName, toAccountName, amount, date, description?, payeeName?, createPayeeIfMissing?, exchangeRate?, toAmount? } -- an item is a transfer when toAccountName is present; payeeName is an optional custom label matched to an existing payee (or created if missing, like a normal transaction) and applied to both legs (omit to auto-generate 'Transfer to/from <account>'). " +
+          "update: { transactionId, amount?, date?, payeeName?, categoryName?, description?, createPayeeIfMissing? } (>=1 field; a category-only change is transactionId + categoryName; transfers auto-detected; payeeName sets the transfer's custom label, matched to an existing payee or created if missing). " +
           "delete: { transactionId } (removes linked transfer legs / split children too). " +
           "approvalMode = 'bulk' (default; one confirmation for the whole batch) or 'individual' (one confirmation per item); ignored for a single item. Set dryRun=true to preview every item without saving. The user is asked to confirm before anything is saved (web chat card via relay, or an MCP confirmation dialog).",
         inputSchema: {
@@ -507,7 +509,7 @@ export class McpTransactionsTools {
                   .max(100)
                   .optional()
                   .describe(
-                    "Optional payee name (standard create/update; or a custom transfer label for create/update transfer -- omit to auto-generate 'Transfer to/from <account>').",
+                    "Optional payee name (standard create/update; or a custom transfer label for create/update transfer). Matched to an existing payee when one exists, otherwise handled per createPayeeIfMissing. Omit (transfer) to auto-generate 'Transfer to/from <account>'.",
                   ),
                 categoryName: z
                   .string()
@@ -525,7 +527,7 @@ export class McpTransactionsTools {
                   .boolean()
                   .optional()
                   .describe(
-                    "When the payee name matches no existing payee, create a new payee (default true) or keep as free text (false).",
+                    "When the payee name matches no existing payee, create a new payee (default true) or keep as free text (false). Applies to standard and transfer create/update.",
                   ),
                 exchangeRate: z
                   .number()
@@ -638,9 +640,37 @@ export class McpTransactionsTools {
       date: item.date as string,
       description: item.description,
       payeeName: item.payeeName,
+      createPayeeIfMissing: item.createPayeeIfMissing,
       exchangeRate: item.exchangeRate,
       toAmount: item.toAmount,
     };
+  }
+
+  /**
+   * Resolve the final payee id for a transfer preview/descriptor, mirroring the
+   * normal cash-transaction flow: use the matched id, otherwise find-or-create
+   * from the custom label when opted in. Returns undefined when no payee should
+   * be linked.
+   */
+  private async resolveTransferPayeeId(
+    userId: string,
+    src: {
+      payeeId: string | null;
+      payeeName: string | null;
+      payeeWillBeCreated?: boolean;
+      createPayee?: boolean;
+    },
+  ): Promise<string | undefined> {
+    let payeeId = src.payeeId ?? undefined;
+    const shouldCreate = src.payeeWillBeCreated ?? src.createPayee ?? false;
+    if (!payeeId && shouldCreate && src.payeeName) {
+      const payee = await this.payeesService.findOrCreate(
+        userId,
+        src.payeeName,
+      );
+      payeeId = payee.id;
+    }
+    return payeeId;
   }
 
   private toUpdateRow(item: ManageItem): UpdateRowInput {
@@ -828,6 +858,7 @@ export class McpTransactionsTools {
         return toolError(
           "Cancelled: the confirmation was declined, so no transfer was created.",
         );
+      const payeeId = await this.resolveTransferPayeeId(userId, preview);
       const result = await this.transactionsService.createTransfer(userId, {
         fromAccountId: preview.fromAccountId,
         toAccountId: preview.toAccountId,
@@ -838,6 +869,7 @@ export class McpTransactionsTools {
         exchangeRate: preview.exchangeRate,
         toAmount: preview.toAmount,
         description: preview.description ?? undefined,
+        payeeId,
         payeeName: preview.payeeName ?? undefined,
       });
       this.writeLimiter.record(userId, "create_transfer");
@@ -919,6 +951,7 @@ export class McpTransactionsTools {
       this.writeLimiter.record(userId, "create_transaction");
     }
     for (const preview of xfer.okPreviews) {
+      const payeeId = await this.resolveTransferPayeeId(userId, preview);
       const result = await this.transactionsService.createTransfer(userId, {
         fromAccountId: preview.fromAccountId,
         toAccountId: preview.toAccountId,
@@ -929,6 +962,7 @@ export class McpTransactionsTools {
         exchangeRate: preview.exchangeRate,
         toAmount: preview.toAmount,
         description: preview.description ?? undefined,
+        payeeId,
         payeeName: preview.payeeName ?? undefined,
       });
       ids.push(result.fromTransaction.id);
@@ -968,6 +1002,7 @@ export class McpTransactionsTools {
           return toolError(
             "Cancelled: the confirmation was declined, so the transfer was not changed.",
           );
+        const payeeId = await this.resolveTransferPayeeId(userId, preview);
         const r = await this.transactionsService.updateTransfer(
           userId,
           preview.transactionId,
@@ -977,6 +1012,7 @@ export class McpTransactionsTools {
             exchangeRate: preview.exchangeRate,
             toAmount: preview.toAmount,
             description: preview.description ?? undefined,
+            payeeId,
             payeeName: preview.payeeName ?? undefined,
           },
         );
@@ -1257,6 +1293,7 @@ export class McpTransactionsTools {
         return tx.id;
       }
       case "create_transfer": {
+        const payeeId = await this.resolveTransferPayeeId(userId, d);
         const r = await this.transactionsService.createTransfer(userId, {
           fromAccountId: d.fromAccountId,
           toAccountId: d.toAccountId,
@@ -1267,6 +1304,7 @@ export class McpTransactionsTools {
           exchangeRate: d.exchangeRate,
           toAmount: d.toAmount,
           description: d.description ?? undefined,
+          payeeId,
           payeeName: d.payeeName ?? undefined,
         });
         this.writeLimiter.record(userId, "create_transfer");
@@ -1291,6 +1329,7 @@ export class McpTransactionsTools {
         return tx.id;
       }
       case "update_transfer": {
+        const payeeId = await this.resolveTransferPayeeId(userId, d);
         const r = await this.transactionsService.updateTransfer(
           userId,
           d.transactionId,
@@ -1300,6 +1339,7 @@ export class McpTransactionsTools {
             exchangeRate: d.exchangeRate,
             toAmount: d.toAmount,
             description: d.description ?? undefined,
+            payeeId,
             payeeName: d.payeeName ?? undefined,
           },
         );

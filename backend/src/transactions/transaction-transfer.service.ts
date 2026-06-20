@@ -12,6 +12,7 @@ import { TransactionSplit } from "./entities/transaction-split.entity";
 import { CreateTransferDto } from "./dto/create-transfer.dto";
 import { UpdateTransferDto } from "./dto/update-transfer.dto";
 import { AccountsService } from "../accounts/accounts.service";
+import { PayeesService } from "../payees/payees.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
 import { isTransactionInFuture } from "../common/date-utils";
 import { ActionHistoryService } from "../action-history/action-history.service";
@@ -44,7 +45,13 @@ export interface CreateTransferPreview {
   exchangeRate: number;
   transactionDate: string;
   description: string | null;
+  /** Existing payee the custom label resolved to, or null to record free text. */
+  payeeId: string | null;
   payeeName: string | null;
+  /** True when the custom label matched an existing payee. */
+  payeeMatched: boolean;
+  /** True when approving will create a new payee from an unmatched label. */
+  payeeWillBeCreated: boolean;
 }
 
 /** Resolved, sanitized preview of an edit the assistant proposes to a transfer. */
@@ -61,7 +68,10 @@ export interface UpdateTransferPreview {
   exchangeRate: number;
   transactionDate: string;
   description: string | null;
+  payeeId: string | null;
   payeeName: string | null;
+  payeeMatched: boolean;
+  payeeWillBeCreated: boolean;
 }
 
 @Injectable()
@@ -75,6 +85,7 @@ export class TransactionTransferService {
     private splitsRepository: Repository<TransactionSplit>,
     @Inject(forwardRef(() => AccountsService))
     private accountsService: AccountsService,
+    private payeesService: PayeesService,
     @Inject(forwardRef(() => NetWorthService))
     private netWorthService: NetWorthService,
     private dataSource: DataSource,
@@ -297,6 +308,8 @@ export class TransactionTransferService {
       toAmount?: number;
       description?: string;
       payeeName?: string;
+      /** Auto-create a payee for an unmatched custom label. Defaults to true. */
+      createPayeeIfMissing?: boolean;
     },
   ): Promise<CreateTransferPreview> {
     if (input.fromAccountId === input.toAccountId) {
@@ -331,6 +344,29 @@ export class TransactionTransferService {
         ? roundMoney(input.toAmount)
         : roundMoney(input.amount * exchangeRate);
 
+    // Resolve the custom label to an existing payee exactly like a normal cash
+    // transaction (previewCreate): on a match link the payee and adopt its
+    // canonical name; an unmatched name becomes a new payee on confirm unless
+    // the caller opted out. Transfers have no category, so the matched payee's
+    // default category is deliberately NOT inherited.
+    const inputPayeeName = stripHtml(input.payeeName) || null;
+    let payeeId: string | null = null;
+    let payeeName: string | null = inputPayeeName;
+    let payeeMatched = false;
+    if (inputPayeeName) {
+      const payee = await this.payeesService.resolveByName(
+        userId,
+        inputPayeeName,
+      );
+      if (payee) {
+        payeeId = payee.id;
+        payeeMatched = true;
+        payeeName = payee.name;
+      }
+    }
+    const payeeWillBeCreated =
+      !!payeeName && !payeeMatched && input.createPayeeIfMissing !== false;
+
     return {
       fromAccountId: fromAccount.id,
       fromAccountName: fromAccount.name,
@@ -343,7 +379,10 @@ export class TransactionTransferService {
       exchangeRate,
       transactionDate: input.transactionDate,
       description: stripHtml(input.description) || null,
-      payeeName: stripHtml(input.payeeName) || null,
+      payeeId,
+      payeeName,
+      payeeMatched,
+      payeeWillBeCreated,
     };
   }
 
@@ -361,6 +400,8 @@ export class TransactionTransferService {
       transactionDate?: string;
       description?: string;
       payeeName?: string;
+      /** Auto-create a payee for an unmatched custom label. Defaults to true. */
+      createPayeeIfMissing?: boolean;
     },
     findOne: (userId: string, id: string) => Promise<Transaction>,
   ): Promise<UpdateTransferPreview> {
@@ -399,10 +440,33 @@ export class TransactionTransferService {
       input.description !== undefined
         ? stripHtml(input.description) || null
         : (fromTransaction.description ?? null);
-    const payeeName =
-      input.payeeName !== undefined
-        ? stripHtml(input.payeeName) || null
-        : (fromTransaction.payeeName ?? null);
+
+    // Re-resolve the payee only when a new label is provided, mirroring
+    // previewUpdate for a normal transaction. When the label is unchanged, keep
+    // the canonical from-leg payee link untouched (matched, no new creation).
+    let payeeId: string | null = fromTransaction.payeeId ?? null;
+    let payeeName: string | null = fromTransaction.payeeName ?? null;
+    let payeeMatched = true;
+    let payeeWillBeCreated = false;
+    if (input.payeeName !== undefined) {
+      const inputPayeeName = stripHtml(input.payeeName) || null;
+      payeeId = null;
+      payeeName = inputPayeeName;
+      payeeMatched = false;
+      if (inputPayeeName) {
+        const payee = await this.payeesService.resolveByName(
+          userId,
+          inputPayeeName,
+        );
+        if (payee) {
+          payeeId = payee.id;
+          payeeMatched = true;
+          payeeName = payee.name;
+        }
+      }
+      payeeWillBeCreated =
+        !!payeeName && !payeeMatched && input.createPayeeIfMissing !== false;
+    }
 
     return {
       transactionId,
@@ -417,7 +481,10 @@ export class TransactionTransferService {
       exchangeRate,
       transactionDate: newDate,
       description,
+      payeeId,
       payeeName,
+      payeeMatched,
+      payeeWillBeCreated,
     };
   }
 

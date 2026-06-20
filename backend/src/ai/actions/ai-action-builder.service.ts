@@ -105,6 +105,7 @@ export function transferPreviewRow(
     transactionDate: preview.transactionDate,
     description: preview.description,
     payeeName: preview.payeeName,
+    payeeWillBeCreated: preview.payeeWillBeCreated,
   };
 }
 
@@ -557,7 +558,9 @@ export class AiActionBuilderService {
       exchangeRate: preview.exchangeRate,
       toAmount: preview.toAmount,
       description: preview.description,
+      payeeId: preview.payeeId,
       payeeName: preview.payeeName,
+      createPayee: preview.payeeWillBeCreated,
     };
     return {
       actionId,
@@ -576,6 +579,7 @@ export class AiActionBuilderService {
         transactionDate: preview.transactionDate,
         description: preview.description,
         payeeName: preview.payeeName,
+        payeeWillBeCreated: preview.payeeWillBeCreated,
       },
     };
   }
@@ -598,7 +602,9 @@ export class AiActionBuilderService {
       exchangeRate: preview.exchangeRate,
       toAmount: preview.toAmount,
       description: preview.description,
+      payeeId: preview.payeeId,
       payeeName: preview.payeeName,
+      createPayee: preview.payeeWillBeCreated,
     };
     return {
       actionId,
@@ -617,6 +623,7 @@ export class AiActionBuilderService {
         transactionDate: preview.transactionDate,
         description: preview.description,
         payeeName: preview.payeeName,
+        payeeWillBeCreated: preview.payeeWillBeCreated,
       },
     };
   }

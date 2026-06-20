@@ -495,6 +495,37 @@ describe('TransactionConfirmationCard', () => {
       expect(screen.getByText('Shared rent')).toBeInTheDocument();
     });
 
+    it('appends the new-payee marker when the transfer label will create a payee', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeTransferAction({
+            payeeName: 'Brand New Label',
+            payeeWillBeCreated: true,
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByText('Brand New Label (new payee)'),
+      ).toBeInTheDocument();
+    });
+
+    it('omits the new-payee marker when the transfer label matched an existing payee', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeTransferAction({
+            payeeName: 'Shared rent',
+            payeeWillBeCreated: false,
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Shared rent')).toBeInTheDocument();
+      expect(screen.queryByText('Shared rent (new payee)')).toBeNull();
+    });
+
     it('omits the payee row when no payeeName is set', () => {
       render(
         <TransactionConfirmationCard

@@ -119,7 +119,12 @@ export function BulkConfirmationCard({
           `→ ${formatCurrency(row.toAmount, row.toCurrencyCode ?? undefined)}`,
         );
       }
-      if (row.payeeName) parts.push(row.payeeName);
+      if (row.payeeName)
+        parts.push(
+          row.payeeWillBeCreated
+            ? `${row.payeeName} ${t('confirmAction.newPayee')}`
+            : row.payeeName,
+        );
       return { primary, secondary: parts.join(' · ') };
     }
     const payee = row.payeeName || row.accountName || '';

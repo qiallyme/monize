@@ -194,7 +194,7 @@ describe("TransactionToolPrepService", () => {
       expect(result.skipped[0].reason).toContain("Unknown account: Ghost");
     });
 
-    it("passes a custom payeeName through to previewCreateTransfer", async () => {
+    it("passes a custom payeeName and default createPayeeIfMissing through to previewCreateTransfer", async () => {
       await service.prepareCreateTransfer(userId, [
         {
           fromAccountName: "Checking",
@@ -206,7 +206,27 @@ describe("TransactionToolPrepService", () => {
       ]);
       expect(transfer.previewCreateTransfer).toHaveBeenCalledWith(
         userId,
-        expect.objectContaining({ payeeName: "Shared rent" }),
+        expect.objectContaining({
+          payeeName: "Shared rent",
+          createPayeeIfMissing: true,
+        }),
+      );
+    });
+
+    it("threads createPayeeIfMissing=false to previewCreateTransfer", async () => {
+      await service.prepareCreateTransfer(userId, [
+        {
+          fromAccountName: "Checking",
+          toAccountName: "Savings",
+          amount: 100,
+          date: "2026-01-15",
+          payeeName: "Shared rent",
+          createPayeeIfMissing: false,
+        },
+      ]);
+      expect(transfer.previewCreateTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({ createPayeeIfMissing: false }),
       );
     });
   });
@@ -235,6 +255,13 @@ describe("TransactionToolPrepService", () => {
       });
       expect(result.kind).toBe("transfer");
       expect(transfer.previewUpdateTransfer).toHaveBeenCalled();
+      // createPayeeIfMissing defaults to true and is threaded to the preview.
+      expect(transfer.previewUpdateTransfer).toHaveBeenCalledWith(
+        userId,
+        "t1",
+        expect.objectContaining({ createPayeeIfMissing: true }),
+        expect.anything(),
+      );
     });
 
     it("throws on an unknown category", async () => {
@@ -310,15 +337,42 @@ describe("TransactionToolPrepService", () => {
         exchangeRate: 1,
         transactionDate: "2026-01-15",
         description: null,
+        payeeId: "payee-1",
         payeeName: "Custom label",
+        payeeMatched: true,
+        payeeWillBeCreated: false,
       });
       expect(row).toMatchObject({
         fromAccountId: "a1",
         toAccountId: "a2",
         amount: 100,
         toAmount: 100,
+        payeeId: "payee-1",
         payeeName: "Custom label",
+        createPayee: false,
       });
+    });
+
+    it("carries createPayee from payeeWillBeCreated for an unmatched label", () => {
+      const row = service.transferToBatchRow({
+        fromAccountId: "a1",
+        fromAccountName: "Checking",
+        fromCurrencyCode: "USD",
+        toAccountId: "a2",
+        toAccountName: "Savings",
+        toCurrencyCode: "USD",
+        amount: 100,
+        toAmount: 100,
+        exchangeRate: 1,
+        transactionDate: "2026-01-15",
+        description: null,
+        payeeId: null,
+        payeeName: "New label",
+        payeeMatched: false,
+        payeeWillBeCreated: true,
+      });
+      expect(row.payeeId).toBeNull();
+      expect(row.createPayee).toBe(true);
     });
   });
 });

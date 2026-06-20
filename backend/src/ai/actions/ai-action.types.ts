@@ -247,7 +247,11 @@ export interface CreateTransferDescriptor extends BaseDescriptor {
   exchangeRate: number;
   toAmount: number;
   description: string | null;
+  /** Existing payee the custom label resolved to, or null for free text. */
+  payeeId: string | null;
   payeeName: string | null;
+  /** When true and payeeId is null, confirm creates a payee from payeeName. */
+  createPayee: boolean;
 }
 
 /** Edit an existing transfer (both linked legs). */
@@ -261,7 +265,9 @@ export interface UpdateTransferDescriptor extends BaseDescriptor {
   exchangeRate: number;
   toAmount: number;
   description: string | null;
+  payeeId: string | null;
   payeeName: string | null;
+  createPayee: boolean;
 }
 
 /**
@@ -296,7 +302,9 @@ export interface BatchCreateTransferRow {
   exchangeRate: number;
   toAmount: number;
   description: string | null;
+  payeeId: string | null;
   payeeName: string | null;
+  createPayee: boolean;
 }
 
 export type BatchActionRow =

@@ -237,6 +237,38 @@ describe('BulkConfirmationCard', () => {
       );
       expect(screen.getByText(/Shared rent/)).toBeInTheDocument();
     });
+
+    it('appends the new-payee marker to a transfer row whose label will be created', () => {
+      render(
+        <BulkConfirmationCard
+          action={makeAction({
+            type: 'batch_actions',
+            descriptor: { type: 'batch_actions', operation: 'create_transfer' },
+            preview: {
+              rows: [
+                {
+                  status: 'ok',
+                  fromAccountName: 'Checking',
+                  toAccountName: 'Savings',
+                  amount: 200,
+                  currencyCode: 'USD',
+                  toAmount: 200,
+                  toCurrencyCode: 'USD',
+                  transactionDate: '2026-03-01',
+                  payeeName: 'Brand New Label',
+                  payeeWillBeCreated: true,
+                },
+              ],
+            },
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByText(/Brand New Label \(new payee\)/),
+      ).toBeInTheDocument();
+    });
   });
 
   it('shows retry on error and an expired notice', () => {

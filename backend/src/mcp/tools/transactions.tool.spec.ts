@@ -4,6 +4,7 @@ import { UserContextResolver } from "../mcp-context";
 describe("McpTransactionsTools", () => {
   let tool: McpTransactionsTools;
   let transactionsService: Record<string, jest.Mock>;
+  let payeesService: Record<string, jest.Mock>;
   let analyticsService: Record<string, jest.Mock>;
   let server: {
     registerTool: jest.Mock;
@@ -40,6 +41,10 @@ describe("McpTransactionsTools", () => {
       previewDelete: jest.fn(),
       createTransfer: jest.fn(),
       updateTransfer: jest.fn(),
+    };
+
+    payeesService = {
+      findOrCreate: jest.fn().mockResolvedValue({ id: "new-payee-id" }),
     };
 
     analyticsService = {
@@ -96,6 +101,7 @@ describe("McpTransactionsTools", () => {
 
     tool = new McpTransactionsTools(
       transactionsService as any,
+      payeesService as any,
       analyticsService as any,
       relayService as any,
       actionBuilder as any,
@@ -621,6 +627,69 @@ describe("McpTransactionsTools", () => {
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe("tf1");
+    });
+
+    it("find-or-creates the payee for an unmatched transfer label and links the new id", async () => {
+      resolve.mockReturnValue({ userId: "u1", scopes: "write" });
+      const xferPreview = {
+        fromAccountId: "a1",
+        fromAccountName: "Checking",
+        fromCurrencyCode: "USD",
+        toAccountId: "a2",
+        toAccountName: "Savings",
+        toCurrencyCode: "USD",
+        amount: 100,
+        toAmount: 100,
+        exchangeRate: 1,
+        transactionDate: "2025-01-15",
+        description: null,
+        payeeId: null,
+        payeeName: "Brand new label",
+        payeeMatched: false,
+        payeeWillBeCreated: true,
+      };
+      prepService.prepareCreate.mockResolvedValue({
+        okPreviews: [],
+        okCreatePayee: [],
+        okIndex: [],
+        previewRows: [],
+        skipped: [],
+      });
+      prepService.prepareCreateTransfer.mockResolvedValue({
+        okPreviews: [xferPreview],
+        okIndex: [0],
+        previewRows: [{ status: "ok" }],
+        skipped: [],
+      });
+      transactionsService.createTransfer.mockResolvedValue({
+        fromTransaction: { id: "tf1" },
+        toTransaction: { id: "tf2" },
+      });
+
+      await handlers["manage_transactions"](
+        {
+          operation: "create",
+          items: [
+            {
+              fromAccountName: "Checking",
+              toAccountName: "Savings",
+              amount: 100,
+              date: "2025-01-15",
+              payeeName: "Brand new label",
+            },
+          ],
+        },
+        { sessionId: "s1" },
+      );
+
+      expect(payeesService.findOrCreate).toHaveBeenCalledWith(
+        "u1",
+        "Brand new label",
+      );
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({ payeeId: "new-payee-id" }),
+      );
     });
 
     it("bulk create (bulk mode) emits one relay card", async () => {
