@@ -119,6 +119,7 @@ export function BulkConfirmationCard({
           `→ ${formatCurrency(row.toAmount, row.toCurrencyCode ?? undefined)}`,
         );
       }
+      if (row.payeeName) parts.push(row.payeeName);
       return { primary, secondary: parts.join(' · ') };
     }
     const payee = row.payeeName || row.accountName || '';

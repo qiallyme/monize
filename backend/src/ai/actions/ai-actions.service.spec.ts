@@ -602,6 +602,7 @@ describe("AiActionsService", () => {
         exchangeRate: 1,
         toAmount: 100,
         description: null,
+        payeeName: "Custom transfer label",
       };
       return d;
     }
@@ -615,6 +616,7 @@ describe("AiActionsService", () => {
           fromAccountId: ACC,
           toAccountId: ACC2,
           amount: 100,
+          payeeName: "Custom transfer label",
         }),
       );
       expect(result.type).toBe("create_transfer");
@@ -635,12 +637,16 @@ describe("AiActionsService", () => {
         exchangeRate: 1,
         toAmount: 200,
         description: null,
+        payeeName: "Edited transfer label",
       };
       const result = await service.confirm(USER, dtoFor(descriptor));
       expect(transactions.updateTransfer).toHaveBeenCalledWith(
         USER,
         TX,
-        expect.objectContaining({ amount: 200 }),
+        expect.objectContaining({
+          amount: 200,
+          payeeName: "Edited transfer label",
+        }),
       );
       expect(result.type).toBe("update_transfer");
     });
@@ -681,6 +687,7 @@ describe("AiActionsService", () => {
             exchangeRate: 1,
             toAmount: 50,
             description: null,
+            payeeName: null,
           },
         ],
       };

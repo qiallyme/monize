@@ -50,6 +50,7 @@ export interface TransferRowInput {
   amount: number;
   date: string;
   description?: string;
+  payeeName?: string;
   exchangeRate?: number;
   toAmount?: number;
 }
@@ -237,6 +238,7 @@ export class TransactionToolPrepService {
         amount: row.amount,
         transactionDate: row.date,
         description: row.description ?? null,
+        payeeName: row.payeeName ?? null,
       };
 
       const fromAccount = await this.accountsService.resolveByName(
@@ -271,6 +273,7 @@ export class TransactionToolPrepService {
             exchangeRate: row.exchangeRate,
             toAmount: row.toAmount,
             description: row.description,
+            payeeName: row.payeeName,
           },
         );
         okPreviews.push(preview);
@@ -320,6 +323,7 @@ export class TransactionToolPrepService {
       exchangeRate: row.exchangeRate,
       toAmount: row.toAmount,
       description: row.description,
+      payeeName: row.payeeName,
     });
   }
 
@@ -379,6 +383,7 @@ export class TransactionToolPrepService {
           amount: item.amount,
           transactionDate: item.date,
           description: item.description,
+          payeeName: item.payeeName,
         },
         this.transactionsService.findOne.bind(this.transactionsService),
       );
@@ -535,6 +540,7 @@ export class TransactionToolPrepService {
       exchangeRate: preview.exchangeRate,
       toAmount: preview.toAmount,
       description: preview.description,
+      payeeName: preview.payeeName,
     };
   }
 

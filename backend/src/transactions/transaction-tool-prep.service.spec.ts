@@ -193,6 +193,22 @@ describe("TransactionToolPrepService", () => {
       expect(result.okPreviews).toHaveLength(0);
       expect(result.skipped[0].reason).toContain("Unknown account: Ghost");
     });
+
+    it("passes a custom payeeName through to previewCreateTransfer", async () => {
+      await service.prepareCreateTransfer(userId, [
+        {
+          fromAccountName: "Checking",
+          toAccountName: "Savings",
+          amount: 100,
+          date: "2026-01-15",
+          payeeName: "Shared rent",
+        },
+      ]);
+      expect(transfer.previewCreateTransfer).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({ payeeName: "Shared rent" }),
+      );
+    });
   });
 
   describe("prepareUpdate", () => {
@@ -294,12 +310,14 @@ describe("TransactionToolPrepService", () => {
         exchangeRate: 1,
         transactionDate: "2026-01-15",
         description: null,
+        payeeName: "Custom label",
       });
       expect(row).toMatchObject({
         fromAccountId: "a1",
         toAccountId: "a2",
         amount: 100,
         toAmount: 100,
+        payeeName: "Custom label",
       });
     });
   });

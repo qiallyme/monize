@@ -483,6 +483,29 @@ describe('TransactionConfirmationCard', () => {
       expect(screen.getByText('To amount')).toBeInTheDocument();
     });
 
+    it('renders a custom payee row for a transfer with payeeName', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeTransferAction({ payeeName: 'Shared rent' })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText('Payee')).toBeInTheDocument();
+      expect(screen.getByText('Shared rent')).toBeInTheDocument();
+    });
+
+    it('omits the payee row when no payeeName is set', () => {
+      render(
+        <TransactionConfirmationCard
+          action={makeTransferAction()}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.queryByText('Payee')).toBeNull();
+    });
+
     it('shows the transfer success message and a view link on confirm', () => {
       render(
         <TransactionConfirmationCard

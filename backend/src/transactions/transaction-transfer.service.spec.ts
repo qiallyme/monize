@@ -1522,6 +1522,7 @@ describe("TransactionTransferService", () => {
         exchangeRate: 1.25,
         transactionDate: "2026-01-15",
         description: null,
+        payeeName: null,
       });
     });
 
@@ -1538,6 +1539,28 @@ describe("TransactionTransferService", () => {
       expect(preview.toAmount).toBe(90);
       // stripHtml escapes angle brackets rather than emitting raw markup.
       expect(preview.description).not.toContain("<");
+    });
+
+    it("sets a custom payeeName, sanitized", async () => {
+      const preview = await service.previewCreateTransfer("user-1", {
+        fromAccountId: "from-account",
+        toAccountId: "to-account",
+        amount: 100,
+        transactionDate: "2026-01-15",
+        payeeName: "Rent <b>split</b>",
+      });
+      expect(preview.payeeName).toBeTruthy();
+      expect(preview.payeeName).not.toContain("<");
+    });
+
+    it("defaults payeeName to null when omitted", async () => {
+      const preview = await service.previewCreateTransfer("user-1", {
+        fromAccountId: "from-account",
+        toAccountId: "to-account",
+        amount: 100,
+        transactionDate: "2026-01-15",
+      });
+      expect(preview.payeeName).toBeNull();
     });
 
     it("rejects same source and destination account", async () => {
@@ -1573,6 +1596,7 @@ describe("TransactionTransferService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: "old",
+      payeeName: "Transfer to Savings",
       isTransfer: true,
       linkedTransactionId: "to-tx",
     };
@@ -1585,6 +1609,7 @@ describe("TransactionTransferService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: "old",
+      payeeName: "Transfer from Checking",
       isTransfer: true,
       linkedTransactionId: "from-tx",
     };
@@ -1608,6 +1633,33 @@ describe("TransactionTransferService", () => {
         amount: 200,
         toAmount: 200,
       });
+    });
+
+    it("keeps the existing from-leg payeeName when omitted", async () => {
+      const findOne = jest.fn(async (_uid: string, id: string) =>
+        id === "from-tx" ? fromLeg : toLeg,
+      );
+      const preview = await service.previewUpdateTransfer(
+        "user-1",
+        "from-tx",
+        { amount: 200 },
+        findOne as any,
+      );
+      expect(preview.payeeName).toBe("Transfer to Savings");
+    });
+
+    it("sets a custom payeeName, sanitized", async () => {
+      const findOne = jest.fn(async (_uid: string, id: string) =>
+        id === "from-tx" ? fromLeg : toLeg,
+      );
+      const preview = await service.previewUpdateTransfer(
+        "user-1",
+        "from-tx",
+        { payeeName: "Shared rent <i>x</i>" },
+        findOne as any,
+      );
+      expect(preview.payeeName).toBeTruthy();
+      expect(preview.payeeName).not.toContain("<");
     });
 
     it("throws notATransfer when the target is not a transfer", async () => {

@@ -572,6 +572,7 @@ describe("McpTransactionsTools", () => {
         exchangeRate: 1,
         transactionDate: "2025-01-15",
         description: null,
+        payeeName: "Shared rent",
       };
       prepService.prepareCreate.mockResolvedValue({
         okPreviews: [],
@@ -600,6 +601,7 @@ describe("McpTransactionsTools", () => {
               toAccountName: "Savings",
               amount: 100,
               date: "2025-01-15",
+              payeeName: "Shared rent",
             },
           ],
         },
@@ -607,6 +609,16 @@ describe("McpTransactionsTools", () => {
       );
 
       expect(transactionsService.createTransfer).toHaveBeenCalledTimes(1);
+      expect(transactionsService.createTransfer).toHaveBeenCalledWith(
+        "u1",
+        expect.objectContaining({ payeeName: "Shared rent" }),
+      );
+      expect(prepService.prepareCreateTransfer).toHaveBeenCalledWith(
+        "u1",
+        expect.arrayContaining([
+          expect.objectContaining({ payeeName: "Shared rent" }),
+        ]),
+      );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe("tf1");
     });

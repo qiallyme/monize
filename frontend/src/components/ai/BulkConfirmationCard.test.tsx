@@ -208,6 +208,35 @@ describe('BulkConfirmationCard', () => {
       expect(screen.getByText('Create these transfers?')).toBeInTheDocument();
       expect(screen.getByText(/Checking → Savings/)).toBeInTheDocument();
     });
+
+    it('appends a custom payee to a transfer row secondary line', () => {
+      render(
+        <BulkConfirmationCard
+          action={makeAction({
+            type: 'batch_actions',
+            descriptor: { type: 'batch_actions', operation: 'create_transfer' },
+            preview: {
+              rows: [
+                {
+                  status: 'ok',
+                  fromAccountName: 'Checking',
+                  toAccountName: 'Savings',
+                  amount: 200,
+                  currencyCode: 'USD',
+                  toAmount: 200,
+                  toCurrencyCode: 'USD',
+                  transactionDate: '2026-03-01',
+                  payeeName: 'Shared rent',
+                },
+              ],
+            },
+          })}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(screen.getByText(/Shared rent/)).toBeInTheDocument();
+    });
   });
 
   it('shows retry on error and an expired notice', () => {

@@ -104,6 +104,7 @@ export function transferPreviewRow(
     toCurrencyCode: preview.toCurrencyCode,
     transactionDate: preview.transactionDate,
     description: preview.description,
+    payeeName: preview.payeeName,
   };
 }
 
@@ -556,6 +557,7 @@ export class AiActionBuilderService {
       exchangeRate: preview.exchangeRate,
       toAmount: preview.toAmount,
       description: preview.description,
+      payeeName: preview.payeeName,
     };
     return {
       actionId,
@@ -573,6 +575,7 @@ export class AiActionBuilderService {
         toCurrencyCode: preview.toCurrencyCode,
         transactionDate: preview.transactionDate,
         description: preview.description,
+        payeeName: preview.payeeName,
       },
     };
   }
@@ -595,6 +598,7 @@ export class AiActionBuilderService {
       exchangeRate: preview.exchangeRate,
       toAmount: preview.toAmount,
       description: preview.description,
+      payeeName: preview.payeeName,
     };
     return {
       actionId,
@@ -612,6 +616,7 @@ export class AiActionBuilderService {
         toCurrencyCode: preview.toCurrencyCode,
         transactionDate: preview.transactionDate,
         description: preview.description,
+        payeeName: preview.payeeName,
       },
     };
   }

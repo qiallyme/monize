@@ -44,6 +44,7 @@ export interface CreateTransferPreview {
   exchangeRate: number;
   transactionDate: string;
   description: string | null;
+  payeeName: string | null;
 }
 
 /** Resolved, sanitized preview of an edit the assistant proposes to a transfer. */
@@ -60,6 +61,7 @@ export interface UpdateTransferPreview {
   exchangeRate: number;
   transactionDate: string;
   description: string | null;
+  payeeName: string | null;
 }
 
 @Injectable()
@@ -294,6 +296,7 @@ export class TransactionTransferService {
       exchangeRate?: number;
       toAmount?: number;
       description?: string;
+      payeeName?: string;
     },
   ): Promise<CreateTransferPreview> {
     if (input.fromAccountId === input.toAccountId) {
@@ -340,6 +343,7 @@ export class TransactionTransferService {
       exchangeRate,
       transactionDate: input.transactionDate,
       description: stripHtml(input.description) || null,
+      payeeName: stripHtml(input.payeeName) || null,
     };
   }
 
@@ -356,6 +360,7 @@ export class TransactionTransferService {
       amount?: number;
       transactionDate?: string;
       description?: string;
+      payeeName?: string;
     },
     findOne: (userId: string, id: string) => Promise<Transaction>,
   ): Promise<UpdateTransferPreview> {
@@ -394,6 +399,10 @@ export class TransactionTransferService {
       input.description !== undefined
         ? stripHtml(input.description) || null
         : (fromTransaction.description ?? null);
+    const payeeName =
+      input.payeeName !== undefined
+        ? stripHtml(input.payeeName) || null
+        : (fromTransaction.payeeName ?? null);
 
     return {
       transactionId,
@@ -408,6 +417,7 @@ export class TransactionTransferService {
       exchangeRate,
       transactionDate: newDate,
       description,
+      payeeName,
     };
   }
 

@@ -435,6 +435,7 @@ describe("AiActionBuilderService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: null,
+      payeeName: "Custom transfer label",
     };
     const action = builder.buildCreateTransfer("user-1", preview);
     expect(action.type).toBe("create_transfer");
@@ -446,11 +447,13 @@ describe("AiActionBuilderService", () => {
       toAccountId: "a2",
       amount: 100,
       toAmount: 100,
+      payeeName: "Custom transfer label",
     });
     expect(action.preview).toMatchObject({
       fromAccountName: "Checking",
       toAccountName: "Savings",
       toAmount: 100,
+      payeeName: "Custom transfer label",
     });
   });
 
@@ -468,12 +471,17 @@ describe("AiActionBuilderService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: null,
+      payeeName: "Edited transfer label",
     });
     expect(action.type).toBe("update_transfer");
     expect(action.descriptor).toMatchObject({
       type: "update_transfer",
       transactionId: "t1",
       amount: 200,
+      payeeName: "Edited transfer label",
+    });
+    expect(action.preview).toMatchObject({
+      payeeName: "Edited transfer label",
     });
   });
 
@@ -512,12 +520,14 @@ describe("AiActionBuilderService", () => {
       exchangeRate: 1,
       transactionDate: "2026-01-15",
       description: null,
+      payeeName: "Row label",
     });
     expect(row).toMatchObject({
       status: "ok",
       accountName: "Checking",
       toAccountName: "Savings",
       toAmount: 100,
+      payeeName: "Row label",
     });
   });
 });

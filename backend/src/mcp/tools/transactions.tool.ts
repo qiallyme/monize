@@ -456,8 +456,8 @@ export class McpTransactionsTools {
         description:
           "Create, update, or delete the user's cash transactions (including transfers between their own accounts). Accepts NAMES for account, category, and payee -- they are resolved internally, so you do NOT need to call get_accounts/get_categories first. operation = 'create' | 'update' | 'delete' with an items array (1-25 rows). " +
           "create (standard): { accountName, amount, date, payeeName?, categoryName?, description?, createPayeeIfMissing? } (amount positive=income, negative=expense). " +
-          "create (transfer): { fromAccountName, toAccountName, amount, date, description?, exchangeRate?, toAmount? } -- an item is a transfer when toAccountName is present. " +
-          "update: { transactionId, amount?, date?, payeeName?, categoryName?, description?, createPayeeIfMissing? } (>=1 field; a category-only change is transactionId + categoryName; transfers auto-detected). " +
+          "create (transfer): { fromAccountName, toAccountName, amount, date, description?, payeeName?, exchangeRate?, toAmount? } -- an item is a transfer when toAccountName is present; payeeName is an optional custom label (omit to auto-generate 'Transfer to/from <account>'). " +
+          "update: { transactionId, amount?, date?, payeeName?, categoryName?, description?, createPayeeIfMissing? } (>=1 field; a category-only change is transactionId + categoryName; transfers auto-detected; payeeName sets the transfer's custom label). " +
           "delete: { transactionId } (removes linked transfer legs / split children too). " +
           "approvalMode = 'bulk' (default; one confirmation for the whole batch) or 'individual' (one confirmation per item); ignored for a single item. Set dryRun=true to preview every item without saving. The user is asked to confirm before anything is saved (web chat card via relay, or an MCP confirmation dialog).",
         inputSchema: {
@@ -506,7 +506,9 @@ export class McpTransactionsTools {
                   .string()
                   .max(100)
                   .optional()
-                  .describe("Optional payee name (standard create/update)."),
+                  .describe(
+                    "Optional payee name (standard create/update; or a custom transfer label for create/update transfer -- omit to auto-generate 'Transfer to/from <account>').",
+                  ),
                 categoryName: z
                   .string()
                   .max(100)
@@ -635,6 +637,7 @@ export class McpTransactionsTools {
       amount: item.amount as number,
       date: item.date as string,
       description: item.description,
+      payeeName: item.payeeName,
       exchangeRate: item.exchangeRate,
       toAmount: item.toAmount,
     };
@@ -835,6 +838,7 @@ export class McpTransactionsTools {
         exchangeRate: preview.exchangeRate,
         toAmount: preview.toAmount,
         description: preview.description ?? undefined,
+        payeeName: preview.payeeName ?? undefined,
       });
       this.writeLimiter.record(userId, "create_transfer");
       return toolResult({ id: result.fromTransaction.id, count: 1 });
@@ -925,6 +929,7 @@ export class McpTransactionsTools {
         exchangeRate: preview.exchangeRate,
         toAmount: preview.toAmount,
         description: preview.description ?? undefined,
+        payeeName: preview.payeeName ?? undefined,
       });
       ids.push(result.fromTransaction.id);
       this.writeLimiter.record(userId, "create_transfer");
@@ -972,6 +977,7 @@ export class McpTransactionsTools {
             exchangeRate: preview.exchangeRate,
             toAmount: preview.toAmount,
             description: preview.description ?? undefined,
+            payeeName: preview.payeeName ?? undefined,
           },
         );
         this.writeLimiter.record(userId, "update_transfer");
@@ -1261,6 +1267,7 @@ export class McpTransactionsTools {
           exchangeRate: d.exchangeRate,
           toAmount: d.toAmount,
           description: d.description ?? undefined,
+          payeeName: d.payeeName ?? undefined,
         });
         this.writeLimiter.record(userId, "create_transfer");
         return r.fromTransaction.id;
@@ -1293,6 +1300,7 @@ export class McpTransactionsTools {
             exchangeRate: d.exchangeRate,
             toAmount: d.toAmount,
             description: d.description ?? undefined,
+            payeeName: d.payeeName ?? undefined,
           },
         );
         this.writeLimiter.record(userId, "update_transfer");

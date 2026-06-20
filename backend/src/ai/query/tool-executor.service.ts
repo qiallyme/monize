@@ -426,6 +426,7 @@ export class ToolExecutorService {
       amount: item.amount as number,
       date: item.date as string,
       description: item.description as string | undefined,
+      payeeName: item.payeeName as string | undefined,
       exchangeRate: item.exchangeRate as number | undefined,
       toAmount: item.toAmount as number | undefined,
     };

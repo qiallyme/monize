@@ -233,6 +233,7 @@ export class AiActionsService {
       exchangeRate: descriptor.exchangeRate,
       toAmount: descriptor.toAmount,
       description: descriptor.description ?? undefined,
+      payeeName: descriptor.payeeName ?? undefined,
     });
     const result = await this.transactionsService.createTransfer(userId, dto);
     return { type: "create_transfer", id: result.fromTransaction.id };
@@ -248,6 +249,7 @@ export class AiActionsService {
       exchangeRate: descriptor.exchangeRate,
       toAmount: descriptor.toAmount,
       description: descriptor.description ?? undefined,
+      payeeName: descriptor.payeeName ?? undefined,
     });
     const result = await this.transactionsService.updateTransfer(
       userId,
@@ -330,6 +332,7 @@ export class AiActionsService {
           exchangeRate: r.exchangeRate,
           toAmount: r.toAmount,
           description: r.description ?? undefined,
+          payeeName: r.payeeName ?? undefined,
         });
         const result = await this.transactionsService.createTransfer(
           userId,

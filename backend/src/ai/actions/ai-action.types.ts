@@ -247,6 +247,7 @@ export interface CreateTransferDescriptor extends BaseDescriptor {
   exchangeRate: number;
   toAmount: number;
   description: string | null;
+  payeeName: string | null;
 }
 
 /** Edit an existing transfer (both linked legs). */
@@ -260,6 +261,7 @@ export interface UpdateTransferDescriptor extends BaseDescriptor {
   exchangeRate: number;
   toAmount: number;
   description: string | null;
+  payeeName: string | null;
 }
 
 /**
@@ -294,6 +296,7 @@ export interface BatchCreateTransferRow {
   exchangeRate: number;
   toAmount: number;
   description: string | null;
+  payeeName: string | null;
 }
 
 export type BatchActionRow =

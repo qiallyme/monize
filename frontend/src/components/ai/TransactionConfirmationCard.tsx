@@ -205,6 +205,11 @@ export function TransactionConfirmationCard({
       });
     if (preview.transactionDate)
       rows.push({ label: t('confirmAction.date'), value: preview.transactionDate });
+    if (preview.payeeName)
+      rows.push({
+        label: t('confirmAction.payee'),
+        value: preview.payeeName,
+      });
     if (preview.description)
       rows.push({
         label: t('confirmAction.description'),
