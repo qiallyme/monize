@@ -94,7 +94,6 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
     security?.tags?.map((tag) => tag.id) || [],
   );
   const [showTagForm, setShowTagForm] = useState(false);
-  const [isFetchingDescription, setIsFetchingDescription] = useState(false);
 
   useEffect(() => {
     exchangeRatesApi.getCurrencies().then(setCurrencies).catch(() => {});
@@ -184,6 +183,18 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
 
       setHasLookupResult(true);
 
+      // Pull the description from the provider as part of the lookup, just like
+      // the other fields. Best-effort and still editable: only overwrite when
+      // the provider actually returns something so a manual edit isn't wiped.
+      investmentsApi
+        .getSuggestedDescription(result.symbol, result.exchange || undefined)
+        .then(({ description }) => {
+          if (description) {
+            setValue('description', description, { shouldDirty: true });
+          }
+        })
+        .catch((error) => logger.error('Description fetch failed:', error));
+
       const details = [`Symbol: ${result.symbol}`, `Name: ${result.name}`];
       if (result.exchange) details.push(`Exchange: ${result.exchange}`);
       if (result.securityType) details.push(`Type: ${result.securityType}`);
@@ -256,33 +267,6 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
 
   // Pre-fill the description from the Yahoo provider profile. Best-effort and
   // always editable; replaces whatever is in the field so the user can review.
-  const handleFetchDescription = useCallback(async () => {
-    const { symbol, exchange } = getValues();
-    const sym = symbol?.trim();
-    if (!sym) {
-      toast.error(t('form.toasts.descriptionNeedsSymbol'));
-      return;
-    }
-    setIsFetchingDescription(true);
-    try {
-      const { description } = await investmentsApi.getSuggestedDescription(
-        sym,
-        exchange?.trim() || undefined,
-      );
-      if (description) {
-        setValue('description', description, { shouldDirty: true });
-        toast.success(t('form.toasts.descriptionFetched'));
-      } else {
-        toast.error(t('form.toasts.descriptionNotFound'));
-      }
-    } catch (error) {
-      logger.error('Description fetch failed:', error);
-      toast.error(t('form.toasts.descriptionFailed'));
-    } finally {
-      setIsFetchingDescription(false);
-    }
-  }, [getValues, setValue, t]);
-
   const handleTagCreate = async (data: { name: string; color?: string; icon?: string }) => {
     const cleanedData = {
       ...data,
@@ -486,24 +470,11 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
         </span>
       </button>
 
-      {/* Description with optional Yahoo pre-fill */}
+      {/* Description -- populated from the provider during Lookup, editable. */}
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            {t('form.descriptionLabel')}
-          </label>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={handleFetchDescription}
-            disabled={isFetchingDescription}
-            className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 py-1"
-          >
-            {isFetchingDescription
-              ? t('form.fetchingDescription')
-              : t('form.fetchDescription')}
-          </Button>
-        </div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {t('form.descriptionLabel')}
+        </label>
         <textarea
           rows={4}
           className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 dark:focus:ring-blue-400"

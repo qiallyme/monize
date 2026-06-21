@@ -617,11 +617,21 @@ describe('SecurityForm', () => {
       await waitFor(() => {
         expect(screen.getByText('Description')).toBeInTheDocument();
       });
-      expect(screen.getByText('Fetch from Yahoo')).toBeInTheDocument();
       expect(screen.getByText('Tags')).toBeInTheDocument();
     });
 
-    it('fills the description from the Yahoo pre-fill', async () => {
+    it('populates the description from the provider during Lookup', async () => {
+      (investmentsApi.lookupSecurityCandidates as any).mockResolvedValue([
+        {
+          symbol: 'AAPL',
+          name: 'Apple Inc.',
+          exchange: 'NASDAQ',
+          securityType: 'STOCK',
+          currencyCode: 'USD',
+          provider: 'yahoo',
+          msnInstrumentId: null,
+        },
+      ]);
       (investmentsApi.getSuggestedDescription as any).mockResolvedValue({
         symbol: 'AAPL',
         description: 'Apple Inc. designs smartphones.',
@@ -630,11 +640,11 @@ describe('SecurityForm', () => {
 
       fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'AAPL' } });
       await act(async () => {
-        fireEvent.click(screen.getByText('Fetch from Yahoo'));
+        fireEvent.click(screen.getByText('Lookup'));
       });
 
       await waitFor(() => {
-        expect(investmentsApi.getSuggestedDescription).toHaveBeenCalledWith('AAPL', undefined);
+        expect(investmentsApi.getSuggestedDescription).toHaveBeenCalledWith('AAPL', 'NASDAQ');
       });
       const textarea = screen.getByPlaceholderText(
         'Notes about this security, or fetch a summary from the price provider.',
