@@ -148,6 +148,77 @@ export const useAiChatStore = create<AiChatState>()(
         let sources: ChatMessage['sources'] = [];
         let contentBuffer = '';
         let hasStartedContent = false;
+        // Relay only: the promptId the backend assigns this stream. If the SSE
+        // stream dies before the agent answers (its API connection blipped),
+        // we use this to pick up the buffered late answer instead of showing a
+        // hard error.
+        let relayPromptId: string | null = null;
+        // Guards the one-shot pickup so the error event and the onError/onDone
+        // callbacks cannot trigger it twice.
+        let pickupAttempted = false;
+
+        // Render a terminal error on the assistant message, attaching it to an
+        // in-progress message or appending a fresh one if streaming never
+        // started.
+        const renderError = (errorMsg: string): void => {
+          set((state) => {
+            if (hasStartedContent) {
+              return {
+                messages: state.messages.map((m) =>
+                  m.id === assistantMsgId
+                    ? { ...m, isStreaming: false, error: errorMsg }
+                    : m,
+                ),
+                isLoading: false,
+                thinking: IDLE_THINKING,
+                _abortController: null,
+                _activeAssistantId: null,
+              };
+            }
+            return {
+              messages: [
+                ...state.messages.filter((m) => m.id !== assistantMsgId),
+                {
+                  id: assistantMsgId,
+                  role: 'assistant',
+                  content: '',
+                  error: errorMsg,
+                },
+              ],
+              isLoading: false,
+              thinking: IDLE_THINKING,
+              _abortController: null,
+              _activeAssistantId: null,
+            };
+          });
+        };
+
+        // Render a late relay answer (picked up after the stream failed) as a
+        // normal assistant message, replacing any error placeholder. Returns
+        // true if a buffered answer was delivered.
+        const tryRelayPickup = async (): Promise<boolean> => {
+          if (!relay || !relayPromptId || hasStartedContent || pickupAttempted) {
+            return false;
+          }
+          pickupAttempted = true;
+          try {
+            const { text } = await aiApi.getRelayResponse(relayPromptId);
+            if (!text) return false;
+            set((state) => ({
+              messages: [
+                ...state.messages.filter((m) => m.id !== assistantMsgId),
+                { id: assistantMsgId, role: 'assistant', content: text },
+              ],
+              isLoading: false,
+              thinking: IDLE_THINKING,
+              _abortController: null,
+              _activeAssistantId: null,
+            }));
+            return true;
+          } catch {
+            return false;
+          }
+        };
 
         // Build conversation history from existing messages for context.
         // Only include completed (non-streaming, non-error) messages with
@@ -164,6 +235,10 @@ export const useAiChatStore = create<AiChatState>()(
         const controller = aiApi.queryStream(trimmed, {
           onEvent: (event: StreamEvent) => {
             switch (event.type) {
+              case 'prompt_id':
+                relayPromptId = event.promptId ?? null;
+                break;
+
               case 'thinking':
                 set((state) => ({
                   thinking: {
@@ -348,78 +423,51 @@ export const useAiChatStore = create<AiChatState>()(
                 }));
                 break;
 
-              case 'error':
-                set((state) => {
-                  const errorMsg = (event.message as string) || 'An error occurred';
-                  if (hasStartedContent) {
-                    return {
-                      messages: state.messages.map((m) =>
-                        m.id === assistantMsgId
-                          ? { ...m, isStreaming: false, error: errorMsg }
-                          : m,
-                      ),
-                      isLoading: false,
-                      thinking: IDLE_THINKING,
-                      _abortController: null,
-                      _activeAssistantId: null,
-                    };
-                  }
-                  return {
-                    messages: [
-                      ...state.messages,
-                      {
-                        id: assistantMsgId,
-                        role: 'assistant',
-                        content: '',
-                        error: errorMsg,
-                      },
-                    ],
-                    isLoading: false,
-                    thinking: IDLE_THINKING,
-                    _abortController: null,
-                    _activeAssistantId: null,
-                  };
+              case 'error': {
+                const errorMsg =
+                  (event.message as string) || 'An error occurred';
+                // For a relay timeout, the agent may have recovered and posted
+                // a late answer: try to pick it up before surfacing the error.
+                void tryRelayPickup().then((delivered) => {
+                  if (!delivered) renderError(errorMsg);
                 });
                 break;
+              }
             }
           },
           onDone: () => {
-            // Backstop in case the server closes without a 'done' event.
+            // Backstop in case the server closes without a 'done' event. If the
+            // relay stream closed before an answer (no content, no error event),
+            // try to pick up a late answer the agent may have buffered.
             if (get().isLoading) {
+              void tryRelayPickup().then((delivered) => {
+                if (delivered) return;
+                set({
+                  isLoading: false,
+                  thinking: IDLE_THINKING,
+                  _abortController: null,
+                  _activeAssistantId: null,
+                });
+              });
+            }
+          },
+          onError: (error: Error) => {
+            const errorMsg =
+              error.message || 'Failed to connect to the AI service.';
+            // A relay stream that errors mid-flight may still have a buffered
+            // late answer waiting; prefer that over a hard error.
+            void tryRelayPickup().then((delivered) => {
+              if (delivered) return;
+              if (!hasStartedContent) {
+                renderError(errorMsg);
+                return;
+              }
               set({
                 isLoading: false,
                 thinking: IDLE_THINKING,
                 _abortController: null,
                 _activeAssistantId: null,
               });
-            }
-          },
-          onError: (error: Error) => {
-            set((state) => {
-              const errorMsg = error.message || 'Failed to connect to the AI service.';
-              if (!hasStartedContent) {
-                return {
-                  messages: [
-                    ...state.messages,
-                    {
-                      id: assistantMsgId,
-                      role: 'assistant',
-                      content: '',
-                      error: errorMsg,
-                    },
-                  ],
-                  isLoading: false,
-                  thinking: IDLE_THINKING,
-                  _abortController: null,
-                  _activeAssistantId: null,
-                };
-              }
-              return {
-                isLoading: false,
-                thinking: IDLE_THINKING,
-                _abortController: null,
-                _activeAssistantId: null,
-              };
             });
           },
         }, history, { relay });
