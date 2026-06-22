@@ -420,36 +420,38 @@ export function SecurityForm({ security, onSubmit, onCancel, onDirtyChange, subm
         placeholder={t('form.namePlaceholder')}
       />
 
-      <Select
-        label={t('form.typeLabel')}
-        options={securityTypeOptions.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
-        value={watch('securityType') || ''}
-        onChange={(e) => setValue('securityType', e.target.value, { shouldDirty: true })}
-        error={errors.securityType?.message}
-      />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Select
+          label={t('form.typeLabel')}
+          options={securityTypeOptions.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
+          value={watch('securityType') || ''}
+          onChange={(e) => setValue('securityType', e.target.value, { shouldDirty: true })}
+          error={errors.securityType?.message}
+        />
 
-      <Combobox
-        label={t('form.exchangeLabel')}
-        options={EXCHANGE_OPTIONS}
-        value={watch('exchange') || ''}
-        onChange={(value, label) => setValue('exchange', value || label, { shouldDirty: true })}
-        error={errors.exchange?.message}
-        placeholder={t('form.exchangeSearchPlaceholder')}
-        allowCustomValue
-        usePortal
-        alwaysShowSubtitle
-        priorityValues={preferredExchanges}
-      />
+        <Combobox
+          label={t('form.exchangeLabel')}
+          options={EXCHANGE_OPTIONS}
+          value={watch('exchange') || ''}
+          onChange={(value, label) => setValue('exchange', value || label, { shouldDirty: true })}
+          error={errors.exchange?.message}
+          placeholder={t('form.exchangeSearchPlaceholder')}
+          allowCustomValue
+          usePortal
+          alwaysShowSubtitle
+          priorityValues={preferredExchanges}
+        />
 
-      <Select
-        label={t('form.currencyLabel')}
-        options={currencyOptions}
-        value={watch('currencyCode') || ''}
-        onChange={(e) =>
-          setValue('currencyCode', e.target.value, { shouldDirty: true })
-        }
-        error={errors.currencyCode?.message}
-      />
+        <Select
+          label={t('form.currencyLabel')}
+          options={currencyOptions}
+          value={watch('currencyCode') || ''}
+          onChange={(e) =>
+            setValue('currencyCode', e.target.value, { shouldDirty: true })
+          }
+          error={errors.currencyCode?.message}
+        />
+      </div>
 
       <div>
         <Select
