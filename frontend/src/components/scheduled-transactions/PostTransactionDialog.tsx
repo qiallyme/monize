@@ -472,6 +472,11 @@ export function PostTransactionDialog({
   };
 
   const currentCategory = categoryId ? categories.find(c => c.id === categoryId) : null;
+  // Parent-qualified label (e.g. "Investments: IKE") for the category, reusing
+  // the dropdown's option labels so a categorized transfer can show it.
+  const currentCategoryLabel = categoryId
+    ? (categoryOptions.find(o => o.value === categoryId)?.label ?? currentCategory?.name ?? null)
+    : null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="5xl" className="p-6">
@@ -689,6 +694,13 @@ export function PostTransactionDialog({
                 Transfer: {scheduledTransaction.account?.name} → {scheduledTransaction.transferAccount?.name}
               </span>
             </div>
+            {/* A categorized transfer (#743) shows its category here so it is
+                clear it will be applied to both legs on posting. */}
+            {currentCategoryLabel && (
+              <div className="mt-2 pl-7 text-sm text-blue-700 dark:text-blue-300">
+                {t('postDialog.categoryLabel')}: {currentCategoryLabel}
+              </div>
+            )}
           </div>
         ) : (
           <>
