@@ -29,7 +29,9 @@ export const HIGHLIGHT_FLASH = 'animate-highlight-flash motion-reduce:animate-no
 export const HIGHLIGHT_FLASH_CELL = '!bg-transparent';
 
 // How long the flash lingers before it clears itself.
-const HIGHLIGHT_DURATION_MS = 3500;
+// Slightly longer than the highlight-flash animation (4.5s) so the row keeps
+// the highlight class until the flash finishes, then clears.
+const HIGHLIGHT_DURATION_MS = 5000;
 
 /**
  * Read a one-shot highlight id from the URL (`?highlight=<id>` by default).

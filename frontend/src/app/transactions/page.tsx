@@ -320,7 +320,7 @@ function TransactionsContent() {
   useEffect(() => {
     const id = filters.highlightTransactionId;
     if (!id || !transactions.some((tx) => tx.id === id)) return;
-    const timer = setTimeout(() => filters.setHighlightTransactionId(null), 3500);
+    const timer = setTimeout(() => filters.setHighlightTransactionId(null), 5000);
     return () => clearTimeout(timer);
   }, [transactions, filters.highlightTransactionId]); // eslint-disable-line react-hooks/exhaustive-deps
 

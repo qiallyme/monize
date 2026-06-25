@@ -27,7 +27,7 @@ describe('useHighlightParam', () => {
     expect(result.current).toBe('abc-123');
 
     act(() => {
-      vi.advanceTimersByTime(4000);
+      vi.advanceTimersByTime(6000);
     });
     expect(result.current).toBeNull();
   });
