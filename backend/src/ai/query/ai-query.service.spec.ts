@@ -5,7 +5,10 @@ import { AiService } from "../ai.service";
 import { AiUsageService } from "../ai-usage.service";
 import { FinancialContextBuilder } from "../context/financial-context.builder";
 import { ToolExecutorService } from "./tool-executor.service";
-import { OllamaModelDoesNotSupportToolsError } from "../providers/ollama.provider";
+import {
+  OllamaModelDoesNotSupportToolsError,
+  OllamaModelDoesNotSupportImagesError,
+} from "../providers/ollama.provider";
 
 describe("AiQueryService", () => {
   let service: AiQueryService;
@@ -242,6 +245,49 @@ describe("AiQueryService", () => {
           },
         ] as any),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("surfaces a clear message when the model rejects image input (typed error)", async () => {
+      (mockProvider.completeWithTools as jest.Mock).mockRejectedValueOnce(
+        new OllamaModelDoesNotSupportImagesError("qwen3:30b-cloud"),
+      );
+      const events = await streamWith("read this", [
+        {
+          kind: "image",
+          mediaType: "image/png",
+          filename: "r.png",
+          data: smallPng,
+        },
+      ]);
+      const err = events.find((e) => e.type === "error");
+      expect(err).toBeDefined();
+      expect(err!.message).toContain("can't read images or PDFs");
+    });
+
+    it("surfaces the image message for a generic vision error when the turn has an image", async () => {
+      (mockProvider.completeWithTools as jest.Mock).mockRejectedValueOnce(
+        new Error("This model's API version does not support vision"),
+      );
+      const events = await streamWith("read this", [
+        {
+          kind: "image",
+          mediaType: "image/png",
+          filename: "r.png",
+          data: smallPng,
+        },
+      ]);
+      const err = events.find((e) => e.type === "error");
+      expect(err!.message).toContain("can't read images or PDFs");
+    });
+
+    it("uses the generic message for a vision-phrase error when the turn has no image", async () => {
+      (mockProvider.completeWithTools as jest.Mock).mockRejectedValueOnce(
+        new Error("This model's API version does not support vision"),
+      );
+      const events = await streamWith("just text", []);
+      const err = events.find((e) => e.type === "error");
+      expect(err!.message).toContain("encountered an error");
+      expect(err!.message).not.toContain("can't read images");
     });
   });
 

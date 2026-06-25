@@ -2,10 +2,40 @@ import {
   isContentBlocks,
   contentToPlainText,
   unsupportedAttachmentNote,
+  isImageInputUnsupportedError,
 } from "./content-blocks.util";
 import { AiContentBlock } from "./ai-provider.interface";
 
 describe("content-blocks.util", () => {
+  describe("isImageInputUnsupportedError", () => {
+    it("matches the phrasings providers use for vision-unsupported models", () => {
+      expect(
+        isImageInputUnsupportedError("this model does not support image input"),
+      ).toBe(true);
+      expect(
+        isImageInputUnsupportedError(
+          "This model's API version does not support vision",
+        ),
+      ).toBe(true);
+      expect(
+        isImageInputUnsupportedError(
+          "Image input is not supported by this model",
+        ),
+      ).toBe(true);
+      expect(isImageInputUnsupportedError("Unsupported image format")).toBe(
+        true,
+      );
+    });
+
+    it("does not match unrelated errors or empty input", () => {
+      expect(isImageInputUnsupportedError("Ollama request failed: 500")).toBe(
+        false,
+      );
+      expect(isImageInputUnsupportedError("rate limit exceeded")).toBe(false);
+      expect(isImageInputUnsupportedError("")).toBe(false);
+    });
+  });
+
   describe("isContentBlocks", () => {
     it("returns false for a string", () => {
       expect(isContentBlocks("hello")).toBe(false);

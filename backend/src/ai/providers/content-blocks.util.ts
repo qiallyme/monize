@@ -1,6 +1,24 @@
 import { AiContentBlock } from "./ai-provider.interface";
 
 /**
+ * Detect whether a provider error message indicates the selected model can't
+ * accept image/vision input. Used to surface a clear, actionable message
+ * across providers whose SDKs report this differently (OpenAI raises an
+ * APIError whose message carries one of these phrases). The Ollama provider
+ * throws a typed error instead, so it does not rely on this matcher.
+ */
+export function isImageInputUnsupportedError(message: string): boolean {
+  if (!message) return false;
+  return (
+    /does not support image/i.test(message) ||
+    /does not support vision/i.test(message) ||
+    /image input is not supported/i.test(message) ||
+    /unsupported.*image/i.test(message) ||
+    /image.*not supported/i.test(message)
+  );
+}
+
+/**
  * Note injected into a user turn when an attachment type cannot be sent to the
  * selected provider natively (e.g. a PDF on OpenAI/Ollama, which have no
  * portable document-input path). The model sees this in place of the binary so

@@ -88,7 +88,8 @@
     "attachmentTypeMismatch": "An attachment's type does not match its file format.",
     "attachmentTooLarge": "An attachment exceeds the maximum file size.",
     "attachmentCorrupt": "An attachment could not be read or is not the file type it claims to be.",
-    "attachmentsTooLarge": "The attachments exceed the total size limit."
+    "attachmentsTooLarge": "The attachments exceed the total size limit.",
+    "modelNoImageSupport": "The selected AI model can't read images or PDFs. Remove the attachment and ask in text, or switch to a vision-capable model in AI Settings."
   },
   "auth": {
     "tooManyAttemptsLoginAgain": "Too many verification attempts. Please log in again.",

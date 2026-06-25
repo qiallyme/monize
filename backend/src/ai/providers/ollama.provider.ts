@@ -53,6 +53,24 @@ export class OllamaModelDoesNotSupportToolsError extends Error {
   }
 }
 
+/**
+ * Thrown when Ollama rejects a request because the loaded model can't accept
+ * image input (e.g. a text-only model receiving an attached image/PDF). Like
+ * the tools error, retrying is pointless — the user must remove the attachment
+ * or switch to a vision-capable model. This is a typed marker; the user-facing
+ * copy is produced by the query service (internationalised), which only needs
+ * the `model` here for logging.
+ */
+export class OllamaModelDoesNotSupportImagesError extends Error {
+  readonly model: string;
+
+  constructor(model: string) {
+    super(`The Ollama model "${model}" does not support image input.`);
+    this.name = "OllamaModelDoesNotSupportImagesError";
+    this.model = model;
+  }
+}
+
 interface OllamaToolCall {
   function: { name: string; arguments: Record<string, unknown> };
 }
@@ -442,6 +460,9 @@ export class OllamaProvider implements AiProvider {
         if (this.isModelDoesNotSupportToolsBody(bodyText)) {
           throw new OllamaModelDoesNotSupportToolsError(this.modelId);
         }
+        if (this.isModelDoesNotSupportImagesBody(bodyText)) {
+          throw new OllamaModelDoesNotSupportImagesError(this.modelId);
+        }
         throw new Error(
           `Ollama request failed: ${response.status} ${response.statusText}`,
         );
@@ -565,6 +586,26 @@ export class OllamaProvider implements AiProvider {
       return (
         typeof parsed.error === "string" &&
         /does not support tools/i.test(parsed.error)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ollama returns 400 with `{"error":"this model does not support image
+   * input"}` when a text-only model is sent an image. Match the stable
+   * substring so we can convert it into a typed, actionable error. Matches both
+   * parsed-JSON and raw-text bodies defensively.
+   */
+  private isModelDoesNotSupportImagesBody(bodyText: string): boolean {
+    if (!bodyText) return false;
+    if (/does not support image/i.test(bodyText)) return true;
+    try {
+      const parsed = JSON.parse(bodyText) as { error?: unknown };
+      return (
+        typeof parsed.error === "string" &&
+        /does not support image/i.test(parsed.error)
       );
     } catch {
       return false;

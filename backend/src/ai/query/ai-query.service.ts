@@ -12,7 +12,11 @@ import {
   AiProvider,
   AiToolCall,
 } from "../providers/ai-provider.interface";
-import { OllamaModelDoesNotSupportToolsError } from "../providers/ollama.provider";
+import {
+  OllamaModelDoesNotSupportToolsError,
+  OllamaModelDoesNotSupportImagesError,
+} from "../providers/ollama.provider";
+import { isImageInputUnsupportedError } from "../providers/content-blocks.util";
 import { assessInjectionRisk } from "../context/prompt-injection-detector";
 import { QUERY_SAFETY_REMINDER } from "../context/prompt-templates";
 import { sanitizeToolResultStrings } from "../../common/sanitization.util";
@@ -223,6 +227,12 @@ export class AiQueryService {
           .join(",")}]`,
       );
     }
+    // Whether this turn carries image/PDF input. Gates the "model can't read
+    // images" message so a provider error that merely mentions "image" can't
+    // surface it on a text-only turn.
+    const hasVisualAttachments = !!attachments?.some(
+      (a) => a.kind === "image" || a.kind === "pdf",
+    );
 
     // Build messages: optional history + current query + safety reminder.
     // Conversation history allows the AI to reference prior turns
@@ -359,10 +369,31 @@ export class AiQueryService {
         const rawMessage =
           error instanceof Error ? error.message : "AI provider error";
         const providerCallMs = Date.now() - providerCallStart;
-        this.logger.error(
-          `AI query failed user=${userId} provider=${provider.name} iteration=${iteration} after=${providerCallMs}ms: ${rawMessage}`,
-          error instanceof Error ? error.stack : undefined,
-        );
+        // Classify user-actionable conditions (retrying without a change is
+        // pointless): the model lacks tool support, or it can't read the
+        // attached image/PDF. The image case covers both the typed Ollama
+        // error and other providers whose SDK error message says so -- gated
+        // on hasVisualAttachments so an unrelated error mentioning "image"
+        // can't trigger it on a text-only turn.
+        const isImagesUnsupported =
+          error instanceof OllamaModelDoesNotSupportImagesError ||
+          (hasVisualAttachments && isImageInputUnsupportedError(rawMessage));
+        const isActionable =
+          error instanceof OllamaModelDoesNotSupportToolsError ||
+          isImagesUnsupported;
+        // Log user-actionable conditions at warn without a stack trace -- they
+        // are user-fixable, not system faults -- and keep error + stack for
+        // genuine provider failures.
+        if (isActionable) {
+          this.logger.warn(
+            `AI query stopped (user-actionable) user=${userId} provider=${provider.name} iteration=${iteration} after=${providerCallMs}ms: ${rawMessage}`,
+          );
+        } else {
+          this.logger.error(
+            `AI query failed user=${userId} provider=${provider.name} iteration=${iteration} after=${providerCallMs}ms: ${rawMessage}`,
+            error instanceof Error ? error.stack : undefined,
+          );
+        }
         // Record the failed attempt in the usage log so failures show up
         // alongside successful queries instead of leaving the dashboard
         // looking idle when AI calls are silently erroring.
@@ -375,13 +406,20 @@ export class AiQueryService {
           Date.now() - startTime,
           rawMessage,
         );
-        // For errors the user can act on (e.g. Ollama model lacks tool
-        // support), surface the specific message instead of the generic
-        // "try again" — retrying without changing the model won't help.
-        const userMessage =
-          error instanceof OllamaModelDoesNotSupportToolsError
-            ? error.message
-            : "The AI provider encountered an error processing your query. Please try again.";
+        // Surface a specific, actionable message instead of the generic
+        // "try again" when retrying won't help.
+        let userMessage: string;
+        if (error instanceof OllamaModelDoesNotSupportToolsError) {
+          userMessage = error.message;
+        } else if (isImagesUnsupported) {
+          userMessage = tr(
+            "errors.ai.modelNoImageSupport",
+            "The selected AI model can't read images or PDFs. Remove the attachment and ask in text, or switch to a vision-capable model in AI Settings.",
+          );
+        } else {
+          userMessage =
+            "The AI provider encountered an error processing your query. Please try again.";
+        }
         yield {
           type: "error",
           message: userMessage,

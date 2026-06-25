@@ -1,5 +1,8 @@
 import type { AiToolStreamChunk } from "./ai-provider.interface";
-import { OllamaModelDoesNotSupportToolsError } from "./ollama.provider";
+import {
+  OllamaModelDoesNotSupportToolsError,
+  OllamaModelDoesNotSupportImagesError,
+} from "./ollama.provider";
 
 // Mock the long-running-fetch helper so tests can keep using `global.fetch`.
 // In production, longRunningFetch calls undici.fetch directly with our
@@ -652,6 +655,34 @@ describe("OllamaProvider", () => {
           }
         })(),
       ).rejects.toBeInstanceOf(OllamaModelDoesNotSupportToolsError);
+    });
+
+    it("throws a typed error when Ollama reports the model does not support image input", async () => {
+      // Ollama returns 400 with this body when a text-only model receives an
+      // attached image.
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: () =>
+          Promise.resolve(
+            '{"error":"this model does not support image input (ref: 7386e687)"}',
+          ),
+      });
+
+      const gen = provider.streamWithTools(
+        { systemPrompt: "test", messages: [{ role: "user", content: "hi" }] },
+        tools,
+      );
+
+      await expect(
+        (async () => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          for await (const _chunk of gen) {
+            // consume
+          }
+        })(),
+      ).rejects.toBeInstanceOf(OllamaModelDoesNotSupportImagesError);
     });
 
     it("includes the model id and remediation advice in the tool-unsupported error", async () => {
