@@ -237,25 +237,6 @@ export class ToolExecutorService {
     }
   }
 
-  private async resolveAccountIds(
-    userId: string,
-    accountNames?: string[],
-  ): Promise<string[] | undefined> {
-    return this.accountsService.resolveAccountIdsByName(userId, accountNames);
-  }
-
-  /**
-   * Resolve a single account name to its id + currency. Returns undefined when
-   * the name does not match any of the user's open accounts. Thin wrapper over
-   * the shared AccountsService.resolveByName.
-   */
-  private async resolveAccountByName(
-    userId: string,
-    accountName: string,
-  ): Promise<{ id: string; name: string; currencyCode: string } | undefined> {
-    return this.accountsService.resolveByName(userId, accountName);
-  }
-
   /**
    * Resolve a single category name to its id, failing loudly (returns null)
    * when it cannot be resolved so the caller surfaces a clear error rather than
@@ -340,7 +321,12 @@ export class ToolExecutorService {
     const sortDirection =
       (input.sortDirection as "asc" | "desc" | undefined) ?? "desc";
 
-    const accountIds = await this.resolveAccountIds(userId, accountNames);
+    const accountFilter = await this.accountsService.resolveAccountFilter(
+      userId,
+      accountNames,
+    );
+    if (accountFilter.error) return this.toolError(accountFilter.error);
+    const accountIds = accountFilter.accountIds;
 
     let categoryIds: string[] | undefined;
     if (categoryNames && categoryNames.length > 0) {
@@ -1811,7 +1797,12 @@ export class ToolExecutorService {
     input: Record<string, unknown>,
   ): Promise<ToolResult> {
     const accountNames = input.accountNames as string[] | undefined;
-    const accountIds = await this.resolveAccountIds(userId, accountNames);
+    const accountFilter = await this.accountsService.resolveAccountFilter(
+      userId,
+      accountNames,
+    );
+    if (accountFilter.error) return this.toolError(accountFilter.error);
+    const accountIds = accountFilter.accountIds;
 
     const data = await this.portfolioService.getLlmSummary(userId, accountIds);
 
@@ -1842,7 +1833,12 @@ export class ToolExecutorService {
     const groupBy =
       (input.groupBy as LlmInvestmentTxGroupBy | undefined) ?? "security";
 
-    const accountIds = await this.resolveAccountIds(userId, accountNames);
+    const accountFilter = await this.accountsService.resolveAccountFilter(
+      userId,
+      accountNames,
+    );
+    if (accountFilter.error) return this.toolError(accountFilter.error);
+    const accountIds = accountFilter.accountIds;
 
     const data =
       await this.investmentTransactionsService.getLlmInvestmentTransactions(
@@ -1896,7 +1892,12 @@ export class ToolExecutorService {
     const groupBy =
       (input.groupBy as LlmCapitalGainsGroupBy | undefined) ?? "month";
 
-    const accountIds = await this.resolveAccountIds(userId, accountNames);
+    const accountFilter = await this.accountsService.resolveAccountFilter(
+      userId,
+      accountNames,
+    );
+    if (accountFilter.error) return this.toolError(accountFilter.error);
+    const accountIds = accountFilter.accountIds;
 
     const data = await this.investmentTransactionsService.getLlmCapitalGains(
       userId,
@@ -1996,7 +1997,12 @@ export class ToolExecutorService {
     const days = (input.days as number | undefined) ?? 30;
     const kind = input.kind as LlmScheduledKind | "all" | undefined;
     const accountNames = input.accountNames as string[] | undefined;
-    const accountIds = await this.resolveAccountIds(userId, accountNames);
+    const accountFilter = await this.accountsService.resolveAccountFilter(
+      userId,
+      accountNames,
+    );
+    if (accountFilter.error) return this.toolError(accountFilter.error);
+    const accountIds = accountFilter.accountIds;
 
     const data =
       await this.scheduledTransactionsService.getLlmUpcomingBillsAndDeposits(

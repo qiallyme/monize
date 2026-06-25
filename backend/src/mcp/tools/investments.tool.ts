@@ -120,10 +120,12 @@ export class McpInvestmentsTools {
         if (check.error) return check.result;
 
         try {
-          const accountIds = await this.accountsService.resolveAccountIdsByName(
+          const accountFilter = await this.accountsService.resolveAccountFilter(
             ctx.userId,
             args.accountNames,
           );
+          if (accountFilter.error) return toolError(accountFilter.error);
+          const accountIds = accountFilter.accountIds;
           const summary = await this.portfolioService.getLlmSummary(
             ctx.userId,
             accountIds,
@@ -188,10 +190,12 @@ export class McpInvestmentsTools {
         if (check.error) return check.result;
 
         try {
-          const accountIds = await this.accountsService.resolveAccountIdsByName(
+          const accountFilter = await this.accountsService.resolveAccountFilter(
             ctx.userId,
             args.accountNames,
           );
+          if (accountFilter.error) return toolError(accountFilter.error);
+          const accountIds = accountFilter.accountIds;
           const result =
             await this.investmentTransactionsService.getLlmInvestmentTransactions(
               ctx.userId,
@@ -257,10 +261,12 @@ export class McpInvestmentsTools {
         if (check.error) return check.result;
 
         try {
-          const accountIds = await this.accountsService.resolveAccountIdsByName(
+          const accountFilter = await this.accountsService.resolveAccountFilter(
             ctx.userId,
             args.accountNames,
           );
+          if (accountFilter.error) return toolError(accountFilter.error);
+          const accountIds = accountFilter.accountIds;
           const result =
             await this.investmentTransactionsService.getLlmCapitalGains(
               ctx.userId,

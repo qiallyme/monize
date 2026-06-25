@@ -161,19 +161,25 @@ describe("ToolExecutorService", () => {
         };
         return byName[name.toLowerCase()];
       }),
-      resolveAccountIdsByName: jest.fn(
-        async (_uid: string, names?: string[]) => {
-          if (!names || names.length === 0) return undefined;
-          const byName: Record<string, string> = {
-            checking: "acc-1",
-            savings: "acc-2",
-            brokerage: "acc-3",
-          };
-          return names
-            .map((n) => byName[n.toLowerCase()])
-            .filter((id): id is string => id !== undefined);
-        },
-      ),
+      resolveAccountFilter: jest.fn(async (_uid: string, names?: string[]) => {
+        if (!names || names.length === 0) return { accountIds: undefined };
+        const byName: Record<string, string> = {
+          checking: "acc-1",
+          savings: "acc-2",
+          brokerage: "acc-3",
+        };
+        const accountIds: string[] = [];
+        const unresolved: string[] = [];
+        for (const n of names) {
+          const id = byName[n.toLowerCase()];
+          if (id) accountIds.push(id);
+          else unresolved.push(n);
+        }
+        if (unresolved.length > 0) {
+          return { error: `Unknown account: ${unresolved.join(", ")}.` };
+        }
+        return { accountIds };
+      }),
       findOne: jest.fn(async (_uid: string, id: string) => {
         const byId: Record<
           string,
@@ -679,13 +685,24 @@ describe("ToolExecutorService", () => {
         accountNames: ["Checking"],
       });
 
-      expect(accounts.resolveAccountIdsByName).toHaveBeenCalledWith(userId, [
+      expect(accounts.resolveAccountFilter).toHaveBeenCalledWith(userId, [
         "Checking",
       ]);
       expect(analytics.getLlmListTransactions).toHaveBeenCalledWith(
         userId,
         expect.objectContaining({ accountIds: ["acc-1"] }),
       );
+    });
+
+    it("list_transactions surfaces a did-you-mean error for an unknown account name", async () => {
+      const result = await service.execute(userId, "list_transactions", {
+        accountNames: ["Chekcing"],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.summary).toContain("Unknown account: Chekcing");
+      // The unknown name short-circuits before any data query runs.
+      expect(analytics.getLlmListTransactions).not.toHaveBeenCalled();
     });
 
     it("list_transactions resolves category names via analytics helper", async () => {
@@ -920,7 +937,7 @@ describe("ToolExecutorService", () => {
         accountNames: ["Checking"],
       });
 
-      expect(accounts.resolveAccountIdsByName).toHaveBeenCalledWith(userId, [
+      expect(accounts.resolveAccountFilter).toHaveBeenCalledWith(userId, [
         "Checking",
       ]);
       expect(
@@ -985,7 +1002,7 @@ describe("ToolExecutorService", () => {
         accountNames: ["Checking"],
       });
 
-      expect(accounts.resolveAccountIdsByName).toHaveBeenCalledWith(userId, [
+      expect(accounts.resolveAccountFilter).toHaveBeenCalledWith(userId, [
         "Checking",
       ]);
       expect(investmentTransactions.getLlmCapitalGains).toHaveBeenCalledWith(
@@ -1032,7 +1049,7 @@ describe("ToolExecutorService", () => {
         accountNames: ["Checking"],
       });
 
-      expect(accounts.resolveAccountIdsByName).toHaveBeenCalledWith(userId, [
+      expect(accounts.resolveAccountFilter).toHaveBeenCalledWith(userId, [
         "Checking",
       ]);
       expect(
