@@ -689,19 +689,30 @@ describe('DateInput', () => {
         });
       });
 
-      it('does not hijack "-" as the previous-day shortcut', () => {
+      it('still steps the day back with "-" when a complete date is shown', () => {
         const { getByLabelText } = renderDateInput('2025-06-15');
         const input = getByLabelText('Date') as HTMLInputElement;
         fireEvent.keyDown(input, { key: '-' });
-        // The shortcut must not fire -- "-" is a separator here
+        // A full canonical date is displayed, so "-" resumes its shortcut role
+        expect(onDateChange).toHaveBeenCalledWith('2025-06-14');
+      });
+
+      it('does not hijack "-" while the date is incomplete (mid-typing)', () => {
+        const { getByLabelText } = renderDateInput('');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: '2026' } });
+        fireEvent.keyDown(input, { key: '-' });
+        // The shortcut must not fire -- "-" is a separator while typing
         expect(onDateChange).not.toHaveBeenCalled();
       });
 
-      it('does not preventDefault on "-" so it can be typed as a separator', () => {
+      it('does not preventDefault on "-" mid-typing so it can be typed as a separator', () => {
         const { getByLabelText } = renderDateInput('');
+        const input = getByLabelText('Date') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: '2026' } });
         const event = new KeyboardEvent('keydown', { key: '-', bubbles: true, cancelable: true });
         const preventSpy = vi.spyOn(event, 'preventDefault');
-        getByLabelText('Date').dispatchEvent(event);
+        input.dispatchEvent(event);
         expect(preventSpy).not.toHaveBeenCalled();
       });
 

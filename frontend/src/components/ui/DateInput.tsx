@@ -346,10 +346,17 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
 
       // In desktop-formatted mode the user types the date by hand, so a key that
       // is a literal separator in the active format (e.g. "-" in YYYY-MM-DD)
-      // must be inserted as text rather than hijacked by a day-step shortcut.
-      // The +/- shortcuts keep working for every format that does not use that
-      // character as a separator (e.g. "-" still steps the day in DD/MM/YYYY).
-      if (mode === 'desktop-formatted' && getFormatSeparators(dateFormat).has(e.key)) {
+      // must be inserted as text rather than hijacked by a day-step shortcut --
+      // but only while the date is incomplete. Once a full, canonical date is
+      // shown, that same key resumes its shortcut role (e.g. "-" steps the day
+      // back), since there is nothing left to type. The +/- shortcuts are
+      // unaffected for formats that do not use the character as a separator.
+      const isCompleteDate = !!isoValue && displayValue === formatDate(isoValue, dateFormat);
+      if (
+        mode === 'desktop-formatted'
+        && !isCompleteDate
+        && getFormatSeparators(dateFormat).has(e.key)
+      ) {
         onKeyDown?.(e);
         return;
       }
@@ -373,7 +380,7 @@ export const DateInput = forwardRef<HTMLInputElement, DateInputProps>(
       }
 
       onKeyDown?.(e);
-    }, [mode, isoValue, dateFormat, emitDateChange, onDateChange, onKeyDown]);
+    }, [mode, isoValue, displayValue, dateFormat, emitDateChange, onDateChange, onKeyDown]);
 
     // Restore a segment highlight after the controlled text input re-renders
     // with a new displayValue.
