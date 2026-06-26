@@ -6,14 +6,28 @@ import { ToolExecutorService } from "./tool-executor.service";
 import { FINANCIAL_TOOLS } from "./tool-definitions";
 import {
   AiMessage,
+  AiUserMessage,
+  AiContentBlock,
+  AiImageBlock,
   AiProvider,
   AiToolCall,
 } from "../providers/ai-provider.interface";
-import { OllamaModelDoesNotSupportToolsError } from "../providers/ollama.provider";
+import {
+  OllamaModelDoesNotSupportToolsError,
+  OllamaModelDoesNotSupportImagesError,
+} from "../providers/ollama.provider";
+import { isImageInputUnsupportedError } from "../providers/content-blocks.util";
 import { assessInjectionRisk } from "../context/prompt-injection-detector";
 import { QUERY_SAFETY_REMINDER } from "../context/prompt-templates";
 import { sanitizeToolResultStrings } from "../../common/sanitization.util";
-import { MAX_HISTORY_MESSAGES } from "./dto/ai-query.dto";
+import {
+  MAX_HISTORY_MESSAGES,
+  MAX_ATTACHMENT_BYTES,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  AttachmentDto,
+  AttachmentKind,
+} from "./dto/ai-query.dto";
+import { tr } from "../../i18n/translate";
 import { PendingAiAction } from "../actions/ai-action.types";
 
 const MAX_ITERATIONS = 5;
@@ -79,12 +93,14 @@ export class AiQueryService {
       role: "user" | "assistant";
       content: string;
     }>,
+    attachments?: AttachmentDto[],
   ): Promise<QueryResult> {
     const events: StreamEvent[] = [];
     for await (const event of this.executeQueryStream(
       userId,
       query,
       conversationHistory,
+      attachments,
     )) {
       events.push(event);
     }
@@ -135,6 +151,7 @@ export class AiQueryService {
       role: "user" | "assistant";
       content: string;
     }>,
+    attachments?: AttachmentDto[],
   ): AsyncGenerator<StreamEvent> {
     yield { type: "thinking", message: "Analyzing your question..." };
 
@@ -190,14 +207,42 @@ export class AiQueryService {
       return;
     }
 
+    // Build the current user turn -- a plain string normally, or a multimodal
+    // content array when attachments are present. Validation failures (size,
+    // declared-type mismatch, corrupt bytes) surface as an error event so both
+    // the stream and non-stream paths report the specific reason.
+    let currentUserMessage: AiUserMessage;
+    try {
+      currentUserMessage = this.buildCurrentUserMessage(query, attachments);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Invalid attachment";
+      yield { type: "error", message };
+      return;
+    }
+    if (attachments && attachments.length > 0) {
+      this.logger.log(
+        `Query attachments user=${userId} count=${attachments.length} kinds=[${attachments
+          .map((a) => a.kind)
+          .join(",")}]`,
+      );
+    }
+    // Whether this turn carries image/PDF input. Gates the "model can't read
+    // images" message so a provider error that merely mentions "image" can't
+    // surface it on a text-only turn.
+    const hasVisualAttachments = !!attachments?.some(
+      (a) => a.kind === "image" || a.kind === "pdf",
+    );
+
     // Build messages: optional history + current query + safety reminder.
     // Conversation history allows the AI to reference prior turns
-    // (e.g., "tell me more about that").
+    // (e.g., "tell me more about that"). Only the current turn carries
+    // attachments; history is text-only.
     const historyMessages: AiMessage[] =
       this.buildHistoryMessages(conversationHistory);
     const messages: AiMessage[] = [
       ...historyMessages,
-      { role: "user", content: query },
+      currentUserMessage,
       { role: "user", content: QUERY_SAFETY_REMINDER },
     ];
     const allToolsUsed: Array<{ name: string; summary: string }> = [];
@@ -324,10 +369,31 @@ export class AiQueryService {
         const rawMessage =
           error instanceof Error ? error.message : "AI provider error";
         const providerCallMs = Date.now() - providerCallStart;
-        this.logger.error(
-          `AI query failed user=${userId} provider=${provider.name} iteration=${iteration} after=${providerCallMs}ms: ${rawMessage}`,
-          error instanceof Error ? error.stack : undefined,
-        );
+        // Classify user-actionable conditions (retrying without a change is
+        // pointless): the model lacks tool support, or it can't read the
+        // attached image/PDF. The image case covers both the typed Ollama
+        // error and other providers whose SDK error message says so -- gated
+        // on hasVisualAttachments so an unrelated error mentioning "image"
+        // can't trigger it on a text-only turn.
+        const isImagesUnsupported =
+          error instanceof OllamaModelDoesNotSupportImagesError ||
+          (hasVisualAttachments && isImageInputUnsupportedError(rawMessage));
+        const isActionable =
+          error instanceof OllamaModelDoesNotSupportToolsError ||
+          isImagesUnsupported;
+        // Log user-actionable conditions at warn without a stack trace -- they
+        // are user-fixable, not system faults -- and keep error + stack for
+        // genuine provider failures.
+        if (isActionable) {
+          this.logger.warn(
+            `AI query stopped (user-actionable) user=${userId} provider=${provider.name} iteration=${iteration} after=${providerCallMs}ms: ${rawMessage}`,
+          );
+        } else {
+          this.logger.error(
+            `AI query failed user=${userId} provider=${provider.name} iteration=${iteration} after=${providerCallMs}ms: ${rawMessage}`,
+            error instanceof Error ? error.stack : undefined,
+          );
+        }
         // Record the failed attempt in the usage log so failures show up
         // alongside successful queries instead of leaving the dashboard
         // looking idle when AI calls are silently erroring.
@@ -340,13 +406,20 @@ export class AiQueryService {
           Date.now() - startTime,
           rawMessage,
         );
-        // For errors the user can act on (e.g. Ollama model lacks tool
-        // support), surface the specific message instead of the generic
-        // "try again" — retrying without changing the model won't help.
-        const userMessage =
-          error instanceof OllamaModelDoesNotSupportToolsError
-            ? error.message
-            : "The AI provider encountered an error processing your query. Please try again.";
+        // Surface a specific, actionable message instead of the generic
+        // "try again" when retrying won't help.
+        let userMessage: string;
+        if (error instanceof OllamaModelDoesNotSupportToolsError) {
+          userMessage = error.message;
+        } else if (isImagesUnsupported) {
+          userMessage = tr(
+            "errors.ai.modelNoImageSupport",
+            "The selected AI model can't read images or PDFs. Remove the attachment and ask in text, or switch to a vision-capable model in AI Settings.",
+          );
+        } else {
+          userMessage =
+            "The AI provider encountered an error processing your query. Please try again.";
+        }
         yield {
           type: "error",
           message: userMessage,
@@ -537,6 +610,148 @@ export class AiQueryService {
         toolCalls: totalToolCalls,
       },
     };
+  }
+
+  /**
+   * Build the current user turn. With no attachments it is the plain query
+   * string (unchanged from the text-only path). With attachments it becomes an
+   * ordered content array: PDFs first (Anthropic requires document-before-text;
+   * harmless for other providers), then images, then the typed query, then any
+   * CSV/plain-text files decoded and inlined as text. Throws BadRequestException
+   * on a validation failure.
+   */
+  private buildCurrentUserMessage(
+    query: string,
+    attachments?: AttachmentDto[],
+  ): AiUserMessage {
+    if (!attachments || attachments.length === 0) {
+      return { role: "user", content: query };
+    }
+
+    this.validateAttachments(attachments);
+
+    const documentBlocks: AiContentBlock[] = [];
+    const imageBlocks: AiContentBlock[] = [];
+    const textBlocks: AiContentBlock[] = [];
+
+    for (const att of attachments) {
+      // Strip any stray whitespace/newlines from the base64 -- Anthropic
+      // rejects newlines in image/document data.
+      const data = att.data.replace(/\s+/g, "");
+      if (att.kind === "image") {
+        imageBlocks.push({
+          type: "image",
+          mediaType: att.mediaType as AiImageBlock["mediaType"],
+          data,
+        });
+      } else if (att.kind === "pdf") {
+        documentBlocks.push({
+          type: "document",
+          mediaType: "application/pdf",
+          data,
+          filename: att.filename,
+        });
+      } else {
+        const decoded = Buffer.from(data, "base64").toString("utf-8");
+        textBlocks.push({
+          type: "text",
+          text: `Attached file "${att.filename}":\n${decoded}`,
+        });
+      }
+    }
+
+    const content: AiContentBlock[] = [
+      ...documentBlocks,
+      ...imageBlocks,
+      { type: "text", text: query },
+      ...textBlocks,
+    ];
+    return { role: "user", content };
+  }
+
+  /**
+   * Server-side attachment validation -- never trust the client. Checks the
+   * declared kind against the media-type family, the decoded per-file and
+   * total size, and the leading magic bytes so a client can't mislabel a file.
+   */
+  private validateAttachments(attachments: AttachmentDto[]): void {
+    let totalBytes = 0;
+    for (const att of attachments) {
+      if (this.mediaTypeKind(att.mediaType) !== att.kind) {
+        throw new BadRequestException(
+          tr(
+            "errors.ai.attachmentTypeMismatch",
+            "An attachment's type does not match its file format.",
+          ),
+        );
+      }
+      const buf = Buffer.from(att.data, "base64");
+      if (buf.length > MAX_ATTACHMENT_BYTES) {
+        throw new BadRequestException(
+          tr(
+            "errors.ai.attachmentTooLarge",
+            "An attachment exceeds the maximum file size.",
+          ),
+        );
+      }
+      if (!this.hasExpectedMagicBytes(att.mediaType, buf)) {
+        throw new BadRequestException(
+          tr(
+            "errors.ai.attachmentCorrupt",
+            "An attachment could not be read or is not the file type it claims to be.",
+          ),
+        );
+      }
+      totalBytes += buf.length;
+    }
+    if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+      throw new BadRequestException(
+        tr(
+          "errors.ai.attachmentsTooLarge",
+          "The attachments exceed the total size limit.",
+        ),
+      );
+    }
+  }
+
+  /** Map a MIME type to its attachment kind, or null if unsupported. */
+  private mediaTypeKind(mediaType: string): AttachmentKind | null {
+    if (mediaType.startsWith("image/")) return "image";
+    if (mediaType === "application/pdf") return "pdf";
+    if (mediaType === "text/csv" || mediaType === "text/plain") return "text";
+    return null;
+  }
+
+  /**
+   * Verify the decoded bytes begin with the signature expected for the
+   * declared media type. Text files have no reliable signature, so they pass.
+   */
+  private hasExpectedMagicBytes(mediaType: string, buf: Buffer): boolean {
+    if (mediaType === "text/csv" || mediaType === "text/plain") return true;
+    if (buf.length < 4) return false;
+    switch (mediaType) {
+      case "image/png":
+        return (
+          buf[0] === 0x89 &&
+          buf[1] === 0x50 &&
+          buf[2] === 0x4e &&
+          buf[3] === 0x47
+        );
+      case "image/jpeg":
+        return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+      case "image/gif":
+        return buf.toString("ascii", 0, 3) === "GIF";
+      case "image/webp":
+        return (
+          buf.length >= 12 &&
+          buf.toString("ascii", 0, 4) === "RIFF" &&
+          buf.toString("ascii", 8, 12) === "WEBP"
+        );
+      case "application/pdf":
+        return buf.toString("ascii", 0, 4) === "%PDF";
+      default:
+        return false;
+    }
   }
 
   /**
