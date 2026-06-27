@@ -247,28 +247,49 @@ export const useAiChatStore = create<AiChatState>()(
           });
         };
 
+        // Project the collected cards onto the message while preserving any
+        // status the user has already set in the store. The closure only ever
+        // marks a card 'pending', so re-rendering it verbatim (when a later batch
+        // or the final answer arrives) would reset a card the user just approved
+        // back to pending -- and re-approving an already-applied card errors. The
+        // store is the source of truth for status; merge onto it every time.
+        const projectPendingActions = (
+          current: ChatMessage | undefined,
+        ): PendingAction[] => {
+          const statusById = new Map(
+            (current?.pendingActions ?? []).map((a) => [a.actionId, a.status]),
+          );
+          return pendingActions.map((a) => {
+            const status = statusById.get(a.actionId);
+            return status && status !== a.status ? { ...a, status } : a;
+          });
+        };
+
         // Render a late relay answer as a normal assistant message, replacing
         // any disconnect placeholder. Keeps any confirmation cards already
         // picked up so a buffered card is not dropped when the answer arrives.
         const deliverLateAnswer = (text: string): void => {
-          set((state) => ({
-            messages: [
-              ...state.messages.filter((m) => m.id !== assistantMsgId),
-              {
-                id: assistantMsgId,
-                role: 'assistant',
-                content: text,
-                ...(pendingActions.length > 0
-                  ? { pendingActions: [...pendingActions] }
-                  : {}),
-              },
-            ],
-            isLoading: false,
-            thinking: IDLE_THINKING,
-            _abortController: null,
-            _activeAssistantId: null,
-            _relayPollCancel: null,
-          }));
+          set((state) => {
+            const merged = projectPendingActions(
+              state.messages.find((m) => m.id === assistantMsgId),
+            );
+            return {
+              messages: [
+                ...state.messages.filter((m) => m.id !== assistantMsgId),
+                {
+                  id: assistantMsgId,
+                  role: 'assistant',
+                  content: text,
+                  ...(merged.length > 0 ? { pendingActions: merged } : {}),
+                },
+              ],
+              isLoading: false,
+              thinking: IDLE_THINKING,
+              _abortController: null,
+              _activeAssistantId: null,
+              _relayPollCancel: null,
+            };
+          });
         };
 
         // Render confirmation cards picked up after the stream gave up (the
@@ -288,17 +309,20 @@ export const useAiChatStore = create<AiChatState>()(
             }
           }
           if (!added) return false;
-          set((state) => ({
-            messages: [
-              ...state.messages.filter((m) => m.id !== assistantMsgId),
-              {
-                id: assistantMsgId,
-                role: 'assistant',
-                content: '',
-                pendingActions: [...pendingActions],
-              },
-            ],
-          }));
+          set((state) => {
+            const current = state.messages.find((m) => m.id === assistantMsgId);
+            return {
+              messages: [
+                ...state.messages.filter((m) => m.id !== assistantMsgId),
+                {
+                  id: assistantMsgId,
+                  role: 'assistant',
+                  content: current?.content ?? '',
+                  pendingActions: projectPendingActions(current),
+                },
+              ],
+            };
+          });
           return true;
         };
 
@@ -311,18 +335,17 @@ export const useAiChatStore = create<AiChatState>()(
         // late-answer pickup, since only real text content suppresses it.
         const upsertAssistantMessage = (): void => {
           set((state) => {
+            const existing = state.messages.find((m) => m.id === assistantMsgId);
+            const merged = projectPendingActions(existing);
             const fields = {
               content: contentBuffer,
               toolsUsed: [...toolsUsed],
               ...(charts.length > 0 ? { charts: [...charts] } : {}),
-              ...(pendingActions.length > 0
-                ? { pendingActions: [...pendingActions] }
-                : {}),
+              ...(merged.length > 0 ? { pendingActions: merged } : {}),
               isStreaming: true,
             };
-            const exists = state.messages.some((m) => m.id === assistantMsgId);
             return {
-              messages: exists
+              messages: existing
                 ? state.messages.map((m) =>
                     m.id === assistantMsgId ? { ...m, ...fields } : m,
                   )
@@ -552,26 +575,30 @@ export const useAiChatStore = create<AiChatState>()(
                 break;
 
               case 'done':
-                set((state) => ({
-                  messages: state.messages.map((m) =>
-                    m.id === assistantMsgId
-                      ? {
-                          ...m,
-                          isStreaming: false,
-                          sources,
-                          charts: charts.length > 0 ? [...charts] : m.charts,
-                          pendingActions:
-                            pendingActions.length > 0
-                              ? [...pendingActions]
-                              : m.pendingActions,
-                        }
-                      : m,
-                  ),
-                  isLoading: false,
-                  thinking: IDLE_THINKING,
-                  _abortController: null,
-                  _activeAssistantId: null,
-                }));
+                set((state) => {
+                  const current = state.messages.find(
+                    (m) => m.id === assistantMsgId,
+                  );
+                  const merged = projectPendingActions(current);
+                  return {
+                    messages: state.messages.map((m) =>
+                      m.id === assistantMsgId
+                        ? {
+                            ...m,
+                            isStreaming: false,
+                            sources,
+                            charts: charts.length > 0 ? [...charts] : m.charts,
+                            pendingActions:
+                              merged.length > 0 ? merged : m.pendingActions,
+                          }
+                        : m,
+                    ),
+                    isLoading: false,
+                    thinking: IDLE_THINKING,
+                    _abortController: null,
+                    _activeAssistantId: null,
+                  };
+                });
                 break;
 
               case 'error': {

@@ -391,6 +391,66 @@ describe('aiChatStore', () => {
       }
     });
 
+    it('keeps an already-confirmed card confirmed when a later batch arrives', async () => {
+      // The user approved a card; then the agent delivered a further batch. The
+      // new batch must not reset the approved card back to pending (re-approving
+      // an already-applied card errors). The closure only marks cards pending, so
+      // the store status must win on every re-render.
+      vi.useFakeTimers();
+      try {
+        const cardA = {
+          actionId: 'A',
+          type: 'create_transaction' as const,
+          preview: {},
+          descriptor: { type: 'create_transaction' as const },
+          signature: 's',
+          expiresAt: Date.now() + 600000,
+        };
+        const cardB = { ...cardA, actionId: 'B' };
+        mockGetRelayResponse
+          .mockResolvedValueOnce({ text: null, pendingActions: [cardA] })
+          .mockResolvedValueOnce({ text: null, pendingActions: [cardB] })
+          .mockResolvedValueOnce({ text: 'Imported.', pendingActions: [] });
+        useAiChatStore.getState().submit('Import', undefined, { relay: true });
+        capturedCallbacks?.onEvent({ type: 'prompt_id', promptId: 'p-batch' });
+        capturedCallbacks?.onEvent({ type: 'error', message: 'went quiet' });
+
+        // Poll 1: card A appears.
+        await vi.advanceTimersByTimeAsync(0);
+        let msg = useAiChatStore.getState().messages[1];
+        expect(msg.pendingActions).toHaveLength(1);
+
+        // The user approves card A (store-side status flip, as confirmAction does).
+        useAiChatStore.setState((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === msg.id
+              ? {
+                  ...m,
+                  pendingActions: m.pendingActions!.map((p) =>
+                    p.actionId === 'A' ? { ...p, status: 'confirmed' as const } : p,
+                  ),
+                }
+              : m,
+          ),
+        }));
+
+        // Poll 2: card B arrives -- card A must stay confirmed.
+        await vi.advanceTimersByTimeAsync(4000);
+        msg = useAiChatStore.getState().messages[1];
+        expect(msg.pendingActions).toHaveLength(2);
+        expect(msg.pendingActions!.find((p) => p.actionId === 'A')!.status).toBe('confirmed');
+        expect(msg.pendingActions!.find((p) => p.actionId === 'B')!.status).toBe('pending');
+
+        // Poll 3: the answer lands -- card A is still confirmed.
+        await vi.advanceTimersByTimeAsync(4000);
+        msg = useAiChatStore.getState().messages[1];
+        expect(msg.content).toBe('Imported.');
+        expect(msg.pendingActions!.find((p) => p.actionId === 'A')!.status).toBe('confirmed');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('stops polling for a late answer once a new prompt is submitted', async () => {
       vi.useFakeTimers();
       try {
