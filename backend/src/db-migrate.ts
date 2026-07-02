@@ -4,6 +4,16 @@ import * as path from "path";
 
 const MIGRATIONS_DIRNAME = "migrations";
 
+function databaseSslOptions() {
+  if (process.env.DATABASE_SSL !== "true") {
+    return undefined;
+  }
+
+  return {
+    rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
+  };
+}
+
 /**
  * Resolve a path and verify it stays within the given base directory.
  * Returns the resolved path or null if validation fails.
@@ -27,6 +37,7 @@ export async function runMigrations() {
     user: process.env.DATABASE_USER,
     password: process.env.DATABASE_PASSWORD,
     database: process.env.DATABASE_NAME,
+    ssl: databaseSslOptions(),
   });
 
   try {

@@ -13,6 +13,16 @@ function requiredEnv(name: string, fallback?: string): string {
   return value;
 }
 
+function databaseSslOptions() {
+  if (process.env.DATABASE_SSL !== "true") {
+    return undefined;
+  }
+
+  return {
+    rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false",
+  };
+}
+
 /**
  * Resolve a path and verify it stays within the given base directory.
  * Returns the resolved path or null if validation fails.
@@ -35,6 +45,7 @@ async function initDatabase() {
     user: requiredEnv("DATABASE_USER"),
     password: requiredEnv("DATABASE_PASSWORD"),
     database: requiredEnv("DATABASE_NAME"),
+    ssl: databaseSslOptions(),
   });
 
   try {
